@@ -15,7 +15,8 @@ Primary sources:
 - https://github.com/nostr-protocol/nips/blob/master/17.md
 - https://github.com/nostr-protocol/nips/blob/master/44.md
 - https://github.com/nostr-protocol/nips/blob/master/59.md
-- https://github.com/21-DOT-DEV/swift-secp256k1
+- https://github.com/GigaBitcoin/secp256k1.swift
+- https://github.com/krzyzanowskim/CryptoSwift
 - https://github.com/nostr-sdk/nostr-sdk-ios
 
 ## App Contract
