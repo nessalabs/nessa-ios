@@ -31,6 +31,9 @@ public struct DevModeRootView: View {
                     }
                 }
             }
+            .navigationDestination(isPresented: $showingChat) {
+                ChatScreen(state: store.state)
+            }
         }
         .clawdiaTheme(theme)
         .preferredColorScheme(theme == .dark ? .dark : .light)
@@ -90,10 +93,6 @@ private struct AppShell: View {
                     state: state,
                     onClose: { self.developmentScreen = nil }
                 )
-            } else if showingChat {
-                ChatScreen(state: state) {
-                    showingChat = false
-                }
             } else if showingAreasManager {
                 FolderManagerScreen(folders: state.folders) {
                     showingAreasManager = false
@@ -214,7 +213,7 @@ private struct ScreenHost: View {
             case .home:
                 HomeScreen(state: state)
             case .chat:
-                ChatScreen(state: state)
+                ChatScreen(state: state, showsNavigationHeader: false)
             case .voice:
                 VoiceScreen()
             case .approvals:
@@ -674,32 +673,45 @@ private struct NewAreaSheet: View {
     @Binding var name: String
     let onCreate: () -> Void
     let onCancel: () -> Void
+    @FocusState private var isNameFocused: Bool
 
     var body: some View {
         let palette = ClawdiaColor.palette(theme)
         NavigationStack {
-            VStack(alignment: .leading, spacing: ClawdiaSpacing.lg) {
-                Text("Create new area")
-                    .font(ClawdiaType.display(34))
-                Text("Group related chats, tasks, approvals, and context under one area of life.")
-                    .font(ClawdiaType.body)
-                    .foregroundStyle(palette.text2)
-                TextField("Area name", text: $name)
-                    .font(ClawdiaType.body)
-                    .padding(ClawdiaSpacing.md)
-                    .background(palette.surface2)
-                    .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.lg, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: ClawdiaRadius.lg, style: .continuous)
-                            .stroke(palette.border, lineWidth: 0.5)
+            ZStack {
+                palette.background
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        isNameFocused = false
                     }
-                Spacer()
-                ClawdiaPrimaryButton("Create area", systemImage: "plus") {
-                    onCreate()
+
+                VStack(alignment: .leading, spacing: ClawdiaSpacing.lg) {
+                    Text("Create new area")
+                        .font(ClawdiaType.display(34))
+                    Text("Group related chats, tasks, approvals, and context under one area of life.")
+                        .font(ClawdiaType.body)
+                        .foregroundStyle(palette.text2)
+                    TextField("Area name", text: $name)
+                        .focused($isNameFocused)
+                        .font(ClawdiaType.body)
+                        .padding(ClawdiaSpacing.md)
+                        .background(palette.surface2)
+                        .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.lg, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: ClawdiaRadius.lg, style: .continuous)
+                                .stroke(palette.border, lineWidth: 0.5)
+                        }
+                    Spacer()
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            isNameFocused = false
+                        }
+                    ClawdiaPrimaryButton("Create area", systemImage: "plus") {
+                        onCreate()
+                    }
                 }
+                .padding(ClawdiaSpacing.lg)
             }
-            .padding(ClawdiaSpacing.lg)
-            .clawdiaScreenBackground()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: onCancel)
@@ -766,20 +778,25 @@ private struct ChatRow: View {
 
 public struct ChatScreen: View {
     let state: MockAppState
-    let onBack: () -> Void
+    private let showsNavigationHeader: Bool
     @State private var sentMessages: [String] = []
     @State private var floatingApproval: ApprovalRequest?
+    @State private var showingAgentDetails = false
+    @FocusState private var isComposerFocused: Bool
 
-    public init(state: MockAppState = .preview, onBack: @escaping () -> Void = {}) {
+    public init(
+        state: MockAppState = .preview,
+        onBack: @escaping () -> Void = {},
+        showsNavigationHeader: Bool = true
+    ) {
         self.state = state
-        self.onBack = onBack
+        self.showsNavigationHeader = showsNavigationHeader
     }
 
     public var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
-                ChatHeader(onBack: onBack)
-                AppScroll {
+                AppScroll(keyboardDismissMode: .interactively, bottomPadding: ClawdiaSpacing.lg) {
                     MessageBubble("Morning. I noticed your sister's birthday is in 4 days. Want me to start a reminder thread?", fromMe: false)
                     MessageBubble("yes pls. and help me draft her a card", fromMe: true)
                     ToolUseInline()
@@ -798,8 +815,8 @@ public struct ChatScreen: View {
                         MessageBubble("Got it. I logged that in dev mode so we can wire the local Clawdia response next.", fromMe: false)
                     }
                 }
-                Composer { message in
-                    sentMessages.append(message)
+                .onTapGesture {
+                    isComposerFocused = false
                 }
             }
             if let floatingApproval {
@@ -808,38 +825,98 @@ public struct ChatScreen: View {
                 }
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Composer(isDraftFocused: $isComposerFocused) { message in
+                sentMessages.append(message)
+            }
+        }
         .animation(.spring(response: 0.34, dampingFraction: 0.84), value: floatingApproval?.id)
         .clawdiaScreenBackground()
+        .chatNavigationChrome()
+        .toolbar {
+            if showsNavigationHeader {
+                ToolbarItem(placement: .principal) {
+                    Button {
+                        showingAgentDetails = true
+                    } label: {
+                        ChatAgentNavigationTitle()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clawdia details")
+                }
+            }
+        }
+        .sheet(isPresented: $showingAgentDetails) {
+            AgentDetailsSheet()
+        }
     }
 }
 
-private struct ChatHeader: View {
+private struct ChatAgentNavigationTitle: View {
     @Environment(\.clawdiaTheme) private var theme
-    let onBack: () -> Void
 
     var body: some View {
         let palette = ClawdiaColor.palette(theme)
-        HStack(spacing: ClawdiaSpacing.sm) {
-            Button(action: onBack) {
-                Image(systemName: "chevron.left")
-                    .font(ClawdiaType.subhead)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(palette.accent)
-            ClawdiaAvatar(size: 36)
-            VStack(alignment: .leading) {
-                Text("Clawdia")
-                    .font(ClawdiaType.body.weight(.semibold))
-                Label("thinking with you", systemImage: "circle.fill")
-                    .font(ClawdiaType.caption)
-                    .foregroundStyle(palette.success)
-            }
-            Spacer()
-            Image(systemName: "ellipsis")
-                .foregroundStyle(palette.text3)
+        VStack(spacing: 1) {
+            ClawdiaAvatar(size: 34)
+            Text("Clawdia")
+                .font(ClawdiaType.caption.weight(.semibold))
+                .foregroundStyle(palette.text)
         }
-        .padding(ClawdiaSpacing.md)
-        .background(palette.background)
+        .frame(minWidth: 104, minHeight: 52)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct AgentDetailsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.clawdiaTheme) private var theme
+
+    var body: some View {
+        let palette = ClawdiaColor.palette(theme)
+        NavigationStack {
+            VStack(spacing: ClawdiaSpacing.lg) {
+                ClawdiaAvatar(size: 78)
+                    .padding(.top, ClawdiaSpacing.lg)
+                VStack(spacing: ClawdiaSpacing.xxs) {
+                    Text("Clawdia")
+                        .font(ClawdiaType.title)
+                    Text("Personal agent")
+                        .font(ClawdiaType.body)
+                        .foregroundStyle(palette.text2)
+                }
+                ClawdiaCard {
+                    VStack(alignment: .leading, spacing: ClawdiaSpacing.sm) {
+                        StatusPill("Ready", systemImage: "checkmark.circle")
+                        Text("Connected to local dev mode with chat, approvals, planning, and context surfaces available.")
+                            .font(ClawdiaType.body)
+                            .foregroundStyle(palette.text2)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                Spacer()
+            }
+            .padding(ClawdiaSpacing.lg)
+            .clawdiaScreenBackground()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func chatNavigationChrome() -> some View {
+        #if os(iOS)
+        navigationBarTitleDisplayMode(.inline)
+        #else
+        self
+        #endif
     }
 }
 
@@ -996,39 +1073,98 @@ struct RichDataCard<Content: View>: View {
 private struct Composer: View {
     @Environment(\.clawdiaTheme) private var theme
     @State private var draft = ""
+    let isDraftFocused: FocusState<Bool>.Binding
     let onSend: (String) -> Void
 
     var body: some View {
         let palette = ClawdiaColor.palette(theme)
-        HStack(spacing: ClawdiaSpacing.xs) {
-            Button {
-            } label: {
-                Image(systemName: "plus")
+        HStack(alignment: .center, spacing: ClawdiaSpacing.xs) {
+            if #available(iOS 26.0, macOS 26.0, *) {
+                GlassEffectContainer(spacing: ClawdiaSpacing.xs) {
+                    HStack(alignment: .center, spacing: ClawdiaSpacing.xs) {
+                        plusButton(palette)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .glassEffect(.clear.interactive(), in: Circle())
+                        textEntrySurface(palette)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .overlay {
+                                Capsule()
+                                    .stroke(palette.border.opacity(0.9), lineWidth: 0.5)
+                            }
+                            .glassEffect(.clear.interactive(), in: Capsule())
+                    }
+                }
+            } else {
+                plusButton(palette)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay {
+                        Circle()
+                            .stroke(palette.border, lineWidth: 0.5)
+                    }
+                textEntrySurface(palette)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay {
+                        Capsule()
+                            .stroke(palette.border, lineWidth: 0.5)
+                    }
             }
-                .padding(10)
-                .background(palette.surface)
-                .clipShape(Circle())
-                .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, ClawdiaSpacing.lg)
+        .padding(.top, ClawdiaSpacing.xxs)
+        .padding(.bottom, -1)
+        .animation(.spring(response: 0.22, dampingFraction: 0.84), value: canSend)
+    }
+
+    private var canSend: Bool {
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func plusButton(_ palette: ClawdiaPalette) -> some View {
+        Button {
+        } label: {
+            Image(systemName: "plus")
+                .font(ClawdiaType.subhead.weight(.regular))
+                .frame(width: 40, height: 40)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(palette.text)
+    }
+
+    private func textEntrySurface(_ palette: ClawdiaPalette) -> some View {
+        HStack(spacing: ClawdiaSpacing.xs) {
             TextField("Message Clawdia", text: $draft)
+                .focused(isDraftFocused)
                 .font(ClawdiaType.body)
                 .foregroundStyle(palette.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
-                .background(palette.surface)
-                .clipShape(Capsule())
+                .padding(.vertical, 8)
+                .padding(.horizontal, ClawdiaSpacing.xxs)
                 .submitLabel(.send)
                 .onSubmit(send)
-            Button(action: send) {
-                Image(systemName: "paperplane.fill")
-                    .padding(10)
-                    .background(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? palette.border2 : palette.accent)
-                    .foregroundStyle(palette.bubbleMeForeground)
-                    .clipShape(Circle())
+
+            if canSend {
+                Button(action: send) {
+                    Image(systemName: "arrow.up")
+                        .font(ClawdiaType.caption.weight(.bold))
+                        .frame(width: 32, height: 32)
+                        .background(palette.accent)
+                        .foregroundStyle(palette.bubbleMeForeground)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .transition(.scale(scale: 0.82, anchor: .trailing).combined(with: .opacity))
+            } else {
+                Image(systemName: "waveform")
+                    .font(ClawdiaType.subhead)
+                    .foregroundStyle(palette.text2)
+                    .frame(width: 34, height: 34)
             }
-            .buttonStyle(.plain)
         }
-        .padding(ClawdiaSpacing.sm)
-        .background(palette.background)
+        .padding(.leading, ClawdiaSpacing.xs)
+        .padding(.trailing, 7)
+        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity, minHeight: 42)
     }
 
     private func send() {
@@ -1166,6 +1302,7 @@ public struct SearchScreen: View {
     let state: MockAppState
     let onBack: () -> Void
     @State private var query = "flight to lisbon"
+    @FocusState private var isSearchFocused: Bool
 
     public init(state: MockAppState = .preview, onBack: @escaping () -> Void = {}) {
         self.state = state
@@ -1180,7 +1317,7 @@ public struct SearchScreen: View {
                     .font(ClawdiaType.body)
                     .foregroundStyle(palette.accent)
                     .buttonStyle(.plain)
-                SearchField(query: $query)
+                SearchField(query: $query, isFocused: $isSearchFocused)
             }
             .padding(.horizontal, ClawdiaSpacing.lg)
             .padding(.top, ClawdiaSpacing.lg)
@@ -1207,6 +1344,10 @@ public struct SearchScreen: View {
                 .padding(.bottom, 112)
                 .frame(maxWidth: 520, alignment: .topLeading)
                 .frame(maxWidth: .infinity)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .onTapGesture {
+                isSearchFocused = false
             }
         }
         .background(palette.background)
@@ -1299,6 +1440,7 @@ private struct SearchResult: View {
 private struct SearchField: View {
     @Environment(\.clawdiaTheme) private var theme
     @Binding var query: String
+    let isFocused: FocusState<Bool>.Binding
 
     var body: some View {
         let palette = ClawdiaColor.palette(theme)
@@ -1306,6 +1448,7 @@ private struct SearchField: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(palette.text3)
             TextField("Search messages", text: $query)
+                .focused(isFocused)
                 .autocorrectionDisabled(true)
                 .font(ClawdiaType.body)
                 .foregroundStyle(palette.text)
@@ -3051,9 +3194,17 @@ private struct StatusPill: View {
 
 struct AppScroll<Content: View>: View {
     @Environment(\.clawdiaTheme) private var theme
+    let keyboardDismissMode: ScrollDismissesKeyboardMode
+    let bottomPadding: CGFloat
     let content: Content
 
-    init(@ViewBuilder content: () -> Content) {
+    init(
+        keyboardDismissMode: ScrollDismissesKeyboardMode = .automatic,
+        bottomPadding: CGFloat = 92,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.keyboardDismissMode = keyboardDismissMode
+        self.bottomPadding = bottomPadding
         self.content = content()
     }
 
@@ -3064,11 +3215,12 @@ struct AppScroll<Content: View>: View {
                 content
             }
             .padding(ClawdiaSpacing.lg)
-            .padding(.bottom, 92)
+            .padding(.bottom, bottomPadding)
             .frame(maxWidth: 520, alignment: .topLeading)
             .frame(maxWidth: .infinity)
         }
         .background(palette.background)
+        .scrollDismissesKeyboard(keyboardDismissMode)
     }
 }
 
