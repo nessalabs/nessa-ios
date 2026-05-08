@@ -126,7 +126,7 @@ struct ClawdiaProfileSettingsCard: View {
         HStack(spacing: ClawdiaSpacing.sm) {
             ClawdiaAvatar(size: 56, label: "S")
             VStack(alignment: .leading, spacing: ClawdiaSpacing.xxs) {
-                Text("Sara Atwell")
+                Text("Saurav Atwell")
                     .font(ClawdiaType.subhead)
                     .foregroundStyle(palette.text)
                 Text("Plus - since Jan 2026")

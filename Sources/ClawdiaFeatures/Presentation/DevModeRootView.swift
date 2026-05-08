@@ -77,7 +77,6 @@ private struct AppShell: View {
     @Binding var developmentScreen: DevScreen?
     @State private var showingAreasManager = false
     @State private var showingSearch = false
-    @State private var isTabBarVisible = true
 
     var body: some View {
         ZStack {
@@ -104,142 +103,42 @@ private struct AppShell: View {
                     showingSearch = false
                 }
             } else {
-                ZStack(alignment: .bottom) {
-                    Group {
-                        switch selectedTab {
-                        case .chats:
-                            HomeScreen(state: state, onSearch: {
-                                showingSearch = true
-                            }) {
-                                showingChat = true
-                            }
-                        case .calendar:
-                            CalendarScreen()
-                        case .voice:
-                            VoiceScreen()
-                        case .settings:
-                            SettingsScreen(theme: $theme, onOpenAreas: {
-                                showingAreasManager = true
-                            }) { screen in
-                                developmentScreen = screen
-                            }
-                        }
+                TabView(selection: $selectedTab) {
+                    HomeScreen(state: state, onSearch: {
+                        showingSearch = true
+                    }) {
+                        showingChat = true
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    if isTabBarVisible {
-                        AppTabBar(selectedTab: $selectedTab)
-                            .padding(.horizontal, ClawdiaSpacing.md)
-                            .padding(.bottom, 0)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    } else {
-                        Button {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                                isTabBarVisible = true
-                            }
-                        } label: {
-                            Capsule()
-                                .fill(.ultraThinMaterial)
-                                .frame(width: 110, height: 8)
-                                .overlay {
-                                    Capsule().stroke(ClawdiaColor.palette(theme).border, lineWidth: 0.5)
-                                }
+                    .tag(AppTab.chats)
+                    .tabItem {
+                        Label(AppTab.chats.title, systemImage: AppTab.chats.systemImage)
+                    }
+
+                    CalendarScreen()
+                        .tag(AppTab.calendar)
+                        .tabItem {
+                            Label(AppTab.calendar.title, systemImage: AppTab.calendar.systemImage)
                         }
-                        .buttonStyle(.plain)
-                        .padding(.bottom, 4)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+
+                    VoiceScreen()
+                        .tag(AppTab.voice)
+                        .tabItem {
+                            Label(AppTab.voice.title, systemImage: AppTab.voice.systemImage)
+                        }
+
+                    SettingsScreen(theme: $theme, onOpenAreas: {
+                        showingAreasManager = true
+                    }) { screen in
+                        developmentScreen = screen
+                    }
+                    .tag(AppTab.settings)
+                    .tabItem {
+                        Label(AppTab.settings.title, systemImage: AppTab.settings.systemImage)
                     }
                 }
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 16)
-                        .onChanged { value in
-                            if value.translation.height < -18, isTabBarVisible {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
-                                    isTabBarVisible = false
-                                }
-                            } else if value.translation.height > 18, !isTabBarVisible {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
-                                    isTabBarVisible = true
-                                }
-                            }
-                        }
-                )
-                .animation(.spring(response: 0.28, dampingFraction: 0.88), value: isTabBarVisible)
+                .tint(ClawdiaColor.palette(theme).accent)
             }
         }
-    }
-}
-
-private struct AppTabBar: View {
-    @Environment(\.clawdiaTheme) private var theme
-    @Binding var selectedTab: AppTab
-    @Namespace private var selectionAnimation
-
-    var body: some View {
-        let palette = ClawdiaColor.palette(theme)
-        GeometryReader { proxy in
-            HStack(spacing: ClawdiaSpacing.xs) {
-                ForEach(AppTab.allCases) { tab in
-                    Button {
-                        select(tab)
-                    } label: {
-                        ZStack {
-                            if selectedTab == tab {
-                                Capsule()
-                                    .fill(.thinMaterial)
-                                    .overlay {
-                                        Capsule().stroke(palette.border.opacity(0.74), lineWidth: 0.5)
-                                    }
-                                    .shadow(color: palette.text.opacity(0.1), radius: 12, y: 4)
-                                    .matchedGeometryEffect(id: "active-tab", in: selectionAnimation)
-                            }
-                            VStack(spacing: ClawdiaSpacing.xxs) {
-                                Image(systemName: tab.systemImage)
-                                    .font(ClawdiaType.body)
-                                Text(tab.title)
-                                    .font(ClawdiaType.caption.weight(.semibold))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .foregroundStyle(selectedTab == tab ? palette.accent : palette.text3)
-                            .contentTransition(.symbolEffect(.replace))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(4)
-            .background(.ultraThinMaterial)
-            .clipShape(Capsule())
-            .overlay {
-                Capsule().stroke(palette.border.opacity(0.72), lineWidth: 0.5)
-            }
-            .shadow(color: palette.text.opacity(0.12), radius: 24, y: 10)
-            .contentShape(Capsule())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        selectTab(at: value.location.x, width: proxy.size.width)
-                    }
-            )
-        }
-        .frame(height: 56)
-    }
-
-    private func select(_ tab: AppTab) {
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-            selectedTab = tab
-        }
-    }
-
-    private func selectTab(at x: CGFloat, width: CGFloat) {
-        guard width > 0 else { return }
-        let tabs = AppTab.allCases
-        let clampedX = min(max(x, 0), width - 1)
-        let index = min(max(Int((clampedX / width) * CGFloat(tabs.count)), 0), tabs.count - 1)
-        let tab = tabs[index]
-        guard tab != selectedTab else { return }
-        select(tab)
     }
 }
 
@@ -530,31 +429,33 @@ public struct HomeScreen: View {
     }
 
     private var baseHomeScrollView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: ClawdiaSpacing.lg) {
-                GeometryReader { proxy in
-                    Color.clear
-                        .preference(key: HomeScrollOffsetKey.self, value: proxy.frame(in: .global).minY)
+        GeometryReader { proxy in
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: ClawdiaSpacing.lg) {
+                    GeometryReader { proxy in
+                        Color.clear
+                            .preference(key: HomeScrollOffsetKey.self, value: proxy.frame(in: .global).minY)
+                    }
+                    .frame(height: 1)
+
+                    GreetingHeader()
+                        .padding(.top, ClawdiaSpacing.lg)
+
+                    SearchBar(text: "Search chats and folders", action: onSearch)
+                        .opacity(isSearchPinned ? 0 : 1)
+                        .allowsHitTesting(!isSearchPinned)
+                        .accessibilityHidden(isSearchPinned)
+
+                    FolderGrid(folders: state.folders, customAreas: customAreas) {
+                        showingNewArea = true
+                    }
+                    ChatList(chats: state.chats, onOpenChat: onOpenChat)
                 }
-                .frame(height: 1)
-
-                GreetingHeader()
-                    .padding(.top, ClawdiaSpacing.lg)
-
-                SearchBar(text: "Search chats and folders", action: onSearch)
-                    .opacity(isSearchPinned ? 0 : 1)
-                    .allowsHitTesting(!isSearchPinned)
-                    .accessibilityHidden(isSearchPinned)
-
-                FolderGrid(folders: state.folders, customAreas: customAreas) {
-                    showingNewArea = true
-                }
-                ChatList(chats: state.chats, onOpenChat: onOpenChat)
+                .padding(.horizontal, ClawdiaSpacing.lg)
+                .padding(.bottom, 112)
+                .frame(maxWidth: 520, alignment: .topLeading)
+                .frame(width: proxy.size.width)
             }
-            .padding(.horizontal, ClawdiaSpacing.lg)
-            .padding(.bottom, 112)
-            .frame(maxWidth: 520, alignment: .topLeading)
-            .frame(maxWidth: .infinity)
         }
     }
 
@@ -612,7 +513,7 @@ private struct GreetingHeader: View {
             Text("Friday morning")
                 .font(ClawdiaType.caption)
                 .foregroundStyle(palette.text2)
-            Text("hey, Sara")
+            Text("hey, Saurav")
                 .font(ClawdiaType.display())
             Text("what are we tackling today?")
                 .font(ClawdiaType.subhead)
@@ -2749,7 +2650,7 @@ private struct ProfileCard: View {
             HStack {
                 ClawdiaAvatar(size: 56, label: "S")
                 VStack(alignment: .leading) {
-                    Text("Sara Atwell")
+                    Text("Saurav Atwell")
                         .font(ClawdiaType.subhead)
                     Text("Plus - since Jan 2026")
                         .font(ClawdiaType.caption)
@@ -2843,7 +2744,7 @@ public struct ConnectedAppsScreen: View {
         AppScroll {
             Text("connected apps")
                 .font(ClawdiaType.display())
-            SettingsSection(title: "Linked", rows: ["Mail - sara@hey.com", "Calendar - 3 calendars", "Drive - Personal + Work"])
+            SettingsSection(title: "Linked", rows: ["Mail - saurav@hey.com", "Calendar - 3 calendars", "Drive - Personal + Work"])
             SettingsSection(title: "Available", rows: ["Slack - Connect", "Notion - Connect", "Linear - Connect"])
         }
     }
