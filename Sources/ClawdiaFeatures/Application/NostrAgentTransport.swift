@@ -108,9 +108,42 @@ public struct NostrPreparedRelayEvent: Encodable, Equatable, Sendable {
     }
 }
 
+public struct NostrRelaySubscription: Equatable, Sendable {
+    public let id: String
+    public let relayURLs: [URL]
+    public let recipientPublicKey: String
+    public let kinds: [Int]
+
+    public init(
+        id: String = "clawdia-agent-inbox",
+        relayURLs: [URL],
+        recipientPublicKey: String,
+        kinds: [Int] = [1_059]
+    ) {
+        self.id = id
+        self.relayURLs = relayURLs
+        self.recipientPublicKey = recipientPublicKey
+        self.kinds = kinds
+    }
+
+    public func relayClientMessageJSON() throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(NostrRelayClientSubscriptionMessage(subscription: self))
+        guard let json = String(data: data, encoding: .utf8) else {
+            throw NostrRelayClientMessageError.utf8EncodingFailed
+        }
+        return json
+    }
+}
+
 public protocol NostrAgentMessageSending {
     @discardableResult
     func send(_ event: NostrOutboxEvent) throws -> NostrPreparedRelayEvent
+}
+
+public protocol NostrAgentMessageReceiving {
+    func receive(_ event: NostrPreparedRelayEvent) throws -> AgentMessageEnvelope
 }
 
 public enum NostrRelayClientMessageError: Error {
@@ -124,6 +157,27 @@ private struct NostrRelayClientEventMessage: Encodable {
         var container = encoder.unkeyedContainer()
         try container.encode("EVENT")
         try container.encode(event)
+    }
+}
+
+private struct NostrRelayClientSubscriptionMessage: Encodable {
+    let subscription: NostrRelaySubscription
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.unkeyedContainer()
+        try container.encode("REQ")
+        try container.encode(subscription.id)
+        try container.encode(NostrRelayFilter(kinds: subscription.kinds, recipientPublicKeys: [subscription.recipientPublicKey]))
+    }
+}
+
+private struct NostrRelayFilter: Encodable {
+    let kinds: [Int]
+    let recipientPublicKeys: [String]
+
+    private enum CodingKeys: String, CodingKey {
+        case kinds
+        case recipientPublicKeys = "#p"
     }
 }
 

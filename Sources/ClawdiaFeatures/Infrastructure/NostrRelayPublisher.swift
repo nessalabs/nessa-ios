@@ -18,6 +18,10 @@ public protocol NostrRelayPublishing: Sendable {
     func publish(_ event: NostrPreparedRelayEvent) async -> [NostrRelayPublishReceipt]
 }
 
+public protocol NostrRelaySubscribing: Sendable {
+    func receiveOnce(_ subscription: NostrRelaySubscription) async -> [NostrPreparedRelayEvent]
+}
+
 public struct NostrWebSocketRelayPublisher: NostrRelayPublishing {
     private let session: URLSession
 
@@ -71,6 +75,58 @@ public struct NostrWebSocketRelayPublisher: NostrRelayPublishing {
     }
 }
 
+public struct NostrWebSocketRelaySubscriber: NostrRelaySubscribing {
+    private let session: URLSession
+
+    public init(session: URLSession = .shared) {
+        self.session = session
+    }
+
+    public func receiveOnce(_ subscription: NostrRelaySubscription) async -> [NostrPreparedRelayEvent] {
+        guard !subscription.relayURLs.isEmpty else {
+            return []
+        }
+        return await withTaskGroup(of: NostrPreparedRelayEvent?.self) { group in
+            for relayURL in subscription.relayURLs {
+                group.addTask {
+                    await receiveOnce(subscription, from: relayURL)
+                }
+            }
+
+            var events: [NostrPreparedRelayEvent] = []
+            for await event in group {
+                if let event {
+                    events.append(event)
+                }
+            }
+            return events.sorted { $0.relayURLs.first?.absoluteString ?? "" < $1.relayURLs.first?.absoluteString ?? "" }
+        }
+    }
+
+    private func receiveOnce(_ subscription: NostrRelaySubscription, from relayURL: URL) async -> NostrPreparedRelayEvent? {
+        let task = session.webSocketTask(with: relayURL)
+        task.resume()
+        defer {
+            task.cancel(with: .normalClosure, reason: nil)
+        }
+
+        do {
+            try await task.send(.string(subscription.relayClientMessageJSON()))
+            let response = try await task.receive()
+            switch response {
+            case .string(let json):
+                return NostrRelayResponseParser.preparedEvent(fromRelayMessage: json, relayURL: relayURL)
+            case .data:
+                return nil
+            @unknown default:
+                return nil
+            }
+        } catch {
+            return nil
+        }
+    }
+}
+
 public final class NostrPublishingAgentMessageSender: NostrAgentMessageSending {
     private let encryptedSender: NostrEncryptedAgentMessageSender
     private let relayPublisher: any NostrRelayPublishing
@@ -111,5 +167,48 @@ public enum NostrRelayResponseParser {
             return nil
         }
         return NostrRelayPublishReceipt(relayURL: relayURL, eventID: eventID, accepted: accepted, message: message)
+    }
+
+    public static func preparedEvent(fromRelayMessage json: String, relayURL: URL) -> NostrPreparedRelayEvent? {
+        guard let data = json.data(using: .utf8),
+              let values = try? JSONSerialization.jsonObject(with: data) as? [Any],
+              values.count >= 3,
+              values[0] as? String == "EVENT",
+              values[1] is String,
+              let eventObject = values[2] as? [String: Any],
+              let eventData = try? JSONSerialization.data(withJSONObject: eventObject),
+              let event = try? JSONDecoder().decode(NostrRelayEventRecord.self, from: eventData) else {
+            return nil
+        }
+        return NostrPreparedRelayEvent(
+            id: event.id,
+            pubkey: event.pubkey,
+            createdAt: event.createdAt,
+            kind: event.kind,
+            tags: event.tags,
+            content: event.content,
+            signature: event.signature,
+            relayURLs: [relayURL]
+        )
+    }
+}
+
+private struct NostrRelayEventRecord: Decodable {
+    let id: String
+    let pubkey: String
+    let createdAt: Int
+    let kind: Int
+    let tags: [[String]]
+    let content: String
+    let signature: String
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case pubkey
+        case createdAt = "created_at"
+        case kind
+        case tags
+        case content
+        case signature = "sig"
     }
 }

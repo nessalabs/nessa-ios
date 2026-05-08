@@ -12,6 +12,7 @@ public struct MockAppState: Equatable, Sendable {
     public var customAreas: [UserArea]
     public var chats: [ChatPreview]
     public var approvals: [ApprovalRequest]
+    public var receivedAgentMessages: [AgentMessageEnvelope]
     public var outgoingNostrEvents: [NostrOutboxEvent]
     public var preparedNostrRelayEvents: [NostrPreparedRelayEvent]
 
@@ -21,6 +22,7 @@ public struct MockAppState: Equatable, Sendable {
         customAreas: [UserArea] = [],
         chats: [ChatPreview],
         approvals: [ApprovalRequest],
+        receivedAgentMessages: [AgentMessageEnvelope] = [],
         outgoingNostrEvents: [NostrOutboxEvent] = [],
         preparedNostrRelayEvents: [NostrPreparedRelayEvent] = []
     ) {
@@ -29,6 +31,7 @@ public struct MockAppState: Equatable, Sendable {
         self.customAreas = customAreas
         self.chats = chats
         self.approvals = approvals
+        self.receivedAgentMessages = receivedAgentMessages
         self.outgoingNostrEvents = outgoingNostrEvents
         self.preparedNostrRelayEvents = preparedNostrRelayEvents
     }
@@ -74,6 +77,10 @@ public struct MockAppState: Equatable, Sendable {
 
     public mutating func queuePreparedNostrRelayEvent(_ event: NostrPreparedRelayEvent) {
         preparedNostrRelayEvents.append(event)
+    }
+
+    public mutating func queueReceivedAgentMessage(_ envelope: AgentMessageEnvelope) {
+        receivedAgentMessages.append(envelope)
     }
 
     public static let preview = MockAppState(

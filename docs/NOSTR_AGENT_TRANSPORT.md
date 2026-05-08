@@ -27,17 +27,18 @@ Primary sources:
 - `NostrPreparedRelayEvent` encodes to the NIP-01 `["EVENT", <event>]` client frame while keeping relay URLs local to the phone.
 - Infrastructure owns secure event preparation through `NostrEncryptedAgentMessageSender`. It signs NIP-01 events, encrypts payloads with NIP-44, and returns NIP-59 `kind:1059` gift wraps.
 - Infrastructure owns incoming event unwrap through `NostrEncryptedAgentMessageReceiver`. It decrypts a gift wrap, validates the signed seal, and returns the shared `AgentMessageEnvelope` for storage in phone memory.
-- `NostrWebSocketRelayPublisher` can publish prepared events to configured relays and parse relay `OK` receipts. `NostrPublishingAgentMessageSender` composes encryption plus relay publishing for a paired production sender.
+- `NostrWebSocketRelayPublisher` can publish prepared events to configured relays and parse relay `OK` receipts. `NostrWebSocketRelaySubscriber` can subscribe to `kind:1059` gift wraps tagged to the phone pubkey and parse relay `EVENT` messages.
+- `NostrPublishingAgentMessageSender` composes encryption plus relay publishing for a paired production sender.
 - The app composition root loads paired bridge credentials from Keychain. If credentials exist, chat sends use `NostrPublishingAgentMessageSender`; if not, sends stay in the local outbox until pairing is complete.
 
-The current implementation queues local outbox drafts, marks them as `requiresEncryptedGiftWrap`, and can prepare and publish a signed encrypted gift wrap when the app has paired Keychain credentials. App data remains stored in phone memory; relay events are untrusted encrypted delivery envelopes.
+The current implementation queues local outbox drafts, marks them as `requiresEncryptedGiftWrap`, can prepare and publish a signed encrypted gift wrap when the app has paired Keychain credentials, and can unwrap accepted desktop gift wraps into phone memory. App data remains stored in phone memory; relay events are untrusted encrypted delivery envelopes.
 
 ## Production Path
 
 1. Add the pairing UI/protocol that writes `NostrAgentBridgeCredentials` to Keychain after verifying the desktop public key.
 2. Store phone and desktop identity keys in Keychain or an equivalent secure enclave-backed flow.
 3. Use `NostrPublishingAgentMessageSender` when pairing is complete so each prepared event's `relayClientMessageJSON()` is sent to configured WebSocket relays and relay `OK` responses are recorded.
-4. Subscribe to paired relay filters for `kind:1059` events tagged to the phone pubkey, then pass accepted events to `NostrEncryptedAgentMessageReceiver`.
+4. Start a paired relay inbox listener from the app lifecycle and pass accepted events to `NostrEncryptedAgentMessageReceiver`.
 5. Wrap every agent payload with NIP-17/NIP-59 before publishing to any external relay.
 6. Prefer ephemeral custom events for online peer traffic when both devices are connected.
 7. If offline delivery is required, use encrypted gift wraps and treat relay persistence as untrusted encrypted transport, not app storage.

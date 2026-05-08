@@ -305,6 +305,65 @@ func testPreparedRelayEventEncodesNIP01ClientFrame() throws {
     try expect(relayMessage.contains("wss://relay.example.com") == false, "relay URLs should stay local and not be encoded into event JSON")
 }
 
+func testRelaySubscriptionEncodesNIP01Request() throws {
+    let recipientPublicKeyHex = String(repeating: "3", count: 64)
+    let subscription = NostrRelaySubscription(
+        id: "phone-inbox",
+        relayURLs: [URL(string: "wss://relay.example.com")!],
+        recipientPublicKey: recipientPublicKeyHex
+    )
+
+    let relayMessage = try subscription.relayClientMessageJSON()
+    guard let data = relayMessage.data(using: .utf8),
+          let values = try JSONSerialization.jsonObject(with: data) as? [Any],
+          values.count == 3,
+          values[0] as? String == "REQ",
+          values[1] as? String == "phone-inbox",
+          let filter = values[2] as? [String: Any],
+          let pTags = filter["#p"] as? [String],
+          let kinds = filter["kinds"] as? [Int] else {
+        throw VerificationFailure(description: "relay subscription should encode as a NIP-01 REQ frame")
+    }
+
+    try expect(pTags == [recipientPublicKeyHex], "relay subscription should filter gift wraps by recipient pubkey")
+    try expect(kinds == [1059], "relay subscription should listen for NIP-59 gift wraps")
+    try expect(relayMessage.contains("wss://relay.example.com") == false, "relay URLs should stay local and not be encoded into subscription JSON")
+}
+
+func testNostrRelayEventResponseParsing() throws {
+    let relayURL = URL(string: "wss://relay.example.com")!
+    let relayEvent = NostrPreparedRelayEvent(
+        id: String(repeating: "1", count: 64),
+        pubkey: String(repeating: "2", count: 64),
+        createdAt: 1_777_777_777,
+        kind: 1059,
+        tags: [["p", String(repeating: "3", count: 64)]],
+        content: "encrypted-payload",
+        signature: String(repeating: "4", count: 128),
+        relayURLs: []
+    )
+    let eventData = try JSONEncoder().encode(relayEvent)
+    guard let eventJSON = String(data: eventData, encoding: .utf8) else {
+        throw VerificationFailure(description: "relay event should encode as UTF-8 JSON")
+    }
+
+    let parsed = NostrRelayResponseParser.preparedEvent(
+        fromRelayMessage: "[\"EVENT\",\"phone-inbox\",\(eventJSON)]",
+        relayURL: relayURL
+    )
+
+    try expect(parsed == NostrPreparedRelayEvent(
+        id: relayEvent.id,
+        pubkey: relayEvent.pubkey,
+        createdAt: relayEvent.createdAt,
+        kind: relayEvent.kind,
+        tags: relayEvent.tags,
+        content: relayEvent.content,
+        signature: relayEvent.signature,
+        relayURLs: [relayURL]
+    ), "relay EVENT parser should recover a prepared gift wrap with its source relay")
+}
+
 func testNIP44OfficialVector() throws {
     let sec1 = String(repeating: "0", count: 63) + "1"
     let sec2 = String(repeating: "0", count: 63) + "2"
@@ -421,6 +480,67 @@ func testEncryptedNostrReceiverUnwrapsDesktopEnvelope() throws {
     try expect(received == envelope, "phone receiver should unwrap the desktop envelope exactly")
     try expect(prepared.content.contains("Review this desktop diff.") == false, "received gift wrap should not expose desktop plaintext")
     try expect(prepared.content.contains("settings.diff") == false, "received gift wrap should not expose desktop attachment names")
+}
+
+func testStoreStoresIncomingNostrEnvelopeInPhoneMemory() throws {
+    let phonePrivateKey = String(repeating: "0", count: 63) + "1"
+    let desktopPrivateKey = String(repeating: "0", count: 63) + "2"
+    let wrapperPrivateKey = String(repeating: "0", count: 63) + "3"
+    let phoneKeypair = try NostrAgentKeypair(privateKeyHex: phonePrivateKey)
+    let desktopKeypair = try NostrAgentKeypair(privateKeyHex: desktopPrivateKey)
+    let envelope = AgentMessageEnvelope(
+        conversationID: "home:apartment",
+        area: "home",
+        sender: .desktopClient,
+        kind: .imageReference,
+        text: "Screenshot reference from the desktop.",
+        attachments: [
+            AgentMessageAttachment(
+                kind: .imageReference,
+                name: "approval.png",
+                contentType: "image/png",
+                localReference: "clawdia://desktop/context/approval-image"
+            )
+        ],
+        createdAt: 1_777_777_777
+    )
+    let draft = NostrEventDraft(
+        pubkey: desktopKeypair.publicKeyHex,
+        createdAt: 1_777_777_777,
+        kind: NostrAgentEventFactory.ephemeralAgentMessageKind,
+        tags: [
+            ["p", phoneKeypair.publicKeyHex],
+            ["app", "clawdia"],
+            ["schema", AgentMessageEnvelope.schema],
+            ["conversation", "home:apartment"],
+            ["area", "home"]
+        ],
+        content: try encodeAgentEnvelope(envelope)
+    )
+    let outboxEvent = NostrOutboxEvent(
+        draft: draft,
+        relayURLs: [URL(string: "wss://relay.example.com")!],
+        delivery: .requiresEncryptedGiftWrap
+    )
+    let sender = try NostrEncryptedAgentMessageSender(
+        phonePrivateKeyHex: desktopPrivateKey,
+        entropy: SequenceNostrEntropySource([
+            Data(repeating: 9, count: 32),
+            try dataFromHex(wrapperPrivateKey),
+            Data(repeating: 10, count: 32)
+        ])
+    )
+    let receiver = try NostrEncryptedAgentMessageReceiver(
+        phonePrivateKeyHex: phonePrivateKey,
+        expectedSenderPublicKeyHex: desktopKeypair.publicKeyHex
+    )
+    let store = DevModeStore(state: .preview, nostrMessageReceiver: receiver)
+
+    let prepared = try sender.send(outboxEvent)
+    let received = store.receiveNostrRelayEvent(prepared)
+
+    try expect(received == envelope, "store should return the incoming desktop envelope")
+    try expect(store.state.receivedAgentMessages == [envelope], "store should retain accepted incoming agent messages in phone memory")
 }
 
 func testPublishingSenderPublishesPreparedGiftWrap() throws {
@@ -547,9 +667,12 @@ do {
     try testStoreQueuesNostrEventOnChatSend()
     try testStorePreparesRelayEventWhenSenderIsConfigured()
     try testPreparedRelayEventEncodesNIP01ClientFrame()
+    try testRelaySubscriptionEncodesNIP01Request()
+    try testNostrRelayEventResponseParsing()
     try testNIP44OfficialVector()
     try testEncryptedNostrSenderPreparesGiftWrap()
     try testEncryptedNostrReceiverUnwrapsDesktopEnvelope()
+    try testStoreStoresIncomingNostrEnvelopeInPhoneMemory()
     try testPublishingSenderPublishesPreparedGiftWrap()
     try testNostrRelayOKResponseParsing()
     try testNostrBridgeCredentialsDeriveRuntimeConfiguration()

@@ -342,7 +342,7 @@ public struct NostrEncryptedAgentMessageSender: NostrAgentMessageSending {
     }
 }
 
-public struct NostrEncryptedAgentMessageReceiver {
+public struct NostrEncryptedAgentMessageReceiver: NostrAgentMessageReceiving {
     private let receivingKeypair: NostrAgentKeypair
     private let expectedSenderPublicKeyHex: String?
     private let cipher: NostrNIP44Cipher

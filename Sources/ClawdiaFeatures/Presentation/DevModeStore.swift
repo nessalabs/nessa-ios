@@ -6,17 +6,20 @@ public final class DevModeStore: ObservableObject {
     private let telemetry: TelemetryClient
     private let nostrAgentEventFactory: NostrAgentEventFactory
     private let nostrMessageSender: NostrAgentMessageSending?
+    private let nostrMessageReceiver: NostrAgentMessageReceiving?
 
     public init(
         state: MockAppState = .preview,
         telemetry: TelemetryClient = OSLogTelemetryClient(),
         nostrConfiguration: NostrAgentBridgeConfiguration = .preview,
-        nostrMessageSender: NostrAgentMessageSending? = nil
+        nostrMessageSender: NostrAgentMessageSending? = nil,
+        nostrMessageReceiver: NostrAgentMessageReceiving? = nil
     ) {
         self.state = state
         self.telemetry = telemetry
         self.nostrAgentEventFactory = NostrAgentEventFactory(configuration: nostrConfiguration)
         self.nostrMessageSender = nostrMessageSender
+        self.nostrMessageReceiver = nostrMessageReceiver
         telemetry.log("dev mode store initialized", area: .devMode)
     }
 
@@ -83,5 +86,36 @@ public final class DevModeStore: ObservableObject {
             )
         )
         return event
+    }
+
+    @discardableResult
+    public func receiveNostrRelayEvent(_ event: NostrPreparedRelayEvent) -> AgentMessageEnvelope? {
+        guard let nostrMessageReceiver else {
+            return nil
+        }
+        do {
+            let envelope = try nostrMessageReceiver.receive(event)
+            state.queueReceivedAgentMessage(envelope)
+            telemetry.metric(
+                MetricEvent(
+                    name: "nostr_agent_event_received",
+                    area: .chat,
+                    fields: [
+                        "kind": envelope.kind.rawValue,
+                        "area": envelope.area
+                    ]
+                )
+            )
+            return envelope
+        } catch {
+            telemetry.metric(
+                MetricEvent(
+                    name: "nostr_agent_event_receive_failed",
+                    area: .chat,
+                    fields: ["error": String(describing: type(of: error))]
+                )
+            )
+            return nil
+        }
     }
 }

@@ -15,13 +15,18 @@ struct ClawdiaApp: App {
         let credentialStore = KeychainNostrAgentBridgeCredentialStore()
         guard let credentials = try? credentialStore.loadCredentials(),
               let configuration = try? credentials.bridgeConfiguration(),
-              let sender = try? NostrPublishingAgentMessageSender(phonePrivateKeyHex: credentials.phonePrivateKeyHex) else {
+              let sender = try? NostrPublishingAgentMessageSender(phonePrivateKeyHex: credentials.phonePrivateKeyHex),
+              let receiver = try? NostrEncryptedAgentMessageReceiver(
+                phonePrivateKeyHex: credentials.phonePrivateKeyHex,
+                expectedSenderPublicKeyHex: credentials.desktopPublicKeyHex
+              ) else {
             return DevModeStore()
         }
 
         return DevModeStore(
             nostrConfiguration: configuration,
-            nostrMessageSender: sender
+            nostrMessageSender: sender,
+            nostrMessageReceiver: receiver
         )
     }
 }
