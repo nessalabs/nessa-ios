@@ -1501,49 +1501,51 @@ public struct CalendarScreen: View {
         let modes = ["Week", "Month", "Year"]
         let selectedWeek = weeks.indices.contains(selectedWeekIndex) ? weeks[selectedWeekIndex] : weeks[0]
         let selectedDay = CalendarDemoData.day(with: selectedDayID, in: weeks) ?? selectedWeek.days[0]
-        ZStack(alignment: .top) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: ClawdiaSpacing.lg) {
-                    if view == "Week" {
-                        ScheduledTaskList(
-                            weeks: weeks,
-                            week: selectedWeek,
-                            tasks: tasks,
-                            selectedDay: selectedDay,
-                            selectedDayID: $selectedDayID,
-                            selectedWeekIndex: $selectedWeekIndex
-                        )
-                    } else if view == "Month" {
-                        MonthCalendarView(
-                            weeks: weeks,
-                            tasks: tasks,
-                            selectedDay: selectedDay,
-                            selectedDayID: $selectedDayID,
-                            selectedWeekIndex: $selectedWeekIndex
-                        )
-                    } else {
-                        YearCalendarView(
-                            weeks: weeks,
-                            tasks: tasks,
-                            selectedMonthKey: $selectedMonthKey,
-                            selectedDayID: $selectedDayID,
-                            selectedWeekIndex: $selectedWeekIndex
-                        )
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                CalendarPinnedHeader(
+                    view: $view,
+                    modes: modes,
+                    week: selectedWeek,
+                    topPadding: max(proxy.safeAreaInsets.top + ClawdiaSpacing.sm, ClawdiaSpacing.xl * 2)
+                )
+                ScrollView {
+                    VStack(alignment: .leading, spacing: ClawdiaSpacing.lg) {
+                        if view == "Week" {
+                            ScheduledTaskList(
+                                weeks: weeks,
+                                week: selectedWeek,
+                                tasks: tasks,
+                                selectedDay: selectedDay,
+                                selectedDayID: $selectedDayID,
+                                selectedWeekIndex: $selectedWeekIndex
+                            )
+                        } else if view == "Month" {
+                            MonthCalendarView(
+                                weeks: weeks,
+                                tasks: tasks,
+                                selectedDay: selectedDay,
+                                selectedDayID: $selectedDayID,
+                                selectedWeekIndex: $selectedWeekIndex
+                            )
+                        } else {
+                            YearCalendarView(
+                                weeks: weeks,
+                                tasks: tasks,
+                                selectedMonthKey: $selectedMonthKey,
+                                selectedDayID: $selectedDayID,
+                                selectedWeekIndex: $selectedWeekIndex
+                            )
+                        }
                     }
+                    .padding(.horizontal, ClawdiaSpacing.lg)
+                    .padding(.bottom, 92)
+                    .frame(maxWidth: 520, alignment: .topLeading)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, ClawdiaSpacing.lg)
-                .padding(.top, pinnedHeaderHeight)
-                .padding(.bottom, 92)
-                .frame(maxWidth: 520, alignment: .topLeading)
-                .frame(maxWidth: .infinity)
             }
             .background(palette.background)
-
-            CalendarPinnedHeader(
-                view: $view,
-                modes: modes,
-                week: selectedWeek
-            )
+            .ignoresSafeArea(.container, edges: .top)
         }
         .background(palette.background)
         .onChange(of: selectedWeekIndex) { _, newIndex in
@@ -1559,10 +1561,6 @@ public struct CalendarScreen: View {
         .onAppear {
             seedCalendarSelectionIfNeeded()
         }
-    }
-
-    private var pinnedHeaderHeight: CGFloat {
-        172
     }
 
     private func seedCalendarSelectionIfNeeded() {
@@ -1582,6 +1580,7 @@ private struct CalendarPinnedHeader: View {
     @Binding var view: String
     let modes: [String]
     let week: CalendarWeek
+    let topPadding: CGFloat
 
     var body: some View {
         let palette = ClawdiaColor.palette(theme)
@@ -1596,25 +1595,14 @@ private struct CalendarPinnedHeader: View {
             .pickerStyle(.segmented)
         }
         .padding(.horizontal, ClawdiaSpacing.lg)
-        .padding(.top, ClawdiaSpacing.xl)
+        .padding(.top, topPadding)
         .padding(.bottom, ClawdiaSpacing.sm)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: 520, alignment: .topLeading)
         .frame(maxWidth: .infinity)
         .background {
             Rectangle()
-                .fill(.ultraThinMaterial)
-                .background(palette.background.opacity(0.92))
-        }
-        .overlay(alignment: .bottom) {
-            LinearGradient(
-                colors: [palette.background.opacity(0), palette.background],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 12)
-            .offset(y: 12)
-            .allowsHitTesting(false)
+                .fill(palette.background)
         }
         .zIndex(2)
     }
@@ -1641,6 +1629,7 @@ private struct CalendarWeek: Identifiable, Equatable {
 
 private struct CalendarDay: Identifiable, Equatable {
     let id: String
+    let taskDayID: String
     let weekday: String
     let year: Int
     let monthNumber: Int
@@ -1688,28 +1677,30 @@ private enum CalendarDemoData {
 
     static func weekIndex(for dayID: String) -> Int {
         weeks.firstIndex { week in
-            week.days.contains { $0.id == dayID }
+            week.days.contains { $0.id == dayID || $0.taskDayID == dayID }
         } ?? 0
     }
 
     static func monthKey(for dayID: String) -> String? {
-        allDays.first { $0.id == dayID }?.monthKey
+        allDays.first { $0.id == dayID || $0.taskDayID == dayID }?.monthKey
     }
 
     static func dayID(for date: Date) -> String? {
+        let year = calendar.component(.year, from: date)
         let month = calendar.component(.month, from: date)
         let day = calendar.component(.day, from: date)
         let monthKey = monthKey(forMonthNumber: month)
-        let id = "\(monthKey)-\(day)"
+        let id = "\(year)-\(monthKey)-\(day)"
         return allDays.contains { $0.id == id } ? id : nil
     }
 
     static func tasks(on dayID: String, from tasks: [ScheduledTask]) -> [ScheduledTask] {
-        tasks.filter { $0.dayID == dayID }
+        let taskDayID = allDays.first { $0.id == dayID || $0.taskDayID == dayID }?.taskDayID ?? dayID
+        return tasks.filter { $0.dayID == taskDayID }
     }
 
     static func nextDay(after dayID: String) -> CalendarDay? {
-        guard let index = allDays.firstIndex(where: { $0.id == dayID }),
+        guard let index = allDays.firstIndex(where: { $0.id == dayID || $0.taskDayID == dayID }),
               allDays.indices.contains(index + 1) else {
             return nil
         }
@@ -1765,7 +1756,7 @@ private enum CalendarDemoData {
                         endMonth: lastDay.month,
                         endDay: lastDay.displayDay,
                         days: days,
-                        highlightDayID: days.first(where: { taskDayIDs.contains($0.id) })?.id ?? days[0].id
+                        highlightDayID: days.first(where: { taskDayIDs.contains($0.taskDayID) })?.id ?? days[0].id
                     )
                 )
             }
@@ -1782,16 +1773,17 @@ private enum CalendarDemoData {
         let month = calendar.component(.month, from: date)
         let day = calendar.component(.day, from: date)
         let key = monthKey(forMonthNumber: month)
-        let id = "\(key)-\(day)"
+        let taskDayID = "\(key)-\(day)"
         return CalendarDay(
-            id: id,
+            id: "\(year)-\(taskDayID)",
+            taskDayID: taskDayID,
             weekday: weekdayTitle(for: date),
             year: year,
             monthNumber: month,
             monthKey: key,
             month: monthTitle(forMonthNumber: month),
             displayDay: day,
-            hasMarker: taskDayIDs.contains(id)
+            hasMarker: taskDayIDs.contains(taskDayID)
         )
     }
 
@@ -1982,76 +1974,64 @@ private struct WeekStrip: View {
     let week: CalendarWeek
     @Binding var selectedDayID: String
     @Binding var selectedWeekIndex: Int
-    @State private var centeredDayID: String?
     @State private var hasSeededScrollPosition = false
-    @State private var acceptsScrollSelection = false
-    @State private var isApplyingScrollSelection = false
+    @State private var pendingSettledItemID: String?
+    @State private var settleTask: Task<Void, Never>?
+    @State private var isUpdatingSelectionFromScroll = false
+    private let coordinateSpaceName = "calendar-week-strip"
 
     var body: some View {
         GeometryReader { proxy in
-            ScrollView(.horizontal) {
-                HStack(spacing: ClawdiaSpacing.sm) {
-                    ForEach(carouselItems) { item in
-                        WeekDayPill(
-                            day: item.day.weekday,
-                            date: item.day.displayDay,
-                            active: item.day.id == activeDayID,
-                            hasDot: item.day.hasMarker,
-                            prominence: prominence(for: item),
-                            width: pillWidth(in: proxy.size.width)
-                        ) {
-                            select(item)
+            ScrollViewReader { scrollProxy in
+                ScrollView(.horizontal) {
+                    HStack(spacing: ClawdiaSpacing.sm) {
+                        ForEach(carouselItems) { item in
+                            WeekDayPill(
+                                day: item.day.weekday,
+                                date: item.day.displayDay,
+                                active: item.day.id == selectedDayID,
+                                hasDot: item.day.hasMarker,
+                                prominence: prominence(for: item),
+                                width: pillWidth(in: proxy.size.width)
+                            ) {
+                                select(item, scrollProxy: scrollProxy)
+                            }
+                            .id(item.id)
+                            .background {
+                                GeometryReader { itemProxy in
+                                    Color.clear.preference(
+                                        key: WeekStripItemFramePreferenceKey.self,
+                                        value: [item.id: itemProxy.frame(in: .named(coordinateSpaceName))]
+                                    )
+                                }
+                            }
+                            .zIndex(Double(prominence(for: item)))
                         }
-                        .id(item.id)
-                        .scrollTransition(.interactive, axis: .horizontal) { content, phase in
-                            content
-                                .scaleEffect(1.1 - min(abs(phase.value), 1) * 0.1)
-                                .opacity(1 - min(abs(phase.value), 1) * 0.1)
-                        }
-                        .zIndex(Double(prominence(for: item)))
                     }
                 }
-                .scrollTargetLayout()
-            }
-            .contentMargins(.horizontal, horizontalInset(for: proxy.size.width), for: .scrollContent)
-            .scrollIndicators(.hidden)
-            .scrollTargetBehavior(.viewAligned)
-            .scrollPosition(id: $centeredDayID, anchor: .center)
-            .onAppear {
-                seedScrollPosition()
-            }
-            .onChange(of: centeredDayID) { _, newValue in
-                guard acceptsScrollSelection else {
-                    return
+                .coordinateSpace(name: coordinateSpaceName)
+                .contentMargins(.horizontal, horizontalInset(for: proxy.size.width), for: .scrollContent)
+                .scrollIndicators(.hidden)
+                .onAppear {
+                    seedScrollPosition(scrollProxy)
                 }
-                guard let newValue, let item = carouselItems.first(where: { $0.id == newValue }) else {
-                    return
+                .onChange(of: selectedDayID) { _, newValue in
+                    guard !isUpdatingSelectionFromScroll else {
+                        return
+                    }
+                    centerSelectedDay(newValue, scrollProxy: scrollProxy)
                 }
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) {
-                    isApplyingScrollSelection = true
-                    selectedDayID = item.day.id
-                    selectedWeekIndex = item.weekIndex
+                .onPreferenceChange(WeekStripItemFramePreferenceKey.self) { frames in
+                    scheduleSelectionForNearestItem(in: frames, viewportWidth: proxy.size.width)
                 }
-                DispatchQueue.main.async {
-                    isApplyingScrollSelection = false
-                }
-            }
-            .onChange(of: selectedDayID) { _, newValue in
-                guard !isApplyingScrollSelection else {
-                    return
-                }
-                centerSelectedDay(newValue)
             }
         }
         .frame(height: 84)
-        .padding(.top, ClawdiaSpacing.xs)
+        .padding(.top, 0)
         .padding(.bottom, ClawdiaSpacing.xs)
-    }
-
-    private var activeDayID: String {
-        centeredDayID ?? selectedDayID
+        .onDisappear {
+            settleTask?.cancel()
+        }
     }
 
     private var carouselItems: [CalendarCarouselItem] {
@@ -2062,37 +2042,76 @@ private struct WeekStrip: View {
         }
     }
 
-    private func select(_ item: CalendarCarouselItem) {
+    private func select(_ item: CalendarCarouselItem, scrollProxy: ScrollViewProxy) {
+        settleTask?.cancel()
+        pendingSettledItemID = item.id
         withAnimation(.spring(response: 0.3, dampingFraction: 0.84)) {
-            isApplyingScrollSelection = false
             selectedDayID = item.day.id
             selectedWeekIndex = item.weekIndex
-            centeredDayID = item.id
+            scrollProxy.scrollTo(item.id, anchor: .center)
         }
     }
 
-    private func seedScrollPosition() {
+    private func seedScrollPosition(_ scrollProxy: ScrollViewProxy) {
         guard !hasSeededScrollPosition else {
             return
         }
         hasSeededScrollPosition = true
-        centeredDayID = selectedDayID
         DispatchQueue.main.async {
-            acceptsScrollSelection = true
-            centeredDayID = selectedDayID
+            scrollProxy.scrollTo(selectedDayID, anchor: .center)
         }
     }
 
-    private func centerSelectedDay(_ dayID: String) {
-        guard hasSeededScrollPosition, centeredDayID != dayID else {
+    private func centerSelectedDay(_ dayID: String, scrollProxy: ScrollViewProxy) {
+        guard hasSeededScrollPosition else {
             return
         }
-        acceptsScrollSelection = false
         withAnimation(.spring(response: 0.3, dampingFraction: 0.84)) {
-            centeredDayID = dayID
+            scrollProxy.scrollTo(dayID, anchor: .center)
+        }
+    }
+
+    private func scheduleSelectionForNearestItem(in frames: [String: CGRect], viewportWidth: CGFloat) {
+        guard hasSeededScrollPosition else {
+            return
+        }
+        let viewportCenter = viewportWidth / 2
+        guard let nearest = frames.min(by: {
+            abs($0.value.midX - viewportCenter) < abs($1.value.midX - viewportCenter)
+        }) else {
+            return
+        }
+        guard nearest.key != pendingSettledItemID else {
+            return
+        }
+        pendingSettledItemID = nearest.key
+        settleTask?.cancel()
+        guard nearest.key != selectedDayID else {
+            return
+        }
+        settleTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 180_000_000)
+            guard !Task.isCancelled else {
+                return
+            }
+            applySettledSelection(nearest.key)
+        }
+    }
+
+    private func applySettledSelection(_ itemID: String) {
+        guard pendingSettledItemID == itemID,
+              let item = carouselItems.first(where: { $0.id == itemID }) else {
+            return
+        }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        isUpdatingSelectionFromScroll = true
+        withTransaction(transaction) {
+            selectedDayID = item.day.id
+            selectedWeekIndex = item.weekIndex
         }
         DispatchQueue.main.async {
-            acceptsScrollSelection = true
+            isUpdatingSelectionFromScroll = false
         }
     }
 
@@ -2106,7 +2125,7 @@ private struct WeekStrip: View {
     }
 
     private func prominence(for item: CalendarCarouselItem) -> CGFloat {
-        guard let selectedIndex = carouselItems.firstIndex(where: { $0.day.id == activeDayID }),
+        guard let selectedIndex = carouselItems.firstIndex(where: { $0.day.id == selectedDayID }),
               let itemIndex = carouselItems.firstIndex(where: { $0.id == item.id }) else {
             return 0
         }
@@ -2120,6 +2139,14 @@ private struct WeekStrip: View {
         default:
             return 0
         }
+    }
+}
+
+private struct WeekStripItemFramePreferenceKey: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 
