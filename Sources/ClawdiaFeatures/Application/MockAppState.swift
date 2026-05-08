@@ -12,19 +12,22 @@ public struct MockAppState: Equatable, Sendable {
     public var customAreas: [UserArea]
     public var chats: [ChatPreview]
     public var approvals: [ApprovalRequest]
+    public var outgoingNostrEvents: [NostrOutboxEvent]
 
     public init(
         connection: ConnectionState,
         folders: [FolderSummary],
         customAreas: [UserArea] = [],
         chats: [ChatPreview],
-        approvals: [ApprovalRequest]
+        approvals: [ApprovalRequest],
+        outgoingNostrEvents: [NostrOutboxEvent] = []
     ) {
         self.connection = connection
         self.folders = folders
         self.customAreas = customAreas
         self.chats = chats
         self.approvals = approvals
+        self.outgoingNostrEvents = outgoingNostrEvents
     }
 
     public var availableAreaCount: Int {
@@ -60,6 +63,10 @@ public struct MockAppState: Equatable, Sendable {
         let area = UserArea(name: name)
         customAreas.append(area)
         return area
+    }
+
+    public mutating func queueOutgoingNostrEvent(_ event: NostrOutboxEvent) {
+        outgoingNostrEvents.append(event)
     }
 
     public static let preview = MockAppState(

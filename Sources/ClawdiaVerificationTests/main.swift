@@ -115,6 +115,74 @@ func testCalendarCurrentDateResolver() throws {
     try expect(CalendarCurrentDateResolver.monthKey(for: may8, calendar: calendar) == "may", "calendar should resolve the current month key")
 }
 
+func testNostrAgentEnvelopeDraftShape() throws {
+    let chat = ChatPreview(
+        title: "Apartment tasks",
+        preview: "Filters, laundry, and the package pickup are still open.",
+        time: "Yesterday",
+        area: .home
+    )
+    let configuration = NostrAgentBridgeConfiguration(
+        phonePublicKey: String(repeating: "a", count: 64),
+        desktopPublicKey: String(repeating: "b", count: 64),
+        relayURLs: []
+    )
+
+    let draft = NostrAgentEventFactory(configuration: configuration)
+        .makeChatMessageDraft(text: "Please check the package pickup.", chat: chat, now: Date(timeIntervalSince1970: 1_777_777_777))
+
+    try expect(draft.kind == NostrAgentEventFactory.ephemeralAgentMessageKind, "agent message drafts should use the app ephemeral event kind")
+    try expect(draft.pubkey == configuration.phonePublicKey, "agent event should publish from the phone pubkey")
+    try expect(draft.tags.contains(["p", configuration.desktopPublicKey]), "agent event should target the desktop pubkey with a p tag")
+    try expect(draft.tags.contains(["app", "clawdia"]), "agent event should identify the app namespace")
+    try expect(draft.tags.contains(["schema", AgentMessageEnvelope.schema]), "agent event should identify the envelope schema")
+    try expect(draft.content.contains("Please check the package pickup."), "agent event content should include the outgoing message payload")
+    try expect(draft.content.contains("\"area\":\"home\""), "agent event content should keep area context")
+}
+
+func testStoreQueuesNostrEventOnChatSend() throws {
+    let state = MockAppState.preview
+    guard let chat = state.chats(matching: .life(.home)).first else {
+        throw VerificationFailure(description: "Home should have a preview chat for Nostr send verification")
+    }
+    let store = DevModeStore(state: state)
+
+    let queued = store.sendChatMessage("Can you check the package?", in: chat)
+
+    try expect(queued?.draft.kind == NostrAgentEventFactory.ephemeralAgentMessageKind, "chat sends should queue a Nostr agent event")
+    try expect(queued?.delivery == .requiresEncryptedGiftWrap, "queued Nostr events should require encrypted gift wrapping before relay publish")
+    try expect(store.state.outgoingNostrEvents.count == 1, "store should retain queued outgoing Nostr events in phone memory")
+    try expect(store.state.outgoingNostrEvents.first?.draft.content.contains("Can you check the package?") == true, "queued Nostr event should include the sent chat text")
+}
+
+func testAgentEnvelopeCarriesReferencesWithoutFileBytes() throws {
+    let envelope = AgentMessageEnvelope(
+        conversationID: "home:apartment",
+        area: "home",
+        sender: .desktopClient,
+        kind: .diffReference,
+        text: "I found a config diff to review.",
+        attachments: [
+            AgentMessageAttachment(
+                kind: .diffReference,
+                name: "settings.diff",
+                contentType: "text/x-diff",
+                localReference: "clawdia://desktop/context/settings-diff"
+            ),
+            AgentMessageAttachment(
+                kind: .imageReference,
+                name: "preview.png",
+                contentType: "image/png",
+                localReference: "clawdia://desktop/context/preview-image"
+            )
+        ],
+        createdAt: 1_777_777_777
+    )
+
+    try expect(envelope.attachments.count == 2, "agent envelopes should carry multiple context references")
+    try expect(envelope.attachments.allSatisfy { $0.localReference?.hasPrefix("clawdia://") == true }, "agent envelopes should reference local context instead of embedding file bytes")
+}
+
 func testLocalConnectionRequestShape() throws {
     let request = URLRequest.clawdiaHealthRequest(endpoint: .localhost(port: 8787), timeout: 2)
 
@@ -132,6 +200,9 @@ do {
     try testPreviewChatsAreScopedToAreas()
     try testAreaChatNavigationKeepsAreaRouteBehindChat()
     try testCalendarCurrentDateResolver()
+    try testNostrAgentEnvelopeDraftShape()
+    try testStoreQueuesNostrEventOnChatSend()
+    try testAgentEnvelopeCarriesReferencesWithoutFileBytes()
     try testLocalConnectionRequestShape()
     print("Clawdia verification tests passed")
 } catch {

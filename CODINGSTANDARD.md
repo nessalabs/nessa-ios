@@ -39,7 +39,9 @@ Every non-trivial change follows this loop:
 
 - Product screens must use `ClawdiaDesignSystem` tokens and components.
 - Do not hard-code product colors, fonts, spacing, radii, shadows, or button styles in feature views.
+- Use `NavigationStack` by default for screen-to-screen navigation unless a user request or platform constraint explicitly calls for another navigation model.
 - Prefer small, named subviews when a view body becomes difficult to scan.
+- Extract shared components for repeated product patterns instead of copy-pasting view structure.
 - Keep accessibility labels on icon-only controls and custom interactive components.
 - Use previews or dev-mode screens for reusable components and flows.
 
@@ -66,4 +68,5 @@ A slice passes only when:
 - Tests for the slice pass.
 - Architecture and design-system verifiers pass.
 - The implementation was inspected for DDD boundary leaks, hard-coded styling, and observability gaps.
+- Repeated UI patterns were checked for reusable component extraction.
 - Risks and incomplete follow-ups are recorded.

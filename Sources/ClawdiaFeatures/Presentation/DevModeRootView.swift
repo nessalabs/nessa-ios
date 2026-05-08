@@ -40,7 +40,9 @@ public struct DevModeRootView: View {
                         navigationPath.append(.chat(chat))
                     }
                 case .chat(let chat):
-                    ChatScreen(state: store.state, chat: chat)
+                    ChatScreen(state: store.state, chat: chat, onSendMessage: { message in
+                        store.sendChatMessage(message, in: chat)
+                    })
                 }
             }
         }
@@ -941,6 +943,7 @@ public struct ChatScreen: View {
     let state: MockAppState
     private let chat: ChatPreview?
     private let showsNavigationHeader: Bool
+    private let onSendMessage: (String) -> Void
     @State private var sentMessages: [String] = []
     @State private var floatingApproval: ApprovalRequest?
     @State private var showingAgentDetails = false
@@ -950,11 +953,13 @@ public struct ChatScreen: View {
         state: MockAppState = .preview,
         chat: ChatPreview? = nil,
         onBack: @escaping () -> Void = {},
-        showsNavigationHeader: Bool = true
+        showsNavigationHeader: Bool = true,
+        onSendMessage: @escaping (String) -> Void = { _ in }
     ) {
         self.state = state
         self.chat = chat
         self.showsNavigationHeader = showsNavigationHeader
+        self.onSendMessage = onSendMessage
     }
 
     public var body: some View {
@@ -997,6 +1002,7 @@ public struct ChatScreen: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Composer(isDraftFocused: $isComposerFocused) { message in
                 sentMessages.append(message)
+                onSendMessage(message)
             }
         }
         .animation(.spring(response: 0.34, dampingFraction: 0.84), value: floatingApproval?.id)
