@@ -155,6 +155,66 @@ func testStoreQueuesNostrEventOnChatSend() throws {
     try expect(store.state.outgoingNostrEvents.first?.draft.content.contains("Can you check the package?") == true, "queued Nostr event should include the sent chat text")
 }
 
+final class RecordingNostrMessageSender: NostrAgentMessageSending {
+    private(set) var sentEvents: [NostrOutboxEvent] = []
+    private let preparedEvent: NostrPreparedRelayEvent
+
+    init(preparedEvent: NostrPreparedRelayEvent) {
+        self.preparedEvent = preparedEvent
+    }
+
+    func send(_ event: NostrOutboxEvent) throws -> NostrPreparedRelayEvent {
+        sentEvents.append(event)
+        return preparedEvent
+    }
+}
+
+func testStorePreparesRelayEventWhenSenderIsConfigured() throws {
+    let state = MockAppState.preview
+    guard let chat = state.chats(matching: .life(.home)).first else {
+        throw VerificationFailure(description: "Home should have a preview chat for Nostr send verification")
+    }
+    let preparedEvent = NostrPreparedRelayEvent(
+        id: String(repeating: "1", count: 64),
+        pubkey: String(repeating: "2", count: 64),
+        createdAt: 1_777_777_777,
+        kind: 1059,
+        tags: [["p", String(repeating: "3", count: 64)]],
+        content: "encrypted-payload",
+        signature: String(repeating: "4", count: 128),
+        relayURLs: []
+    )
+    let sender = RecordingNostrMessageSender(preparedEvent: preparedEvent)
+    let store = DevModeStore(state: state, nostrMessageSender: sender)
+
+    _ = store.sendChatMessage("Can you send this over Nostr?", in: chat)
+
+    try expect(sender.sentEvents.count == 1, "configured Nostr senders should receive chat outbox events")
+    try expect(store.state.preparedNostrRelayEvents == [preparedEvent], "prepared relay events should stay in phone memory")
+}
+
+func testPreparedRelayEventEncodesNIP01ClientFrame() throws {
+    let recipientPublicKeyHex = String(repeating: "3", count: 64)
+    let relayEvent = NostrPreparedRelayEvent(
+        id: String(repeating: "1", count: 64),
+        pubkey: String(repeating: "2", count: 64),
+        createdAt: 1_777_777_777,
+        kind: 1059,
+        tags: [["p", recipientPublicKeyHex]],
+        content: "encrypted-payload",
+        signature: String(repeating: "4", count: 128),
+        relayURLs: [URL(string: "wss://relay.example.com")!]
+    )
+
+    let relayMessage = try relayEvent.relayClientMessageJSON()
+
+    try expect(relayMessage.hasPrefix("[\"EVENT\","), "relay client messages should start with the NIP-01 EVENT frame")
+    try expect(relayMessage.contains("\"kind\":1059"), "relay client messages should carry the gift wrap kind")
+    try expect(relayMessage.contains("[\"p\","), "relay client messages should include a p tag")
+    try expect(relayMessage.contains(recipientPublicKeyHex), "relay client messages should route to the recipient pubkey")
+    try expect(relayMessage.contains("wss://relay.example.com") == false, "relay URLs should stay local and not be encoded into event JSON")
+}
+
 func testAgentEnvelopeCarriesReferencesWithoutFileBytes() throws {
     let envelope = AgentMessageEnvelope(
         conversationID: "home:apartment",
@@ -202,6 +262,8 @@ do {
     try testCalendarCurrentDateResolver()
     try testNostrAgentEnvelopeDraftShape()
     try testStoreQueuesNostrEventOnChatSend()
+    try testStorePreparesRelayEventWhenSenderIsConfigured()
+    try testPreparedRelayEventEncodesNIP01ClientFrame()
     try testAgentEnvelopeCarriesReferencesWithoutFileBytes()
     try testLocalConnectionRequestShape()
     print("Clawdia verification tests passed")

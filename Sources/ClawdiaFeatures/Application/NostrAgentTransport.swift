@@ -57,6 +57,76 @@ public enum NostrOutboxDelivery: Equatable, Sendable {
     case requiresEncryptedGiftWrap
 }
 
+public struct NostrPreparedRelayEvent: Encodable, Equatable, Sendable {
+    public let id: String
+    public let pubkey: String
+    public let createdAt: Int
+    public let kind: Int
+    public let tags: [[String]]
+    public let content: String
+    public let signature: String
+    public let relayURLs: [URL]
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case pubkey
+        case createdAt = "created_at"
+        case kind
+        case tags
+        case content
+        case signature = "sig"
+    }
+
+    public init(
+        id: String,
+        pubkey: String,
+        createdAt: Int,
+        kind: Int,
+        tags: [[String]],
+        content: String,
+        signature: String,
+        relayURLs: [URL]
+    ) {
+        self.id = id
+        self.pubkey = pubkey
+        self.createdAt = createdAt
+        self.kind = kind
+        self.tags = tags
+        self.content = content
+        self.signature = signature
+        self.relayURLs = relayURLs
+    }
+
+    public func relayClientMessageJSON() throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(NostrRelayClientEventMessage(event: self))
+        guard let json = String(data: data, encoding: .utf8) else {
+            throw NostrRelayClientMessageError.utf8EncodingFailed
+        }
+        return json
+    }
+}
+
+public protocol NostrAgentMessageSending {
+    @discardableResult
+    func send(_ event: NostrOutboxEvent) throws -> NostrPreparedRelayEvent
+}
+
+public enum NostrRelayClientMessageError: Error {
+    case utf8EncodingFailed
+}
+
+private struct NostrRelayClientEventMessage: Encodable {
+    let event: NostrPreparedRelayEvent
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.unkeyedContainer()
+        try container.encode("EVENT")
+        try container.encode(event)
+    }
+}
+
 public struct NostrAgentEventFactory: Sendable {
     public static let ephemeralAgentMessageKind = 24_133
 

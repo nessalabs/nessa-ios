@@ -13,6 +13,7 @@ public struct MockAppState: Equatable, Sendable {
     public var chats: [ChatPreview]
     public var approvals: [ApprovalRequest]
     public var outgoingNostrEvents: [NostrOutboxEvent]
+    public var preparedNostrRelayEvents: [NostrPreparedRelayEvent]
 
     public init(
         connection: ConnectionState,
@@ -20,7 +21,8 @@ public struct MockAppState: Equatable, Sendable {
         customAreas: [UserArea] = [],
         chats: [ChatPreview],
         approvals: [ApprovalRequest],
-        outgoingNostrEvents: [NostrOutboxEvent] = []
+        outgoingNostrEvents: [NostrOutboxEvent] = [],
+        preparedNostrRelayEvents: [NostrPreparedRelayEvent] = []
     ) {
         self.connection = connection
         self.folders = folders
@@ -28,6 +30,7 @@ public struct MockAppState: Equatable, Sendable {
         self.chats = chats
         self.approvals = approvals
         self.outgoingNostrEvents = outgoingNostrEvents
+        self.preparedNostrRelayEvents = preparedNostrRelayEvents
     }
 
     public var availableAreaCount: Int {
@@ -67,6 +70,10 @@ public struct MockAppState: Equatable, Sendable {
 
     public mutating func queueOutgoingNostrEvent(_ event: NostrOutboxEvent) {
         outgoingNostrEvents.append(event)
+    }
+
+    public mutating func queuePreparedNostrRelayEvent(_ event: NostrPreparedRelayEvent) {
+        preparedNostrRelayEvents.append(event)
     }
 
     public static let preview = MockAppState(

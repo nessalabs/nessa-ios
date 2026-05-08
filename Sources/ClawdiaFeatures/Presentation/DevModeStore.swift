@@ -5,15 +5,18 @@ public final class DevModeStore: ObservableObject {
     @Published public private(set) var state: MockAppState
     private let telemetry: TelemetryClient
     private let nostrAgentEventFactory: NostrAgentEventFactory
+    private let nostrMessageSender: NostrAgentMessageSending?
 
     public init(
         state: MockAppState = .preview,
         telemetry: TelemetryClient = OSLogTelemetryClient(),
-        nostrConfiguration: NostrAgentBridgeConfiguration = .preview
+        nostrConfiguration: NostrAgentBridgeConfiguration = .preview,
+        nostrMessageSender: NostrAgentMessageSending? = nil
     ) {
         self.state = state
         self.telemetry = telemetry
         self.nostrAgentEventFactory = NostrAgentEventFactory(configuration: nostrConfiguration)
+        self.nostrMessageSender = nostrMessageSender
         telemetry.log("dev mode store initialized", area: .devMode)
     }
 
@@ -47,6 +50,27 @@ public final class DevModeStore: ObservableObject {
         }
         let event = nostrAgentEventFactory.queueChatMessage(text: text, chat: chat)
         state.queueOutgoingNostrEvent(event)
+        if let nostrMessageSender {
+            do {
+                let prepared = try nostrMessageSender.send(event)
+                state.queuePreparedNostrRelayEvent(prepared)
+                telemetry.metric(
+                    MetricEvent(
+                        name: "nostr_relay_event_prepared",
+                        area: .chat,
+                        fields: ["kind": "\(prepared.kind)", "relay_count": "\(prepared.relayURLs.count)"]
+                    )
+                )
+            } catch {
+                telemetry.metric(
+                    MetricEvent(
+                        name: "nostr_relay_event_prepare_failed",
+                        area: .chat,
+                        fields: ["error": String(describing: type(of: error))]
+                    )
+                )
+            }
+        }
         telemetry.metric(
             MetricEvent(
                 name: "nostr_agent_event_queued",
