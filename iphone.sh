@@ -6,6 +6,7 @@ PROJECT="$ROOT/App/Clawdia.xcodeproj"
 SCHEME="Clawdia"
 APP_BUNDLE_ID="com.clawdia.mobile"
 DERIVED_DATA="$ROOT/DerivedData-iPhone"
+DEFAULT_DEVELOPMENT_TEAM="8F64XCDBH8"
 
 find_xcode_developer_dir() {
   local candidates=()
@@ -101,7 +102,8 @@ EOF
   exit 1
 fi
 
-team_id="${DEVELOPMENT_TEAM:-${APPLE_TEAM_ID:-$(project_team_id)}}"
+project_team="$(project_team_id)"
+team_id="${DEVELOPMENT_TEAM:-${APPLE_TEAM_ID:-${project_team:-$DEFAULT_DEVELOPMENT_TEAM}}}"
 build_settings=(
   CODE_SIGN_STYLE=Automatic
 )
