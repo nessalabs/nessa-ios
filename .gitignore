@@ -17,6 +17,7 @@ Package.pins
 
 # Local build products
 DerivedData/
+DerivedData-iPhone/
 
 # Carthage
 Carthage/Build/
