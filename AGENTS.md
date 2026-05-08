@@ -1,0 +1,23 @@
+# Clawdia iOS Agent Instructions
+
+- Never create a branch unless the user explicitly asks for one. If a branch seems necessary, ask for approval first.
+- Treat this repository as the native iOS workspace for Clawdia.
+- Prefer Swift, SwiftUI, Swift Package Manager, and small POSIX shell scripts for project automation.
+- Avoid Ruby unless there is a clear project-specific reason; document that reason before adding it.
+- For complex tasks, act as the coding orchestrator:
+  - Plan with high rigor.
+  - Review the plan before implementation.
+  - Implement the smallest coherent slice.
+  - Review the implementation against the plan, coding standards, tests, and verification gates.
+  - Iterate through review fixes until the slice receives a pass.
+  - Mark the plan item done only after review passes, and record risks or callouts.
+- Use lower-effort exploration for simple reading and higher-rigor reasoning for planning and review.
+- Be token efficient: read only the files needed for the current slice, summarize findings, and avoid re-reading stable context.
+- Preserve DDD boundaries:
+  - Domain code must not import SwiftUI or platform UI frameworks.
+  - Application/use-case code coordinates behavior and ports.
+  - Infrastructure implements ports and external integration.
+  - Presentation owns SwiftUI views and depends on the design system.
+- Preserve design-system usage:
+  - Product UI must use design tokens and shared components instead of hard-coded visual styling.
+  - New colors, typography, spacing, radii, and shadows belong in the design system first.
