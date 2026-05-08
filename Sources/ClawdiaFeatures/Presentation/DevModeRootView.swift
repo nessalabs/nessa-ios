@@ -470,6 +470,7 @@ public struct HomeScreen: View {
     @State private var showingNewArea = false
     @State private var draftAreaName = ""
     @State private var isSearchPinned = false
+    @State private var homeTopBaseline: CGFloat?
 
     public init(
         state: MockAppState = .preview,
@@ -484,52 +485,10 @@ public struct HomeScreen: View {
     public var body: some View {
         let palette = ClawdiaColor.palette(theme)
         ZStack(alignment: .top) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: ClawdiaSpacing.lg) {
-                    GeometryReader { proxy in
-                        Color.clear
-                            .preference(key: HomeScrollOffsetKey.self, value: proxy.frame(in: .named("home-scroll")).minY)
-                    }
-                    .frame(height: 1)
-
-                    GreetingHeader()
-                        .padding(.top, ClawdiaSpacing.lg)
-
-                    SearchBar(text: "Search chats and folders", action: onSearch)
-
-                    FolderGrid(folders: state.folders, customAreas: customAreas) {
-                        showingNewArea = true
-                    }
-                    ChatList(chats: state.chats, onOpenChat: onOpenChat)
-                }
-                .padding(.horizontal, ClawdiaSpacing.lg)
-                .padding(.bottom, 112)
-                .frame(maxWidth: 520, alignment: .topLeading)
-                .frame(maxWidth: .infinity)
-            }
-            .coordinateSpace(name: "home-scroll")
-            .onPreferenceChange(HomeScrollOffsetKey.self) { offset in
-                let shouldPin = offset < -28
-                guard shouldPin != isSearchPinned else {
-                    return
-                }
-                withAnimation(.spring(response: 0.22, dampingFraction: 0.9)) {
-                    isSearchPinned = shouldPin
-                }
-            }
+            homeScrollView
 
             if isSearchPinned {
-                SearchBar(text: "Search chats and folders", action: onSearch)
-                    .padding(.horizontal, ClawdiaSpacing.lg)
-                    .padding(.top, ClawdiaSpacing.sm)
-                    .padding(.bottom, ClawdiaSpacing.md)
-                    .frame(maxWidth: 520, alignment: .leading)
-                    .frame(maxWidth: .infinity)
-                    .background {
-                        Rectangle()
-                            .fill(.ultraThinMaterial)
-                            .background(palette.background.opacity(0.98))
-                    }
+                PinnedHomeSearchHeader(onSearch: onSearch)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .zIndex(2)
             }
@@ -549,6 +508,64 @@ public struct HomeScreen: View {
             }
         }
     }
+
+    @ViewBuilder
+    private var homeScrollView: some View {
+        if #available(iOS 18.0, macOS 15.0, *) {
+            baseHomeScrollView
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.y
+                } action: { _, offset in
+                    setSearchPinned(offset > 28)
+                }
+        } else {
+            baseHomeScrollView
+                .onPreferenceChange(HomeScrollOffsetKey.self) { offset in
+                    if homeTopBaseline == nil {
+                        homeTopBaseline = offset
+                    }
+                    setSearchPinned((homeTopBaseline ?? offset) - offset > 28)
+                }
+        }
+    }
+
+    private var baseHomeScrollView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: ClawdiaSpacing.lg) {
+                GeometryReader { proxy in
+                    Color.clear
+                        .preference(key: HomeScrollOffsetKey.self, value: proxy.frame(in: .global).minY)
+                }
+                .frame(height: 1)
+
+                GreetingHeader()
+                    .padding(.top, ClawdiaSpacing.lg)
+
+                SearchBar(text: "Search chats and folders", action: onSearch)
+                    .opacity(isSearchPinned ? 0 : 1)
+                    .allowsHitTesting(!isSearchPinned)
+                    .accessibilityHidden(isSearchPinned)
+
+                FolderGrid(folders: state.folders, customAreas: customAreas) {
+                    showingNewArea = true
+                }
+                ChatList(chats: state.chats, onOpenChat: onOpenChat)
+            }
+            .padding(.horizontal, ClawdiaSpacing.lg)
+            .padding(.bottom, 112)
+            .frame(maxWidth: 520, alignment: .topLeading)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func setSearchPinned(_ shouldPin: Bool) {
+        guard shouldPin != isSearchPinned else {
+            return
+        }
+        withAnimation(.spring(response: 0.22, dampingFraction: 0.9)) {
+            isSearchPinned = shouldPin
+        }
+    }
 }
 
 private struct HomeScrollOffsetKey: PreferenceKey {
@@ -556,6 +573,28 @@ private struct HomeScrollOffsetKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
+    }
+}
+
+private struct PinnedHomeSearchHeader: View {
+    @Environment(\.clawdiaTheme) private var theme
+    let onSearch: () -> Void
+
+    var body: some View {
+        let palette = ClawdiaColor.palette(theme)
+        SearchBar(text: "Search chats and folders", action: onSearch)
+            .padding(.horizontal, ClawdiaSpacing.lg)
+            .padding(.top, ClawdiaSpacing.xs)
+            .padding(.bottom, ClawdiaSpacing.lg)
+            .frame(maxWidth: 520, alignment: .leading)
+            .frame(maxWidth: .infinity)
+            .background(alignment: .top) {
+                Rectangle()
+                    .fill(palette.background)
+                    .frame(height: 260)
+                    .offset(y: -160)
+                    .ignoresSafeArea(edges: .top)
+            }
     }
 }
 
