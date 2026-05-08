@@ -118,6 +118,7 @@ if ! xcodebuild \
   -configuration Debug \
   -derivedDataPath "$DERIVED_DATA" \
   -allowProvisioningUpdates \
+  -allowProvisioningDeviceRegistration \
   "${build_settings[@]}" \
   build; then
   if [[ -z "$team_id" ]]; then
