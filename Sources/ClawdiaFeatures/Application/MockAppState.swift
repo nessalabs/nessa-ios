@@ -1,35 +1,80 @@
 import Foundation
+
+public enum AreaFilter: Equatable, Hashable, Sendable {
+    case all
+    case life(LifeArea)
+    case custom(UUID)
+}
+
 public struct MockAppState: Equatable, Sendable {
     public var connection: ConnectionState
     public var folders: [FolderSummary]
+    public var customAreas: [UserArea]
     public var chats: [ChatPreview]
     public var approvals: [ApprovalRequest]
 
     public init(
         connection: ConnectionState,
         folders: [FolderSummary],
+        customAreas: [UserArea] = [],
         chats: [ChatPreview],
         approvals: [ApprovalRequest]
     ) {
         self.connection = connection
         self.folders = folders
+        self.customAreas = customAreas
         self.chats = chats
         self.approvals = approvals
+    }
+
+    public var availableAreaCount: Int {
+        folders.count + customAreas.count
+    }
+
+    public func chats(matching filter: AreaFilter) -> [ChatPreview] {
+        switch filter {
+        case .all:
+            chats
+        case .life(let area):
+            chats.filter { $0.area == area }
+        case .custom:
+            []
+        }
+    }
+
+    public mutating func configureInitialAreas(_ selectedAreas: Set<LifeArea>) {
+        let configuredAreas = selectedAreas.isEmpty ? Set(LifeArea.allCases) : selectedAreas
+        folders = folders.filter { configuredAreas.contains($0.id) }
+        chats = chats.filter { configuredAreas.contains($0.area) }
+    }
+
+    @discardableResult
+    public mutating func createCustomArea(named rawName: String) -> UserArea? {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return nil }
+
+        if let existing = customAreas.first(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) {
+            return existing
+        }
+
+        let area = UserArea(name: name)
+        customAreas.append(area)
+        return area
     }
 
     public static let preview = MockAppState(
         connection: .connected(.localhost(port: 8787)),
         folders: [
-            FolderSummary(id: .personal, chatCount: 12, lastActivity: "2m"),
-            FolderSummary(id: .work, chatCount: 8, lastActivity: "23m"),
-            FolderSummary(id: .money, chatCount: 5, lastActivity: "1h"),
-            FolderSummary(id: .health, chatCount: 3, lastActivity: "Tue"),
-            FolderSummary(id: .home, chatCount: 7, lastActivity: "Yest"),
+            FolderSummary(id: .personal, chatCount: 2, lastActivity: "2m"),
+            FolderSummary(id: .work, chatCount: 2, lastActivity: "23m"),
+            FolderSummary(id: .money, chatCount: 2, lastActivity: "1h"),
+            FolderSummary(id: .health, chatCount: 2, lastActivity: "Tue"),
+            FolderSummary(id: .home, chatCount: 2, lastActivity: "Yest"),
             FolderSummary(id: .travel, chatCount: 2, lastActivity: "Mar 4")
         ],
         chats: [
             ChatPreview(
-                title: "Clawdia - Personal",
+                title: "Mia's birthday",
                 preview: "I drafted a reply to your sister. Want to review before I send?",
                 time: "2m",
                 area: .personal,
@@ -37,10 +82,23 @@ public struct MockAppState: Equatable, Sendable {
                 pinned: true
             ),
             ChatPreview(
+                title: "Family check-in",
+                preview: "Mom's appointment is Friday at 3 PM. I can remind you tomorrow.",
+                time: "18m",
+                area: .personal
+            ),
+            ChatPreview(
                 title: "Q4 planning",
                 preview: "You: ok let's tighten the deck before Thursday",
                 time: "23m",
                 area: .work
+            ),
+            ChatPreview(
+                title: "Launch review",
+                preview: "Three open decisions: pricing copy, support notes, and metrics owner.",
+                time: "41m",
+                area: .work,
+                pinned: true
             ),
             ChatPreview(
                 title: "Finances - weekly",
@@ -50,9 +108,45 @@ public struct MockAppState: Equatable, Sendable {
                 unread: true
             ),
             ChatPreview(
+                title: "Subscription cleanup",
+                preview: "I found two annual renewals next week: storage and design tools.",
+                time: "3h",
+                area: .money
+            ),
+            ChatPreview(
+                title: "Gym rhythm",
+                preview: "You hit two workouts this week. Want me to hold Saturday morning?",
+                time: "Tue",
+                area: .health
+            ),
+            ChatPreview(
+                title: "Sleep notes",
+                preview: "Last night looked shorter. I can move tomorrow's deep work later.",
+                time: "Tue",
+                area: .health
+            ),
+            ChatPreview(
+                title: "Apartment tasks",
+                preview: "Filters, laundry, and the package pickup are still open.",
+                time: "Yesterday",
+                area: .home
+            ),
+            ChatPreview(
+                title: "Grocery plan",
+                preview: "I made a quick list around the dinners you saved this week.",
+                time: "Yesterday",
+                area: .home
+            ),
+            ChatPreview(
                 title: "Lisbon trip",
                 preview: "Flight prices dropped. Lufthansa $612 for May 14.",
                 time: "Yesterday",
+                area: .travel
+            ),
+            ChatPreview(
+                title: "Packing list",
+                preview: "Passport, adapter, rain shell, and camera batteries are still unchecked.",
+                time: "Mar 4",
                 area: .travel
             )
         ],

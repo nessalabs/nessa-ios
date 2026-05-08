@@ -19,4 +19,18 @@ public final class DevModeStore: ObservableObject {
         state.connection = .connected(.localhost(port: port))
         telemetry.metric(MetricEvent(name: "local_connection_selected", area: .localConnection, fields: ["port": "\(port)"]))
     }
+
+    public func configureInitialAreas(_ areas: Set<LifeArea>) {
+        state.configureInitialAreas(areas)
+        telemetry.metric(MetricEvent(name: "initial_areas_configured", area: .devMode, fields: ["count": "\(areas.count)"]))
+    }
+
+    @discardableResult
+    public func createCustomArea(named name: String) -> UserArea? {
+        let area = state.createCustomArea(named: name)
+        if let area {
+            telemetry.metric(MetricEvent(name: "custom_area_created", area: .devMode, fields: ["name": area.name]))
+        }
+        return area
+    }
 }

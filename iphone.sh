@@ -40,6 +40,38 @@ json_extract() {
   plutil -extract "$key" raw -o - "$file" 2>/dev/null || true
 }
 
+find_device_index() {
+  local file="$1"
+  local requested_udid="${2:-}"
+  local index=0
+  local udid
+  local device_type
+  local platform
+
+  while true; do
+    udid="$(json_extract "$file" "result.devices.$index.hardwareProperties.udid")"
+    [[ -z "$udid" ]] && break
+
+    if [[ -n "$requested_udid" ]]; then
+      if [[ "$udid" == "$requested_udid" ]]; then
+        printf '%s\n' "$index"
+        return 0
+      fi
+    else
+      device_type="$(json_extract "$file" "result.devices.$index.hardwareProperties.deviceType")"
+      platform="$(json_extract "$file" "result.devices.$index.hardwareProperties.platform")"
+      if [[ "$device_type" == "iPhone" || "$platform" == "iOS" ]]; then
+        printf '%s\n' "$index"
+        return 0
+      fi
+    fi
+
+    index=$((index + 1))
+  done
+
+  return 1
+}
+
 project_team_id() {
   awk -F '= ' '/DEVELOPMENT_TEAM = [A-Z0-9]+;/ {
     gsub(/;/, "", $2)
@@ -68,12 +100,9 @@ if ! xcrun devicectl list devices --json-output "$devices_json" >/dev/null; then
   exit 1
 fi
 
-device_udid="${IPHONE_UDID:-$(json_extract "$devices_json" "result.devices.0.hardwareProperties.udid")}"
-device_name="$(json_extract "$devices_json" "result.devices.0.deviceProperties.name")"
-developer_mode="$(json_extract "$devices_json" "result.devices.0.deviceProperties.developerModeStatus")"
-ddi_available="$(json_extract "$devices_json" "result.devices.0.deviceProperties.ddiServicesAvailable")"
+device_index="$(find_device_index "$devices_json" "${IPHONE_UDID:-}" || true)"
 
-if [[ -z "$device_udid" ]]; then
+if [[ -z "$device_index" ]]; then
   cat >&2 <<EOF
 No connected iPhone was found.
 
@@ -82,6 +111,11 @@ Connect your iPhone with USB, unlock it, tap Trust This Computer, then rerun:
 EOF
   exit 1
 fi
+
+device_udid="$(json_extract "$devices_json" "result.devices.$device_index.hardwareProperties.udid")"
+device_name="$(json_extract "$devices_json" "result.devices.$device_index.deviceProperties.name")"
+developer_mode="$(json_extract "$devices_json" "result.devices.$device_index.deviceProperties.developerModeStatus")"
+ddi_available="$(json_extract "$devices_json" "result.devices.$device_index.deviceProperties.ddiServicesAvailable")"
 
 if [[ "$developer_mode" != "enabled" ]]; then
   cat >&2 <<EOF

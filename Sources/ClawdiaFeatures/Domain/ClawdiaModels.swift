@@ -22,7 +22,7 @@ public enum ConnectionState: Equatable, Sendable {
     case failed(String)
 }
 
-public enum LifeArea: String, CaseIterable, Identifiable, Sendable {
+public enum LifeArea: String, CaseIterable, Identifiable, Hashable, Sendable {
     case personal
     case work
     case money
@@ -60,7 +60,19 @@ public struct FolderSummary: Identifiable, Equatable, Sendable {
     }
 }
 
-public struct ChatPreview: Identifiable, Equatable, Sendable {
+public struct UserArea: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public var name: String
+    public var icon: String
+
+    public init(id: UUID = UUID(), name: String, icon: String = "sparkles") {
+        self.id = id
+        self.name = name
+        self.icon = icon
+    }
+}
+
+public struct ChatPreview: Identifiable, Equatable, Hashable, Sendable {
     public let id: UUID
     public let title: String
     public let preview: String

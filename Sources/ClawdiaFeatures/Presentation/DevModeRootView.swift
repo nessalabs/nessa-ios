@@ -3,10 +3,10 @@ import ClawdiaDesignSystem
 
 public struct DevModeRootView: View {
     @StateObject private var store: DevModeStore
-    @State private var theme: ClawdiaTheme = .light
+    @AppStorage("clawdiaTheme") private var theme: ClawdiaTheme = .light
     @AppStorage("didCompleteOnboarding") private var didCompleteOnboarding = false
     @State private var selectedTab: AppTab = .chats
-    @State private var showingChat = false
+    @State private var navigationPath: [AppNavigationRoute] = []
     @State private var developmentScreen: DevScreen?
 
     public init(store: DevModeStore = DevModeStore()) {
@@ -14,25 +14,34 @@ public struct DevModeRootView: View {
     }
 
     public var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             Group {
                 if didCompleteOnboarding {
                     AppShell(
                         state: store.state,
                         selectedTab: $selectedTab,
-                        showingChat: $showingChat,
                         theme: $theme,
-                        developmentScreen: $developmentScreen
+                        developmentScreen: $developmentScreen,
+                        onCreateArea: { store.createCustomArea(named: $0) },
+                        onOpenArea: { navigationPath.append(.area($0)) }
                     )
                 } else {
-                    OnboardingFlowView {
+                    OnboardingFlowView { areas in
+                        store.configureInitialAreas(areas)
                         didCompleteOnboarding = true
                         selectedTab = .chats
                     }
                 }
             }
-            .navigationDestination(isPresented: $showingChat) {
-                ChatScreen(state: store.state)
+            .navigationDestination(for: AppNavigationRoute.self) { route in
+                switch route {
+                case .area(let area):
+                    AreaChatsScreen(state: store.state, area: area) { chat in
+                        navigationPath.append(.chat(chat))
+                    }
+                case .chat(let chat):
+                    ChatScreen(state: store.state, chat: chat)
+                }
             }
         }
         .clawdiaTheme(theme)
@@ -75,9 +84,10 @@ private enum AppTab: String, CaseIterable, Identifiable {
 private struct AppShell: View {
     let state: MockAppState
     @Binding var selectedTab: AppTab
-    @Binding var showingChat: Bool
     @Binding var theme: ClawdiaTheme
     @Binding var developmentScreen: DevScreen?
+    let onCreateArea: (String) -> UserArea?
+    let onOpenArea: (AreaFilter) -> Void
     @State private var showingAreasManager = false
     @State private var showingSearch = false
 
@@ -94,7 +104,11 @@ private struct AppShell: View {
                     onClose: { self.developmentScreen = nil }
                 )
             } else if showingAreasManager {
-                FolderManagerScreen(folders: state.folders) {
+                FolderManagerScreen(
+                    folders: state.folders,
+                    customAreas: state.customAreas,
+                    onCreateArea: onCreateArea
+                ) {
                     showingAreasManager = false
                 }
             } else if showingSearch {
@@ -103,11 +117,12 @@ private struct AppShell: View {
                 }
             } else {
                 TabView(selection: $selectedTab) {
-                    HomeScreen(state: state, onSearch: {
-                        showingSearch = true
-                    }) {
-                        showingChat = true
-                    }
+                    HomeScreen(
+                        state: state,
+                        onSearch: { showingSearch = true },
+                        onCreateArea: onCreateArea,
+                        onOpenArea: onOpenArea
+                    )
                     .tag(AppTab.chats)
                     .tabItem {
                         Label(AppTab.chats.title, systemImage: AppTab.chats.systemImage)
@@ -125,7 +140,7 @@ private struct AppShell: View {
                             Label(AppTab.voice.title, systemImage: AppTab.voice.systemImage)
                         }
 
-                    SettingsScreen(theme: $theme, onOpenAreas: {
+                    SettingsScreen(theme: $theme, areaCount: state.availableAreaCount, onOpenAreas: {
                         showingAreasManager = true
                     }) { screen in
                         developmentScreen = screen
@@ -244,9 +259,10 @@ private struct ScreenHost: View {
 public struct OnboardingFlowView: View {
     @Environment(\.clawdiaTheme) private var theme
     @State private var step = 0
-    private let onComplete: () -> Void
+    @State private var selectedAreas: Set<LifeArea> = [.personal, .work, .money, .health]
+    private let onComplete: (Set<LifeArea>) -> Void
 
-    public init(onComplete: @escaping () -> Void = {}) {
+    public init(onComplete: @escaping (Set<LifeArea>) -> Void = { _ in }) {
         self.onComplete = onComplete
     }
 
@@ -266,7 +282,7 @@ public struct OnboardingFlowView: View {
                 Text("Pick a few areas to start. We'll make a folder for each one.")
                     .font(ClawdiaType.body)
                     .foregroundStyle(palette.text2)
-                AreaPickerRows()
+                AreaPickerRows(selectedAreas: $selectedAreas)
             } else {
                 Text("connect to Clawdia")
                     .font(ClawdiaType.display())
@@ -279,7 +295,7 @@ public struct OnboardingFlowView: View {
             PageDots(active: step, count: 3)
             ClawdiaPrimaryButton(step == 2 ? "Start using Clawdia" : "Continue", systemImage: "arrow.right") {
                 if step == 2 {
-                    onComplete()
+                    onComplete(selectedAreas)
                 } else {
                     step += 1
                 }
@@ -292,30 +308,45 @@ public struct OnboardingFlowView: View {
 
 private struct AreaPickerRows: View {
     @Environment(\.clawdiaTheme) private var theme
+    @Binding var selectedAreas: Set<LifeArea>
 
     var body: some View {
         let palette = ClawdiaColor.palette(theme)
         VStack(spacing: ClawdiaSpacing.xs) {
             ForEach(Array(LifeArea.allCases.enumerated()), id: \.element) { index, area in
-                HStack(spacing: ClawdiaSpacing.sm) {
-                    Image(systemName: area.icon)
-                        .frame(width: 36, height: 36)
-                        .background(palette.folders[index])
-                        .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.md, style: .continuous))
-                    Text(area.title)
-                        .font(ClawdiaType.body)
-                    Spacer()
-                    Image(systemName: index < 4 ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(index < 4 ? palette.accent : palette.border2)
+                let isSelected = selectedAreas.contains(area)
+                Button {
+                    toggle(area)
+                } label: {
+                    HStack(spacing: ClawdiaSpacing.sm) {
+                        Image(systemName: area.icon)
+                            .frame(width: 36, height: 36)
+                            .background(palette.folders[index])
+                            .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.md, style: .continuous))
+                        Text(area.title)
+                            .font(ClawdiaType.body)
+                        Spacer()
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(isSelected ? palette.accent : palette.border2)
+                    }
+                    .padding(ClawdiaSpacing.sm)
+                    .background(palette.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.lg, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: ClawdiaRadius.lg, style: .continuous)
+                            .stroke(isSelected ? palette.accent : palette.border, lineWidth: isSelected ? 1.5 : 0.5)
+                    }
                 }
-                .padding(ClawdiaSpacing.sm)
-                .background(palette.surface)
-                .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.lg, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: ClawdiaRadius.lg, style: .continuous)
-                        .stroke(index < 4 ? palette.accent : palette.border, lineWidth: index < 4 ? 1.5 : 0.5)
-                }
+                .buttonStyle(.plain)
             }
+        }
+    }
+
+    private func toggle(_ area: LifeArea) {
+        if selectedAreas.contains(area), selectedAreas.count > 1 {
+            selectedAreas.remove(area)
+        } else {
+            selectedAreas.insert(area)
         }
     }
 }
@@ -363,8 +394,8 @@ public struct HomeScreen: View {
     @Environment(\.clawdiaTheme) private var theme
     let state: MockAppState
     let onSearch: () -> Void
-    let onOpenChat: () -> Void
-    @State private var customAreas: [CustomArea] = []
+    let onCreateArea: (String) -> UserArea?
+    let onOpenArea: (AreaFilter) -> Void
     @State private var showingNewArea = false
     @State private var draftAreaName = ""
     @State private var isSearchPinned = false
@@ -373,11 +404,13 @@ public struct HomeScreen: View {
     public init(
         state: MockAppState = .preview,
         onSearch: @escaping () -> Void = {},
-        onOpenChat: @escaping () -> Void = {}
+        onCreateArea: @escaping (String) -> UserArea? = { _ in nil },
+        onOpenArea: @escaping (AreaFilter) -> Void = { _ in }
     ) {
         self.state = state
         self.onSearch = onSearch
-        self.onOpenChat = onOpenChat
+        self.onCreateArea = onCreateArea
+        self.onOpenArea = onOpenArea
     }
 
     public var body: some View {
@@ -394,12 +427,14 @@ public struct HomeScreen: View {
         .background(palette.background)
         .sheet(isPresented: $showingNewArea) {
             NewAreaSheet(name: $draftAreaName) {
-                let name = draftAreaName.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !name.isEmpty {
-                    customAreas.append(CustomArea(name: name))
-                }
+                let createdArea = onCreateArea(draftAreaName)
                 draftAreaName = ""
                 showingNewArea = false
+                if let createdArea {
+                    DispatchQueue.main.async {
+                        onOpenArea(.custom(createdArea.id))
+                    }
+                }
             } onCancel: {
                 draftAreaName = ""
                 showingNewArea = false
@@ -445,10 +480,12 @@ public struct HomeScreen: View {
                         .allowsHitTesting(!isSearchPinned)
                         .accessibilityHidden(isSearchPinned)
 
-                    FolderGrid(folders: state.folders, customAreas: customAreas) {
-                        showingNewArea = true
-                    }
-                    ChatList(chats: state.chats, onOpenChat: onOpenChat)
+                    FolderGrid(
+                        folders: state.folders,
+                        customAreas: state.customAreas,
+                        onOpenArea: onOpenArea,
+                        onCreateArea: { showingNewArea = true }
+                    )
                 }
                 .padding(.horizontal, ClawdiaSpacing.lg)
                 .padding(.bottom, 112)
@@ -496,11 +533,6 @@ private struct PinnedHomeSearchHeader: View {
                     .ignoresSafeArea(edges: .top)
             }
     }
-}
-
-private struct CustomArea: Identifiable {
-    let id = UUID()
-    let name: String
 }
 
 private struct GreetingHeader: View {
@@ -555,18 +587,29 @@ private struct SearchBar: View {
 
 private struct FolderGrid: View {
     let folders: [FolderSummary]
-    let customAreas: [CustomArea]
+    let customAreas: [UserArea]
+    let onOpenArea: (AreaFilter) -> Void
     let onCreateArea: () -> Void
 
     var body: some View {
         ClawdiaSection("Areas of life") {
             VStack(spacing: ClawdiaSpacing.xs) {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: ClawdiaSpacing.xs) {
-                    ForEach(Array(folders.prefix(4).enumerated()), id: \.element.id) { index, folder in
-                        FolderTile(folder: folder, colorIndex: index)
+                    ForEach(Array(folders.enumerated()), id: \.element.id) { index, folder in
+                        FolderTile(
+                            folder: folder,
+                            colorIndex: index
+                        ) {
+                            onOpenArea(.life(folder.id))
+                        }
                     }
                     ForEach(Array(customAreas.enumerated()), id: \.element.id) { index, area in
-                        CustomAreaTile(area: area, colorIndex: index + 4)
+                        CustomAreaTile(
+                            area: area,
+                            colorIndex: index + folders.count
+                        ) {
+                            onOpenArea(.custom(area.id))
+                        }
                     }
                 }
                 NewAreaTile(title: "New area", subtitle: "Group chats by what matters", onTap: onCreateArea)
@@ -576,28 +619,67 @@ private struct FolderGrid: View {
 }
 
 private struct FolderTile: View {
-    @Environment(\.clawdiaTheme) private var theme
     let folder: FolderSummary
     let colorIndex: Int
+    let onTap: () -> Void
+
+    var body: some View {
+        AreaTileButton(
+            title: folder.id.title,
+            subtitle: "\(folder.chatCount) chats - \(folder.lastActivity)",
+            systemImage: folder.id.icon,
+            colorIndex: colorIndex,
+            action: onTap
+        )
+    }
+}
+
+private struct CustomAreaTile: View {
+    let area: UserArea
+    let colorIndex: Int
+    let onTap: () -> Void
+
+    var body: some View {
+        AreaTileButton(
+            title: area.name,
+            subtitle: "0 chats - new",
+            systemImage: area.icon,
+            colorIndex: colorIndex,
+            action: onTap
+        )
+    }
+}
+
+private struct AreaTileButton: View {
+    @Environment(\.clawdiaTheme) private var theme
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let colorIndex: Int
+    let action: () -> Void
 
     var body: some View {
         let palette = ClawdiaColor.palette(theme)
-        Button {
-        } label: {
-            ClawdiaCard {
+        Button(action: action) {
             VStack(alignment: .leading, spacing: ClawdiaSpacing.sm) {
-                Image(systemName: folder.id.icon)
+                Image(systemName: systemImage)
                     .frame(width: 44, height: 44)
                     .background(palette.folders[colorIndex % palette.folders.count])
                     .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.md, style: .continuous))
-                Text(folder.id.title)
+                Text(title)
                     .font(ClawdiaType.body.weight(.semibold))
-                Text("\(folder.chatCount) chats - \(folder.lastActivity)")
+                Text(subtitle)
                     .font(ClawdiaType.caption)
                     .foregroundStyle(palette.text2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
+            .padding(ClawdiaSpacing.md)
+            .background(palette.surface)
+            .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.xl, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ClawdiaRadius.xl, style: .continuous)
+                    .stroke(palette.border, lineWidth: 0.5)
+            }
         }
         .buttonStyle(.plain)
     }
@@ -634,34 +716,6 @@ private struct NewAreaTile: View {
             .overlay {
                 RoundedRectangle(cornerRadius: ClawdiaRadius.xl, style: .continuous)
                     .stroke(palette.border2, style: StrokeStyle(lineWidth: 0.8, dash: [4]))
-            }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct CustomAreaTile: View {
-    @Environment(\.clawdiaTheme) private var theme
-    let area: CustomArea
-    let colorIndex: Int
-
-    var body: some View {
-        let palette = ClawdiaColor.palette(theme)
-        Button {
-        } label: {
-            ClawdiaCard {
-                VStack(alignment: .leading, spacing: ClawdiaSpacing.sm) {
-                    Image(systemName: "sparkles")
-                        .frame(width: 44, height: 44)
-                        .background(palette.folders[colorIndex % palette.folders.count])
-                        .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.md, style: .continuous))
-                    Text(area.name)
-                        .font(ClawdiaType.body.weight(.semibold))
-                    Text("0 chats - new")
-                        .font(ClawdiaType.caption)
-                        .foregroundStyle(palette.text2)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .buttonStyle(.plain)
@@ -721,17 +775,92 @@ private struct NewAreaSheet: View {
     }
 }
 
-private struct ChatList: View {
-    let chats: [ChatPreview]
-    let onOpenChat: () -> Void
+private struct AreaChatsScreen: View {
+    @Environment(\.clawdiaTheme) private var theme
+    let state: MockAppState
+    let area: AreaFilter
+    let onOpenChat: (ChatPreview) -> Void
 
     var body: some View {
-        ClawdiaSection("Recent") {
+        let palette = ClawdiaColor.palette(theme)
+        let display = areaDisplay(for: area)
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                AreaMessagesList(chats: state.chats(matching: area), onOpenChat: onOpenChat)
+            }
+            .padding(.horizontal, ClawdiaSpacing.lg)
+            .padding(.top, ClawdiaSpacing.md)
+            .padding(.bottom, 96)
+        }
+        .background(palette.background)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(display.title)
+                    .font(ClawdiaType.title.weight(.semibold))
+                    .foregroundStyle(palette.text)
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .font(ClawdiaType.subhead.weight(.semibold))
+                        .frame(width: 44, height: 44)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Circle())
+                        .overlay {
+                            Circle()
+                                .stroke(palette.border, lineWidth: 0.5)
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(display.title) details")
+            }
+        }
+        .chatNavigationChrome()
+        .clawdiaScreenBackground()
+    }
+
+    private func areaDisplay(for area: AreaFilter) -> AreaDisplayModel {
+        switch area {
+        case .all:
+            return AreaDisplayModel(title: "Messages", subtitle: "\(state.chats.count) chats", icon: "tray.full", colorIndex: 0)
+        case .life(let lifeArea):
+            let index = LifeArea.allCases.firstIndex(of: lifeArea) ?? 0
+            let count = state.chats(matching: .life(lifeArea)).count
+            return AreaDisplayModel(title: lifeArea.title, subtitle: "\(count) chats", icon: lifeArea.icon, colorIndex: index)
+        case .custom(let id):
+            if let index = state.customAreas.firstIndex(where: { $0.id == id }) {
+                let area = state.customAreas[index]
+                return AreaDisplayModel(title: area.name, subtitle: "0 chats", icon: area.icon, colorIndex: state.folders.count + index)
+            }
+            return AreaDisplayModel(title: "Area", subtitle: "0 chats", icon: "sparkles", colorIndex: 0)
+        }
+    }
+}
+
+private struct AreaDisplayModel {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let colorIndex: Int
+}
+
+private struct AreaMessagesList: View {
+    let chats: [ChatPreview]
+    let onOpenChat: (ChatPreview) -> Void
+
+    var body: some View {
+        if chats.isEmpty {
+            EmptyAreaMessagesCard()
+        } else {
             VStack(spacing: 0) {
                 ForEach(chats) { chat in
-                    ChatRow(chat: chat, onOpenChat: onOpenChat)
+                    ChatThreadRow(chat: chat) {
+                        onOpenChat(chat)
+                    }
                     if chat.id != chats.last?.id {
                         Divider()
+                            .padding(.leading, 74)
                     }
                 }
             }
@@ -739,7 +868,7 @@ private struct ChatList: View {
     }
 }
 
-private struct ChatRow: View {
+private struct ChatThreadRow: View {
     @Environment(\.clawdiaTheme) private var theme
     let chat: ChatPreview
     let onOpenChat: () -> Void
@@ -747,12 +876,14 @@ private struct ChatRow: View {
     var body: some View {
         let palette = ClawdiaColor.palette(theme)
         Button(action: onOpenChat) {
-            HStack(alignment: .top, spacing: ClawdiaSpacing.sm) {
-                ClawdiaAvatar(size: 42, label: chat.title.hasPrefix("Clawdia") ? nil : String(chat.title.prefix(1)))
+            HStack(alignment: .center, spacing: ClawdiaSpacing.sm) {
+                ClawdiaAvatar(size: 58, label: chat.title.hasPrefix("Clawdia") ? nil : String(chat.title.prefix(1)))
                 VStack(alignment: .leading, spacing: ClawdiaSpacing.xxs) {
                     HStack {
                         Text(chat.title)
-                            .font(ClawdiaType.body.weight(.semibold))
+                            .font(ClawdiaType.subhead.weight(.semibold))
+                            .foregroundStyle(palette.text)
+                            .lineLimit(1)
                         if chat.pinned {
                             Image(systemName: "pin.fill")
                                 .font(ClawdiaType.caption)
@@ -762,6 +893,9 @@ private struct ChatRow: View {
                         Text(chat.time)
                             .font(ClawdiaType.caption)
                             .foregroundStyle(palette.text3)
+                        Image(systemName: "chevron.right")
+                            .font(ClawdiaType.caption.weight(.semibold))
+                            .foregroundStyle(palette.text3.opacity(0.72))
                     }
                     Text(chat.preview)
                         .font(ClawdiaType.caption)
@@ -769,15 +903,43 @@ private struct ChatRow: View {
                         .lineLimit(2)
                 }
             }
-            .padding(ClawdiaSpacing.sm)
-            .background(palette.surface)
+            .padding(.vertical, ClawdiaSpacing.sm)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 }
 
+private struct EmptyAreaMessagesCard: View {
+    @Environment(\.clawdiaTheme) private var theme
+
+    var body: some View {
+        let palette = ClawdiaColor.palette(theme)
+        VStack(spacing: ClawdiaSpacing.sm) {
+            Image(systemName: "bubble.left.and.bubble.right")
+                .font(ClawdiaType.title)
+                .foregroundStyle(palette.text3)
+            Text("No chats yet")
+                .font(ClawdiaType.subhead.weight(.semibold))
+            Text("New conversations for this area will show up here.")
+                .font(ClawdiaType.caption)
+                .foregroundStyle(palette.text2)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(ClawdiaSpacing.xl)
+        .background(palette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.xl, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: ClawdiaRadius.xl, style: .continuous)
+                .stroke(palette.border, lineWidth: 0.5)
+        }
+    }
+}
+
 public struct ChatScreen: View {
     let state: MockAppState
+    private let chat: ChatPreview?
     private let showsNavigationHeader: Bool
     @State private var sentMessages: [String] = []
     @State private var floatingApproval: ApprovalRequest?
@@ -786,10 +948,12 @@ public struct ChatScreen: View {
 
     public init(
         state: MockAppState = .preview,
+        chat: ChatPreview? = nil,
         onBack: @escaping () -> Void = {},
         showsNavigationHeader: Bool = true
     ) {
         self.state = state
+        self.chat = chat
         self.showsNavigationHeader = showsNavigationHeader
     }
 
@@ -797,7 +961,12 @@ public struct ChatScreen: View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
                 AppScroll(keyboardDismissMode: .interactively, bottomPadding: ClawdiaSpacing.lg) {
-                    MessageBubble("Morning. I noticed your sister's birthday is in 4 days. Want me to start a reminder thread?", fromMe: false)
+                    if let chat {
+                        ChatContextCard(chat: chat)
+                        MessageBubble(chat.preview, fromMe: false)
+                    } else {
+                        MessageBubble("Morning. I noticed your sister's birthday is in 4 days. Want me to start a reminder thread?", fromMe: false)
+                    }
                     MessageBubble("yes pls. and help me draft her a card", fromMe: true)
                     ToolUseInline()
                     MessageBubble("Here's a draft leaning warm with a tiny joke.", fromMe: false)
@@ -847,7 +1016,7 @@ public struct ChatScreen: View {
             }
         }
         .sheet(isPresented: $showingAgentDetails) {
-            AgentDetailsSheet()
+            AgentDetailsSheet(chat: chat)
         }
     }
 }
@@ -858,12 +1027,12 @@ private struct ChatAgentNavigationTitle: View {
     var body: some View {
         let palette = ClawdiaColor.palette(theme)
         VStack(spacing: 1) {
-            ClawdiaAvatar(size: 34)
+            ClawdiaAvatar(size: 42)
             Text("Clawdia")
                 .font(ClawdiaType.caption.weight(.semibold))
                 .foregroundStyle(palette.text)
         }
-        .frame(minWidth: 104, minHeight: 52)
+        .frame(minWidth: 112, minHeight: 60)
         .contentShape(Rectangle())
     }
 }
@@ -871,6 +1040,7 @@ private struct ChatAgentNavigationTitle: View {
 private struct AgentDetailsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.clawdiaTheme) private var theme
+    let chat: ChatPreview?
 
     var body: some View {
         let palette = ClawdiaColor.palette(theme)
@@ -888,7 +1058,7 @@ private struct AgentDetailsSheet: View {
                 ClawdiaCard {
                     VStack(alignment: .leading, spacing: ClawdiaSpacing.sm) {
                         StatusPill("Ready", systemImage: "checkmark.circle")
-                        Text("Connected to local dev mode with chat, approvals, planning, and context surfaces available.")
+                        Text(detailsText)
                             .font(ClawdiaType.body)
                             .foregroundStyle(palette.text2)
                     }
@@ -907,6 +1077,13 @@ private struct AgentDetailsSheet: View {
             }
         }
     }
+
+    private var detailsText: String {
+        if let chat {
+            return "This chat is associated with \(chat.area.title). Future local communication will use this context."
+        }
+        return "Connected to local dev mode with chat, approvals, planning, and context surfaces available."
+    }
 }
 
 private extension View {
@@ -917,6 +1094,37 @@ private extension View {
         #else
         self
         #endif
+    }
+}
+
+private struct ChatContextCard: View {
+    @Environment(\.clawdiaTheme) private var theme
+    let chat: ChatPreview
+
+    var body: some View {
+        let palette = ClawdiaColor.palette(theme)
+        HStack(spacing: ClawdiaSpacing.sm) {
+            Image(systemName: chat.area.icon)
+                .frame(width: 34, height: 34)
+                .background(palette.surface2)
+                .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.md, style: .continuous))
+            VStack(alignment: .leading, spacing: ClawdiaSpacing.xxs) {
+                Text(chat.title)
+                    .font(ClawdiaType.body.weight(.semibold))
+                    .foregroundStyle(palette.text)
+                Text(chat.area.title)
+                    .font(ClawdiaType.caption)
+                    .foregroundStyle(palette.text2)
+            }
+            Spacer()
+        }
+        .padding(ClawdiaSpacing.md)
+        .background(palette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.xl, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: ClawdiaRadius.xl, style: .continuous)
+                .stroke(palette.border, lineWidth: 0.5)
+        }
     }
 }
 
@@ -1551,7 +1759,8 @@ public struct CalendarScreen: View {
                     view: $view,
                     modes: modes,
                     week: selectedWeek,
-                    topPadding: max(proxy.safeAreaInsets.top + ClawdiaSpacing.sm, ClawdiaSpacing.xl * 2)
+                    topPadding: max(proxy.safeAreaInsets.top + ClawdiaSpacing.sm, ClawdiaSpacing.xl * 2),
+                    onSelectToday: selectToday
                 )
                 ScrollView {
                     VStack(alignment: .leading, spacing: ClawdiaSpacing.lg) {
@@ -1612,10 +1821,26 @@ public struct CalendarScreen: View {
             return
         }
         didSeedCalendar = true
-        let initialDay = CalendarDemoData.initialSelectedDayID
-        selectedDayID = initialDay
-        selectedMonthKey = CalendarDemoData.monthKey(for: initialDay) ?? selectedMonthKey
-        selectedWeekIndex = CalendarDemoData.weekIndex(for: initialDay)
+        selectToday(animated: false)
+    }
+
+    private func selectToday() {
+        selectToday(animated: true)
+    }
+
+    private func selectToday(animated: Bool) {
+        let todayID = CalendarDemoData.initialSelectedDayID
+        let update = {
+            view = "Week"
+            selectedDayID = todayID
+            selectedMonthKey = CalendarDemoData.monthKey(for: todayID) ?? selectedMonthKey
+            selectedWeekIndex = CalendarDemoData.weekIndex(for: todayID)
+        }
+        if animated {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.84), update)
+        } else {
+            update()
+        }
     }
 }
 
@@ -1625,14 +1850,32 @@ private struct CalendarPinnedHeader: View {
     let modes: [String]
     let week: CalendarWeek
     let topPadding: CGFloat
+    let onSelectToday: () -> Void
 
     var body: some View {
         let palette = ClawdiaColor.palette(theme)
         VStack(alignment: .leading, spacing: ClawdiaSpacing.xs) {
-            CalendarTitle(
-                mode: view,
-                week: week
-            )
+            HStack(alignment: .top, spacing: ClawdiaSpacing.sm) {
+                CalendarTitle(
+                    mode: view,
+                    week: week
+                )
+                Spacer(minLength: ClawdiaSpacing.sm)
+                Button(action: onSelectToday) {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(ClawdiaType.subhead.weight(.semibold))
+                        .frame(width: 42, height: 42)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Circle())
+                        .overlay {
+                            Circle()
+                                .stroke(palette.border, lineWidth: 0.5)
+                        }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(palette.text)
+                .accessibilityLabel("Today")
+            }
             Picker("Calendar view", selection: $view) {
                 ForEach(modes, id: \.self) { Text($0).tag($0) }
             }
@@ -1730,11 +1973,7 @@ private enum CalendarDemoData {
     }
 
     static func dayID(for date: Date) -> String? {
-        let year = calendar.component(.year, from: date)
-        let month = calendar.component(.month, from: date)
-        let day = calendar.component(.day, from: date)
-        let monthKey = monthKey(forMonthNumber: month)
-        let id = "\(year)-\(monthKey)-\(day)"
+        let id = CalendarCurrentDateResolver.dayID(for: date, calendar: calendar)
         return allDays.contains { $0.id == id } ? id : nil
     }
 
@@ -1939,7 +2178,6 @@ private struct ScheduledTaskList: View {
         VStack(spacing: ClawdiaSpacing.sm) {
             WeekStrip(
                 weeks: weeks,
-                week: week,
                 selectedDayID: $selectedDayID,
                 selectedWeekIndex: $selectedWeekIndex
             )
@@ -2015,67 +2253,35 @@ private struct EmptyScheduleCard: View {
 private struct WeekStrip: View {
     @Environment(\.clawdiaTheme) private var theme
     let weeks: [CalendarWeek]
-    let week: CalendarWeek
     @Binding var selectedDayID: String
     @Binding var selectedWeekIndex: Int
-    @State private var hasSeededScrollPosition = false
-    @State private var pendingSettledItemID: String?
-    @State private var settleTask: Task<Void, Never>?
-    @State private var isUpdatingSelectionFromScroll = false
-    private let coordinateSpaceName = "calendar-week-strip"
 
     var body: some View {
         GeometryReader { proxy in
-            ScrollViewReader { scrollProxy in
-                ScrollView(.horizontal) {
-                    HStack(spacing: ClawdiaSpacing.sm) {
-                        ForEach(carouselItems) { item in
-                            WeekDayPill(
-                                day: item.day.weekday,
-                                date: item.day.displayDay,
-                                active: item.day.id == selectedDayID,
-                                hasDot: item.day.hasMarker,
-                                prominence: prominence(for: item),
-                                width: pillWidth(in: proxy.size.width)
-                            ) {
-                                select(item, scrollProxy: scrollProxy)
-                            }
-                            .id(item.id)
-                            .background {
-                                GeometryReader { itemProxy in
-                                    Color.clear.preference(
-                                        key: WeekStripItemFramePreferenceKey.self,
-                                        value: [item.id: itemProxy.frame(in: .named(coordinateSpaceName))]
-                                    )
-                                }
-                            }
-                            .zIndex(Double(prominence(for: item)))
+            ScrollView(.horizontal) {
+                HStack(spacing: ClawdiaSpacing.sm) {
+                    ForEach(carouselItems) { item in
+                        let isSelected = item.day.id == selectedDayID
+                        WeekDayPill(
+                            day: item.day.weekday,
+                            date: item.day.displayDay,
+                            active: isSelected,
+                            hasDot: item.day.hasMarker,
+                            prominence: isSelected ? 1 : 0,
+                            width: pillWidth(in: proxy.size.width)
+                        ) {
+                            select(item)
                         }
+                        .id(item.id)
                     }
                 }
-                .coordinateSpace(name: coordinateSpaceName)
-                .contentMargins(.horizontal, horizontalInset(for: proxy.size.width), for: .scrollContent)
-                .scrollIndicators(.hidden)
-                .onAppear {
-                    seedScrollPosition(scrollProxy)
-                }
-                .onChange(of: selectedDayID) { _, newValue in
-                    guard !isUpdatingSelectionFromScroll else {
-                        return
-                    }
-                    centerSelectedDay(newValue, scrollProxy: scrollProxy)
-                }
-                .onPreferenceChange(WeekStripItemFramePreferenceKey.self) { frames in
-                    scheduleSelectionForNearestItem(in: frames, viewportWidth: proxy.size.width)
-                }
+                .padding(.horizontal, ClawdiaSpacing.lg)
             }
+            .scrollIndicators(.hidden)
         }
         .frame(height: 84)
         .padding(.top, 0)
         .padding(.bottom, ClawdiaSpacing.xs)
-        .onDisappear {
-            settleTask?.cancel()
-        }
     }
 
     private var carouselItems: [CalendarCarouselItem] {
@@ -2086,111 +2292,16 @@ private struct WeekStrip: View {
         }
     }
 
-    private func select(_ item: CalendarCarouselItem, scrollProxy: ScrollViewProxy) {
-        settleTask?.cancel()
-        pendingSettledItemID = item.id
+    private func select(_ item: CalendarCarouselItem) {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.84)) {
             selectedDayID = item.day.id
             selectedWeekIndex = item.weekIndex
-            scrollProxy.scrollTo(item.id, anchor: .center)
-        }
-    }
-
-    private func seedScrollPosition(_ scrollProxy: ScrollViewProxy) {
-        guard !hasSeededScrollPosition else {
-            return
-        }
-        hasSeededScrollPosition = true
-        DispatchQueue.main.async {
-            scrollProxy.scrollTo(selectedDayID, anchor: .center)
-        }
-    }
-
-    private func centerSelectedDay(_ dayID: String, scrollProxy: ScrollViewProxy) {
-        guard hasSeededScrollPosition else {
-            return
-        }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.84)) {
-            scrollProxy.scrollTo(dayID, anchor: .center)
-        }
-    }
-
-    private func scheduleSelectionForNearestItem(in frames: [String: CGRect], viewportWidth: CGFloat) {
-        guard hasSeededScrollPosition else {
-            return
-        }
-        let viewportCenter = viewportWidth / 2
-        guard let nearest = frames.min(by: {
-            abs($0.value.midX - viewportCenter) < abs($1.value.midX - viewportCenter)
-        }) else {
-            return
-        }
-        guard nearest.key != pendingSettledItemID else {
-            return
-        }
-        pendingSettledItemID = nearest.key
-        settleTask?.cancel()
-        guard nearest.key != selectedDayID else {
-            return
-        }
-        settleTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 180_000_000)
-            guard !Task.isCancelled else {
-                return
-            }
-            applySettledSelection(nearest.key)
-        }
-    }
-
-    private func applySettledSelection(_ itemID: String) {
-        guard pendingSettledItemID == itemID,
-              let item = carouselItems.first(where: { $0.id == itemID }) else {
-            return
-        }
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        isUpdatingSelectionFromScroll = true
-        withTransaction(transaction) {
-            selectedDayID = item.day.id
-            selectedWeekIndex = item.weekIndex
-        }
-        DispatchQueue.main.async {
-            isUpdatingSelectionFromScroll = false
         }
     }
 
     private func pillWidth(in containerWidth: CGFloat) -> CGFloat {
         let spacing = ClawdiaSpacing.sm * 4
         return min(66, max(56, (containerWidth - spacing) / 5))
-    }
-
-    private func horizontalInset(for containerWidth: CGFloat) -> CGFloat {
-        max(ClawdiaSpacing.lg, (containerWidth - pillWidth(in: containerWidth)) / 2)
-    }
-
-    private func prominence(for item: CalendarCarouselItem) -> CGFloat {
-        guard let selectedIndex = carouselItems.firstIndex(where: { $0.day.id == selectedDayID }),
-              let itemIndex = carouselItems.firstIndex(where: { $0.id == item.id }) else {
-            return 0
-        }
-        switch abs(itemIndex - selectedIndex) {
-        case 0:
-            return 1
-        case 1:
-            return 0.38
-        case 2:
-            return 0.16
-        default:
-            return 0
-        }
-    }
-}
-
-private struct WeekStripItemFramePreferenceKey: PreferenceKey {
-    static let defaultValue: [String: CGRect] = [:]
-
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 
@@ -2556,13 +2667,21 @@ private struct Stat: View {
 public struct FolderManagerScreen: View {
     @Environment(\.clawdiaTheme) private var theme
     let folders: [FolderSummary]
+    let customAreas: [UserArea]
+    let onCreateArea: (String) -> UserArea?
     let onDone: () -> Void
-    @State private var customAreas: [CustomArea] = []
     @State private var showingNewArea = false
     @State private var draftAreaName = ""
 
-    public init(folders: [FolderSummary] = MockAppState.preview.folders, onDone: @escaping () -> Void = {}) {
+    public init(
+        folders: [FolderSummary] = MockAppState.preview.folders,
+        customAreas: [UserArea] = [],
+        onCreateArea: @escaping (String) -> UserArea? = { _ in nil },
+        onDone: @escaping () -> Void = {}
+    ) {
         self.folders = folders
+        self.customAreas = customAreas
+        self.onCreateArea = onCreateArea
         self.onDone = onDone
     }
 
@@ -2590,10 +2709,7 @@ public struct FolderManagerScreen: View {
         }
         .sheet(isPresented: $showingNewArea) {
             NewAreaSheet(name: $draftAreaName) {
-                let name = draftAreaName.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !name.isEmpty {
-                    customAreas.append(CustomArea(name: name))
-                }
+                _ = onCreateArea(draftAreaName)
                 draftAreaName = ""
                 showingNewArea = false
             } onCancel: {
@@ -2630,44 +2746,38 @@ private struct ManageAreasHeader: View {
 }
 
 private struct ManageAreaRow: View {
-    @Environment(\.clawdiaTheme) private var theme
     let folder: FolderSummary
     let colorIndex: Int
 
     var body: some View {
-        let palette = ClawdiaColor.palette(theme)
-        HStack(spacing: ClawdiaSpacing.sm) {
-            Image(systemName: "circle.grid.2x2")
-                .font(ClawdiaType.caption)
-                .foregroundStyle(palette.text3)
-            Image(systemName: folder.id.icon)
-                .frame(width: 40, height: 40)
-                .background(palette.folders[colorIndex % palette.folders.count])
-                .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.md, style: .continuous))
-            VStack(alignment: .leading, spacing: ClawdiaSpacing.xxs) {
-                Text(folder.id.title)
-                    .font(ClawdiaType.body.weight(.semibold))
-                Text("\(folder.chatCount) chats")
-                    .font(ClawdiaType.caption)
-                    .foregroundStyle(palette.text2)
-            }
-            Spacer()
-            Image(systemName: "chevron.right")
-                .foregroundStyle(palette.text3)
-        }
-        .padding(ClawdiaSpacing.md)
-        .background(palette.surface)
-        .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.lg, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: ClawdiaRadius.lg, style: .continuous)
-                .stroke(palette.border, lineWidth: 0.5)
-        }
+        ManageAreaListRow(
+            title: folder.id.title,
+            subtitle: "\(folder.chatCount) chats",
+            systemImage: folder.id.icon,
+            colorIndex: colorIndex
+        )
     }
 }
 
 private struct ManageCustomAreaRow: View {
+    let area: UserArea
+    let colorIndex: Int
+
+    var body: some View {
+        ManageAreaListRow(
+            title: area.name,
+            subtitle: "0 chats",
+            systemImage: area.icon,
+            colorIndex: colorIndex
+        )
+    }
+}
+
+private struct ManageAreaListRow: View {
     @Environment(\.clawdiaTheme) private var theme
-    let area: CustomArea
+    let title: String
+    let subtitle: String
+    let systemImage: String
     let colorIndex: Int
 
     var body: some View {
@@ -2676,14 +2786,14 @@ private struct ManageCustomAreaRow: View {
             Image(systemName: "circle.grid.2x2")
                 .font(ClawdiaType.caption)
                 .foregroundStyle(palette.text3)
-            Image(systemName: "sparkles")
+            Image(systemName: systemImage)
                 .frame(width: 40, height: 40)
                 .background(palette.folders[colorIndex % palette.folders.count])
                 .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.md, style: .continuous))
             VStack(alignment: .leading, spacing: ClawdiaSpacing.xxs) {
-                Text(area.name)
+                Text(title)
                     .font(ClawdiaType.body.weight(.semibold))
-                Text("0 chats")
+                Text(subtitle)
                     .font(ClawdiaType.caption)
                     .foregroundStyle(palette.text2)
             }
@@ -2703,15 +2813,18 @@ private struct ManageCustomAreaRow: View {
 
 public struct SettingsScreen: View {
     @Binding private var theme: ClawdiaTheme
+    private let areaCount: Int
     private let onOpenAreas: () -> Void
     private let onOpenDevelopment: (DevScreen) -> Void
 
     public init(
         theme: Binding<ClawdiaTheme> = .constant(.light),
+        areaCount: Int = MockAppState.preview.availableAreaCount,
         onOpenAreas: @escaping () -> Void = {},
         onOpenDevelopment: @escaping (DevScreen) -> Void = { _ in }
     ) {
         _theme = theme
+        self.areaCount = areaCount
         self.onOpenAreas = onOpenAreas
         self.onOpenDevelopment = onOpenDevelopment
     }
@@ -2721,6 +2834,7 @@ public struct SettingsScreen: View {
             Text("you")
                 .font(ClawdiaType.display())
             ClawdiaProfileSettingsCard()
+            ThemeModeCard(theme: $theme)
             ClawdiaSettingsSection(title: "Clawdia", rows: [
                 SettingsRowData(icon: "◆", label: "Personality", detail: "Warm friend"),
                 SettingsRowData(icon: "✦", label: "Voice", detail: "Hazel - soft"),
@@ -2728,7 +2842,7 @@ public struct SettingsScreen: View {
                 SettingsRowData(icon: "🌙", label: "Quiet hours", detail: "10 PM - 7 AM")
             ])
             ClawdiaSettingsSection(title: "Areas", rows: [
-                SettingsRowData(icon: "◇", label: "Manage areas", detail: "6 active", action: onOpenAreas),
+                SettingsRowData(icon: "◇", label: "Manage areas", detail: "\(areaCount) active", action: onOpenAreas),
                 SettingsRowData(icon: "🔗", label: "Connected apps", detail: "3 of 5"),
                 SettingsRowData(icon: "⚶", label: "Memory & context", detail: "On")
             ])

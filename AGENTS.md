@@ -22,3 +22,6 @@
 - Preserve design-system usage:
   - Product UI must use design tokens and shared components instead of hard-coded visual styling.
   - New colors, typography, spacing, radii, and shadows belong in the design system first.
+- Treat reusable component extraction as a review gate:
+  - Before approving a slice, check whether newly duplicated UI or behavior should become a shared component.
+  - Prefer small reusable components for repeated product patterns instead of copy-pasting view structure.
