@@ -15,6 +15,10 @@ let package = Package(
         .library(name: "ClawdiaFeatures", targets: ["ClawdiaFeatures"]),
         .executable(name: "ClawdiaVerificationTests", targets: ["ClawdiaVerificationTests"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/krzyzanowskim/CryptoSwift.git", from: "1.10.0"),
+        .package(url: "https://github.com/GigaBitcoin/secp256k1.swift", exact: "0.12.2")
+    ],
     targets: [
         .target(name: "SharedKernel"),
         .target(
@@ -30,7 +34,9 @@ let package = Package(
             dependencies: [
                 "SharedKernel",
                 "ClawdiaObservability",
-                "ClawdiaDesignSystem"
+                "ClawdiaDesignSystem",
+                .product(name: "CryptoSwift", package: "CryptoSwift"),
+                .product(name: "secp256k1", package: "secp256k1.swift")
             ]
         ),
         .executableTarget(

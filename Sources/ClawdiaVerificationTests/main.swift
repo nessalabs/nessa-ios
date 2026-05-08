@@ -13,6 +13,27 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) throws {
     }
 }
 
+func hexString(_ data: Data) -> String {
+    data.map { String(format: "%02x", $0) }.joined()
+}
+
+func dataFromHex(_ hex: String) throws -> Data {
+    guard hex.count.isMultiple(of: 2) else {
+        throw VerificationFailure(description: "hex fixture should have an even length")
+    }
+    var data = Data()
+    var index = hex.startIndex
+    while index < hex.endIndex {
+        let nextIndex = hex.index(index, offsetBy: 2)
+        guard let byte = UInt8(hex[index..<nextIndex], radix: 16) else {
+            throw VerificationFailure(description: "hex fixture should only contain hex characters")
+        }
+        data.append(byte)
+        index = nextIndex
+    }
+    return data
+}
+
 func testSharedKernel() throws {
     let value = NonEmptyString("  Clawdia  ")
     try expect(value.value == "Clawdia", "NonEmptyString should trim whitespace")
@@ -169,6 +190,25 @@ final class RecordingNostrMessageSender: NostrAgentMessageSending {
     }
 }
 
+final class SequenceNostrEntropySource: NostrEntropySource {
+    private var values: [Data]
+
+    init(_ values: [Data]) {
+        self.values = values
+    }
+
+    func bytes(count: Int) throws -> Data {
+        guard !values.isEmpty else {
+            throw VerificationFailure(description: "deterministic Nostr entropy source ran out of values")
+        }
+        let value = values.removeFirst()
+        guard value.count == count else {
+            throw VerificationFailure(description: "deterministic Nostr entropy value should have \(count) bytes")
+        }
+        return value
+    }
+}
+
 func testStorePreparesRelayEventWhenSenderIsConfigured() throws {
     let state = MockAppState.preview
     guard let chat = state.chats(matching: .life(.home)).first else {
@@ -213,6 +253,77 @@ func testPreparedRelayEventEncodesNIP01ClientFrame() throws {
     try expect(relayMessage.contains("[\"p\","), "relay client messages should include a p tag")
     try expect(relayMessage.contains(recipientPublicKeyHex), "relay client messages should route to the recipient pubkey")
     try expect(relayMessage.contains("wss://relay.example.com") == false, "relay URLs should stay local and not be encoded into event JSON")
+}
+
+func testNIP44OfficialVector() throws {
+    let sec1 = String(repeating: "0", count: 63) + "1"
+    let sec2 = String(repeating: "0", count: 63) + "2"
+    let nonce = try dataFromHex(String(repeating: "0", count: 63) + "1")
+    let keypair1 = try NostrAgentKeypair(privateKeyHex: sec1)
+    let keypair2 = try NostrAgentKeypair(privateKeyHex: sec2)
+    let cipher = NostrNIP44Cipher()
+
+    let conversationKey = try cipher.conversationKey(privateKeyHex: sec1, publicKeyHex: keypair2.publicKeyHex)
+    try expect(hexString(conversationKey) == "c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d", "NIP-44 conversation key should match the official vector")
+
+    let payload = try cipher.encrypt(plaintext: "a", conversationKey: conversationKey, nonce: nonce)
+    try expect(payload == "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABee0G5VSK0/9YypIObAtDKfYEAjD35uVkHyB0F4DwrcNaCXlCWZKaArsGrY6M9wnuTMxWfp1RTN9Xga8no+kF5Vsb", "NIP-44 payload should match the official vector")
+
+    let decrypted = try cipher.decrypt(payload: payload, privateKeyHex: sec2, publicKeyHex: keypair1.publicKeyHex)
+    try expect(decrypted == "a", "NIP-44 payload should decrypt from the recipient side")
+}
+
+func testEncryptedNostrSenderPreparesGiftWrap() throws {
+    let phonePrivateKey = String(repeating: "0", count: 63) + "1"
+    let desktopPrivateKey = String(repeating: "0", count: 63) + "2"
+    let wrapperPrivateKey = String(repeating: "0", count: 63) + "3"
+    let phoneKeypair = try NostrAgentKeypair(privateKeyHex: phonePrivateKey)
+    let desktopKeypair = try NostrAgentKeypair(privateKeyHex: desktopPrivateKey)
+    let relayURL = URL(string: "wss://relay.example.com")!
+    let chat = ChatPreview(
+        title: "Apartment tasks",
+        preview: "Package pickup is open.",
+        time: "Now",
+        area: .home
+    )
+    let configuration = NostrAgentBridgeConfiguration(
+        phonePublicKey: phoneKeypair.publicKeyHex,
+        desktopPublicKey: desktopKeypair.publicKeyHex,
+        relayURLs: [relayURL]
+    )
+    let outboxEvent = NostrAgentEventFactory(configuration: configuration)
+        .queueChatMessage(text: "Can you check the package?", chat: chat, now: Date(timeIntervalSince1970: 1_777_777_777))
+    let entropy = SequenceNostrEntropySource([
+        Data(repeating: 1, count: 32),
+        try dataFromHex(wrapperPrivateKey),
+        Data(repeating: 4, count: 32)
+    ])
+    let sender = try NostrEncryptedAgentMessageSender(phonePrivateKeyHex: phonePrivateKey, entropy: entropy)
+
+    let prepared = try sender.send(outboxEvent)
+    let wrapperKeypair = try NostrAgentKeypair(privateKeyHex: wrapperPrivateKey)
+
+    try expect(prepared.kind == 1059, "encrypted Nostr sender should prepare a NIP-59 gift wrap event")
+    try expect(prepared.tags == [["p", desktopKeypair.publicKeyHex]], "gift wrap should route to the desktop recipient")
+    try expect(prepared.relayURLs == [relayURL], "relay URLs should remain local delivery metadata")
+    try expect(prepared.pubkey == wrapperKeypair.publicKeyHex, "gift wrap should be signed by the ephemeral wrapper key")
+    try expect(prepared.signature.count == 128, "gift wrap should include a Schnorr signature")
+    try expect(prepared.content.contains("Can you check the package?") == false, "gift wrap content should not expose plaintext")
+    try expect(prepared.content.contains(AgentMessageEnvelope.schema) == false, "gift wrap content should not expose the app message schema")
+}
+
+func testNostrRelayOKResponseParsing() throws {
+    let relayURL = URL(string: "wss://relay.example.com")!
+    let eventID = String(repeating: "a", count: 64)
+
+    let accepted = NostrRelayResponseParser.receipt(from: "[\"OK\",\"\(eventID)\",true,\"\"]", relayURL: relayURL)
+    try expect(accepted?.eventID == eventID, "relay OK parser should retain the event id")
+    try expect(accepted?.accepted == true, "relay OK parser should retain accepted=true")
+    try expect(accepted?.relayURL == relayURL, "relay OK parser should retain the relay URL")
+
+    let rejected = NostrRelayResponseParser.receipt(from: "[\"OK\",\"\(eventID)\",false,\"blocked: denied\"]", relayURL: relayURL)
+    try expect(rejected?.accepted == false, "relay OK parser should retain accepted=false")
+    try expect(rejected?.message == "blocked: denied", "relay OK parser should retain relay messages")
 }
 
 func testAgentEnvelopeCarriesReferencesWithoutFileBytes() throws {
@@ -264,6 +375,9 @@ do {
     try testStoreQueuesNostrEventOnChatSend()
     try testStorePreparesRelayEventWhenSenderIsConfigured()
     try testPreparedRelayEventEncodesNIP01ClientFrame()
+    try testNIP44OfficialVector()
+    try testEncryptedNostrSenderPreparesGiftWrap()
+    try testNostrRelayOKResponseParsing()
     try testAgentEnvelopeCarriesReferencesWithoutFileBytes()
     try testLocalConnectionRequestShape()
     print("Clawdia verification tests passed")
