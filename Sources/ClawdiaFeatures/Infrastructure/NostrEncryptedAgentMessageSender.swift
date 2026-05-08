@@ -40,11 +40,17 @@ public enum NostrCryptoError: Error, Equatable {
     case aadLengthInvalid(Int)
     case conversationKeyLengthInvalid(Int)
     case emptyPlaintext
+    case invalidEnvelope
     case invalidByteCount
+    case invalidEventID
+    case invalidGiftWrap
     case invalidPayload
     case invalidPrivateKey
     case invalidPublicKey
+    case invalidRumor
     case invalidRelayTarget
+    case invalidSeal
+    case invalidSignature
     case invalidSignatureInput
     case nonceLengthInvalid(Int)
     case plaintextTooLarge(Int)
@@ -336,6 +342,65 @@ public struct NostrEncryptedAgentMessageSender: NostrAgentMessageSending {
     }
 }
 
+public struct NostrEncryptedAgentMessageReceiver {
+    private let receivingKeypair: NostrAgentKeypair
+    private let expectedSenderPublicKeyHex: String?
+    private let cipher: NostrNIP44Cipher
+
+    public init(
+        phonePrivateKeyHex: String,
+        expectedSenderPublicKeyHex: String? = nil
+    ) throws {
+        self.receivingKeypair = try NostrAgentKeypair(privateKeyHex: phonePrivateKeyHex)
+        self.expectedSenderPublicKeyHex = expectedSenderPublicKeyHex?.lowercased()
+        self.cipher = NostrNIP44Cipher()
+    }
+
+    public func receive(_ event: NostrPreparedRelayEvent) throws -> AgentMessageEnvelope {
+        guard event.kind == 1059,
+              event.tags.contains(["p", receivingKeypair.publicKeyHex]) else {
+            throw NostrCryptoError.invalidGiftWrap
+        }
+
+        let giftWrap = NostrWireEvent(prepared: event)
+        try giftWrap.validateSigned()
+
+        let sealJSON = try cipher.decrypt(
+            payload: event.content,
+            privateKeyHex: receivingKeypair.privateKeyHex,
+            publicKeyHex: event.pubkey
+        )
+        let seal = try NostrWireEvent(jsonString: sealJSON)
+        guard seal.kind == 13, seal.tags.isEmpty else {
+            throw NostrCryptoError.invalidSeal
+        }
+        try seal.validateSigned()
+        if let expectedSenderPublicKeyHex, seal.pubkey != expectedSenderPublicKeyHex {
+            throw NostrCryptoError.invalidSeal
+        }
+
+        let rumorJSON = try cipher.decrypt(
+            payload: seal.content,
+            privateKeyHex: receivingKeypair.privateKeyHex,
+            publicKeyHex: seal.pubkey
+        )
+        let rumor = try NostrWireEvent(jsonString: rumorJSON)
+        guard rumor.signature == nil, rumor.pubkey == seal.pubkey else {
+            throw NostrCryptoError.invalidRumor
+        }
+        try rumor.validateID()
+
+        guard let contentData = rumor.content.data(using: .utf8) else {
+            throw NostrCryptoError.utf8EncodingFailed
+        }
+        do {
+            return try JSONDecoder().decode(AgentMessageEnvelope.self, from: contentData)
+        } catch {
+            throw NostrCryptoError.invalidEnvelope
+        }
+    }
+}
+
 private struct NostrMessageKeys {
     let chachaKey: Data
     let chachaNonce: Data
@@ -359,6 +424,43 @@ private struct NostrWireEvent: Codable, Equatable {
         case tags
         case content
         case signature = "sig"
+    }
+
+    init(
+        id: String,
+        pubkey: String,
+        createdAt: Int,
+        kind: Int,
+        tags: [[String]],
+        content: String,
+        signature: String?
+    ) {
+        self.id = id
+        self.pubkey = pubkey
+        self.createdAt = createdAt
+        self.kind = kind
+        self.tags = tags
+        self.content = content
+        self.signature = signature
+    }
+
+    init(prepared: NostrPreparedRelayEvent) {
+        self.init(
+            id: prepared.id,
+            pubkey: prepared.pubkey,
+            createdAt: prepared.createdAt,
+            kind: prepared.kind,
+            tags: prepared.tags,
+            content: prepared.content,
+            signature: prepared.signature
+        )
+    }
+
+    init(jsonString: String) throws {
+        guard let data = jsonString.data(using: .utf8) else {
+            throw NostrCryptoError.utf8EncodingFailed
+        }
+        self = try JSONDecoder().decode(Self.self, from: data)
     }
 
     static func unsigned(pubkey: String, createdAt: Int, kind: Int, tags: [[String]], content: String) throws -> Self {
@@ -388,6 +490,23 @@ private struct NostrWireEvent: Codable, Equatable {
         }
         return json
     }
+
+    func validateID() throws {
+        let calculatedID = try NostrEventIdentity.id(pubkey: pubkey, createdAt: createdAt, kind: kind, tags: tags, content: content)
+        guard calculatedID == id else {
+            throw NostrCryptoError.invalidEventID
+        }
+    }
+
+    func validateSigned() throws {
+        try validateID()
+        guard let signature else {
+            throw NostrCryptoError.invalidSignature
+        }
+        guard try NostrEventIdentity.isSignatureValid(signature: signature, id: id, publicKeyHex: pubkey) else {
+            throw NostrCryptoError.invalidSignature
+        }
+    }
 }
 
 private enum NostrEventIdentity {
@@ -403,6 +522,15 @@ private enum NostrEventIdentity {
         )
         let signature = try signingKey.signature(message: &message, auxiliaryRand: nil)
         return signature.dataRepresentation.nostrHexString
+    }
+
+    static func isSignatureValid(signature: String, id: String, publicKeyHex: String) throws -> Bool {
+        let signatureData = try NostrHex.decode(signature, expectedByteCount: 64)
+        let publicKeyData = try NostrHex.decode(publicKeyHex, expectedByteCount: 32)
+        let signature = try secp256k1.Schnorr.SchnorrSignature(dataRepresentation: signatureData)
+        let publicKey = secp256k1.Schnorr.XonlyKey(dataRepresentation: publicKeyData)
+        var message = [UInt8](try NostrHex.decode(id, expectedByteCount: 32))
+        return publicKey.isValid(signature, for: &message)
     }
 
     private static func serializedEvent(

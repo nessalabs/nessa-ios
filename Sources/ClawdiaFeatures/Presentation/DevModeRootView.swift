@@ -1862,10 +1862,15 @@ private struct CalendarPinnedHeader: View {
         let palette = ClawdiaColor.palette(theme)
         VStack(alignment: .leading, spacing: ClawdiaSpacing.xs) {
             HStack(alignment: .top, spacing: ClawdiaSpacing.sm) {
-                CalendarTitle(
-                    mode: view,
-                    week: week
-                )
+                Button(action: onSelectToday) {
+                    CalendarTitle(
+                        mode: view,
+                        week: week
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Today")
                 Spacer(minLength: ClawdiaSpacing.sm)
                 Button(action: onSelectToday) {
                     Image(systemName: "calendar.badge.clock")

@@ -34,6 +34,16 @@ func dataFromHex(_ hex: String) throws -> Data {
     return data
 }
 
+func encodeAgentEnvelope(_ envelope: AgentMessageEnvelope) throws -> String {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    let data = try encoder.encode(envelope)
+    guard let json = String(data: data, encoding: .utf8) else {
+        throw VerificationFailure(description: "agent envelope should encode as UTF-8 JSON")
+    }
+    return json
+}
+
 func testSharedKernel() throws {
     let value = NonEmptyString("  Clawdia  ")
     try expect(value.value == "Clawdia", "NonEmptyString should trim whitespace")
@@ -209,6 +219,46 @@ final class SequenceNostrEntropySource: NostrEntropySource {
     }
 }
 
+final class RecordingNostrRelayPublisher: NostrRelayPublishing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var publishedEvents: [NostrPreparedRelayEvent] = []
+    private let receipts: [NostrRelayPublishReceipt]
+
+    init(receipts: [NostrRelayPublishReceipt]) {
+        self.receipts = receipts
+    }
+
+    func publish(_ event: NostrPreparedRelayEvent) async -> [NostrRelayPublishReceipt] {
+        lock.withLock {
+            publishedEvents.append(event)
+        }
+        return receipts
+    }
+
+    func publishedEventIDs() -> [String] {
+        lock.withLock {
+            publishedEvents.map(\.id)
+        }
+    }
+}
+
+final class NostrReceiptBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var receipts: [NostrRelayPublishReceipt] = []
+
+    func set(_ receipts: [NostrRelayPublishReceipt]) {
+        lock.withLock {
+            self.receipts = receipts
+        }
+    }
+
+    func get() -> [NostrRelayPublishReceipt] {
+        lock.withLock {
+            receipts
+        }
+    }
+}
+
 func testStorePreparesRelayEventWhenSenderIsConfigured() throws {
     let state = MockAppState.preview
     guard let chat = state.chats(matching: .life(.home)).first else {
@@ -312,6 +362,109 @@ func testEncryptedNostrSenderPreparesGiftWrap() throws {
     try expect(prepared.content.contains(AgentMessageEnvelope.schema) == false, "gift wrap content should not expose the app message schema")
 }
 
+func testEncryptedNostrReceiverUnwrapsDesktopEnvelope() throws {
+    let phonePrivateKey = String(repeating: "0", count: 63) + "1"
+    let desktopPrivateKey = String(repeating: "0", count: 63) + "2"
+    let wrapperPrivateKey = String(repeating: "0", count: 63) + "3"
+    let phoneKeypair = try NostrAgentKeypair(privateKeyHex: phonePrivateKey)
+    let desktopKeypair = try NostrAgentKeypair(privateKeyHex: desktopPrivateKey)
+    let envelope = AgentMessageEnvelope(
+        conversationID: "home:apartment",
+        area: "home",
+        sender: .desktopClient,
+        kind: .diffReference,
+        text: "Review this desktop diff.",
+        attachments: [
+            AgentMessageAttachment(
+                kind: .diffReference,
+                name: "settings.diff",
+                contentType: "text/x-diff",
+                localReference: "clawdia://desktop/context/settings-diff"
+            )
+        ],
+        createdAt: 1_777_777_777
+    )
+    let draft = NostrEventDraft(
+        pubkey: desktopKeypair.publicKeyHex,
+        createdAt: 1_777_777_777,
+        kind: NostrAgentEventFactory.ephemeralAgentMessageKind,
+        tags: [
+            ["p", phoneKeypair.publicKeyHex],
+            ["app", "clawdia"],
+            ["schema", AgentMessageEnvelope.schema],
+            ["conversation", "home:apartment"],
+            ["area", "home"]
+        ],
+        content: try encodeAgentEnvelope(envelope)
+    )
+    let outboxEvent = NostrOutboxEvent(
+        draft: draft,
+        relayURLs: [URL(string: "wss://relay.example.com")!],
+        delivery: .requiresEncryptedGiftWrap
+    )
+    let sender = try NostrEncryptedAgentMessageSender(
+        phonePrivateKeyHex: desktopPrivateKey,
+        entropy: SequenceNostrEntropySource([
+            Data(repeating: 7, count: 32),
+            try dataFromHex(wrapperPrivateKey),
+            Data(repeating: 8, count: 32)
+        ])
+    )
+    let receiver = try NostrEncryptedAgentMessageReceiver(
+        phonePrivateKeyHex: phonePrivateKey,
+        expectedSenderPublicKeyHex: desktopKeypair.publicKeyHex
+    )
+
+    let prepared = try sender.send(outboxEvent)
+    let received = try receiver.receive(prepared)
+
+    try expect(received == envelope, "phone receiver should unwrap the desktop envelope exactly")
+    try expect(prepared.content.contains("Review this desktop diff.") == false, "received gift wrap should not expose desktop plaintext")
+    try expect(prepared.content.contains("settings.diff") == false, "received gift wrap should not expose desktop attachment names")
+}
+
+func testPublishingSenderPublishesPreparedGiftWrap() throws {
+    let phonePrivateKey = String(repeating: "0", count: 63) + "1"
+    let desktopPrivateKey = String(repeating: "0", count: 63) + "2"
+    let wrapperPrivateKey = String(repeating: "0", count: 63) + "3"
+    let phoneKeypair = try NostrAgentKeypair(privateKeyHex: phonePrivateKey)
+    let desktopKeypair = try NostrAgentKeypair(privateKeyHex: desktopPrivateKey)
+    let relayURL = URL(string: "wss://relay.example.com")!
+    let configuration = NostrAgentBridgeConfiguration(
+        phonePublicKey: phoneKeypair.publicKeyHex,
+        desktopPublicKey: desktopKeypair.publicKeyHex,
+        relayURLs: [relayURL]
+    )
+    let chat = ChatPreview(title: "Apartment tasks", preview: "Package pickup is open.", time: "Now", area: .home)
+    let outboxEvent = NostrAgentEventFactory(configuration: configuration)
+        .queueChatMessage(text: "Can you check the package?", chat: chat, now: Date(timeIntervalSince1970: 1_777_777_777))
+    let receipt = NostrRelayPublishReceipt(relayURL: relayURL, eventID: "pending", accepted: true, message: "")
+    let publisher = RecordingNostrRelayPublisher(receipts: [receipt])
+    let semaphore = DispatchSemaphore(value: 0)
+    let receiptBox = NostrReceiptBox()
+    let sender = try NostrPublishingAgentMessageSender(
+        phonePrivateKeyHex: phonePrivateKey,
+        relayPublisher: publisher,
+        entropy: SequenceNostrEntropySource([
+            Data(repeating: 1, count: 32),
+            try dataFromHex(wrapperPrivateKey),
+            Data(repeating: 4, count: 32)
+        ]),
+        receiptHandler: { receipts in
+            receiptBox.set(receipts)
+            semaphore.signal()
+        }
+    )
+
+    let prepared = try sender.send(outboxEvent)
+    guard semaphore.wait(timeout: .now() + 2) == .success else {
+        throw VerificationFailure(description: "publishing sender should call the relay publisher")
+    }
+
+    try expect(publisher.publishedEventIDs() == [prepared.id], "publishing sender should publish the prepared gift wrap")
+    try expect(receiptBox.get() == [receipt], "publishing sender should surface relay receipts")
+}
+
 func testNostrRelayOKResponseParsing() throws {
     let relayURL = URL(string: "wss://relay.example.com")!
     let eventID = String(repeating: "a", count: 64)
@@ -324,6 +477,25 @@ func testNostrRelayOKResponseParsing() throws {
     let rejected = NostrRelayResponseParser.receipt(from: "[\"OK\",\"\(eventID)\",false,\"blocked: denied\"]", relayURL: relayURL)
     try expect(rejected?.accepted == false, "relay OK parser should retain accepted=false")
     try expect(rejected?.message == "blocked: denied", "relay OK parser should retain relay messages")
+}
+
+func testNostrBridgeCredentialsDeriveRuntimeConfiguration() throws {
+    let phonePrivateKey = String(repeating: "0", count: 63) + "1"
+    let desktopPrivateKey = String(repeating: "0", count: 63) + "2"
+    let phoneKeypair = try NostrAgentKeypair(privateKeyHex: phonePrivateKey)
+    let desktopKeypair = try NostrAgentKeypair(privateKeyHex: desktopPrivateKey)
+    let relayURL = URL(string: "wss://relay.example.com")!
+    let credentials = try NostrAgentBridgeCredentials(
+        phonePrivateKeyHex: phonePrivateKey,
+        desktopPublicKeyHex: desktopKeypair.publicKeyHex,
+        relayURLs: [relayURL]
+    )
+
+    let configuration = try credentials.bridgeConfiguration()
+
+    try expect(configuration.phonePublicKey == phoneKeypair.publicKeyHex, "credentials should derive the phone public key from the secure private key")
+    try expect(configuration.desktopPublicKey == desktopKeypair.publicKeyHex, "credentials should retain the paired desktop public key")
+    try expect(configuration.relayURLs == [relayURL], "credentials should retain paired relay URLs")
 }
 
 func testAgentEnvelopeCarriesReferencesWithoutFileBytes() throws {
@@ -377,7 +549,10 @@ do {
     try testPreparedRelayEventEncodesNIP01ClientFrame()
     try testNIP44OfficialVector()
     try testEncryptedNostrSenderPreparesGiftWrap()
+    try testEncryptedNostrReceiverUnwrapsDesktopEnvelope()
+    try testPublishingSenderPublishesPreparedGiftWrap()
     try testNostrRelayOKResponseParsing()
+    try testNostrBridgeCredentialsDeriveRuntimeConfiguration()
     try testAgentEnvelopeCarriesReferencesWithoutFileBytes()
     try testLocalConnectionRequestShape()
     print("Clawdia verification tests passed")
