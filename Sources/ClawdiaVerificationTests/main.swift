@@ -100,6 +100,51 @@ func testProductionStateUsesRealAgentThreads() throws {
     try expect(!state.chats.contains { $0.title == "Mia's birthday" || $0.title == "Q4 planning" }, "production should not include preview/demo chat rows")
 }
 
+func testIPhoneDataConnectionsDefaultToProductionOptions() throws {
+    let state = MockAppState.production
+
+    try expect(
+        Set(state.iPhoneDataConnections.map(\.kind)) == Set(IPhoneDataConnectionKind.allCases),
+        "production state should expose iCloud, Health, and Location data connection settings"
+    )
+    try expect(
+        state.iPhoneDataConnections.allSatisfy { $0.status == .notDetermined },
+        "production iPhone data connections should start permission-gated"
+    )
+}
+
+func testStoreRequestsIPhoneDataConnectionForDesktopAnalysis() throws {
+    let provider = RecordingIPhoneDataConnectionProvider(requestedConnection: IPhoneDataConnection(
+        kind: .health,
+        status: .connected,
+        includeInDesktopAnalysis: true
+    ))
+    let store = DevModeStore(
+        state: .production,
+        iPhoneDataConnectionProvider: provider
+    )
+
+    store.requestIPhoneDataConnection(.health)
+    waitUntil {
+        store.state.iPhoneDataConnections.first(where: { $0.kind == .health })?.status == .connected
+    }
+
+    let health = store.state.iPhoneDataConnections.first(where: { $0.kind == .health })
+    try expect(provider.requestedKinds == [.health], "store should request the selected iPhone data connection through the application port")
+    try expect(health?.status == .connected, "authorized iPhone data connections should update app state")
+    try expect(health?.includeInDesktopAnalysis == true, "authorized iPhone data connections should be marked for desktop analysis")
+}
+
+func testSystemProviderTreatsMissingICloudIdentityAsUnavailable() async throws {
+    let provider = SystemIPhoneDataConnectionProvider(iCloudIdentityToken: { nil })
+
+    let connections = await provider.loadConnections()
+    let iCloud = connections.first(where: { $0.kind == .iCloud })
+
+    try expect(iCloud?.status == .unavailable, "system provider should not probe CloudKit when iCloud identity is unavailable")
+    try expect(iCloud?.includeInDesktopAnalysis == false, "unavailable iCloud connection should not be included in desktop analysis")
+}
+
 func testStoredChatMessagesRespectOneHourTTL() throws {
     let now = Date(timeIntervalSince1970: 1_000)
     let fresh = StoredChatMessage(
@@ -289,6 +334,41 @@ final class RecordingNostrMessageSender: NostrAgentMessageSending {
     func send(_ event: NostrOutboxEvent) throws -> NostrPreparedRelayEvent {
         sentEvents.append(event)
         return preparedEvent
+    }
+}
+
+final class RecordingIPhoneDataConnectionProvider: IPhoneDataConnectionProviding, @unchecked Sendable {
+    private let lock = NSLock()
+    private let requestedConnection: IPhoneDataConnection
+    private var requested: [IPhoneDataConnectionKind] = []
+
+    init(requestedConnection: IPhoneDataConnection) {
+        self.requestedConnection = requestedConnection
+    }
+
+    var requestedKinds: [IPhoneDataConnectionKind] {
+        lock.withLock { requested }
+    }
+
+    func loadConnections() async -> [IPhoneDataConnection] {
+        IPhoneDataConnection.defaults()
+    }
+
+    func requestConnection(_ kind: IPhoneDataConnectionKind) async -> IPhoneDataConnection {
+        lock.withLock {
+            requested.append(kind)
+        }
+        return requestedConnection
+    }
+}
+
+func waitUntil(timeout: TimeInterval = 2, condition: () -> Bool) {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+        if condition() {
+            return
+        }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.01))
     }
 }
 
@@ -863,6 +943,9 @@ do {
     try testDesignSystemTokens()
     try testFeatureCatalog()
     try testProductionStateUsesRealAgentThreads()
+    try testIPhoneDataConnectionsDefaultToProductionOptions()
+    try testStoreRequestsIPhoneDataConnectionForDesktopAnalysis()
+    try await testSystemProviderTreatsMissingICloudIdentityAsUnavailable()
     try testStoredChatMessagesRespectOneHourTTL()
     try testAppFlowAreaConfiguration()
     try testOnboardingCompletionPersistsSelectedAreas()

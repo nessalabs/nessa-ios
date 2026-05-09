@@ -14,6 +14,7 @@ public struct MockAppState: Equatable, Sendable {
     public var approvals: [ApprovalRequest]
     public var chatMessages: [StoredChatMessage]
     public var agentTypingConversationIDs: Set<String>
+    public var iPhoneDataConnections: [IPhoneDataConnection]
     public var receivedAgentMessages: [AgentMessageEnvelope]
     public var outgoingNostrEvents: [NostrOutboxEvent]
     public var preparedNostrRelayEvents: [NostrPreparedRelayEvent]
@@ -26,6 +27,7 @@ public struct MockAppState: Equatable, Sendable {
         approvals: [ApprovalRequest],
         chatMessages: [StoredChatMessage] = [],
         agentTypingConversationIDs: Set<String> = [],
+        iPhoneDataConnections: [IPhoneDataConnection] = IPhoneDataConnection.defaults(),
         receivedAgentMessages: [AgentMessageEnvelope] = [],
         outgoingNostrEvents: [NostrOutboxEvent] = [],
         preparedNostrRelayEvents: [NostrPreparedRelayEvent] = []
@@ -37,6 +39,7 @@ public struct MockAppState: Equatable, Sendable {
         self.approvals = approvals
         self.chatMessages = chatMessages
         self.agentTypingConversationIDs = agentTypingConversationIDs
+        self.iPhoneDataConnections = iPhoneDataConnections
         self.receivedAgentMessages = receivedAgentMessages
         self.outgoingNostrEvents = outgoingNostrEvents
         self.preparedNostrRelayEvents = preparedNostrRelayEvents
@@ -148,6 +151,36 @@ public struct MockAppState: Equatable, Sendable {
             return false
         }
         return agentTypingConversationIDs.contains(conversationID)
+    }
+
+    public mutating func replaceIPhoneDataConnections(_ connections: [IPhoneDataConnection]) {
+        let existingByKind = Dictionary(uniqueKeysWithValues: iPhoneDataConnections.map { ($0.kind, $0) })
+        iPhoneDataConnections = IPhoneDataConnectionKind.allCases.map { kind in
+            let incoming = connections.first(where: { $0.kind == kind }) ?? IPhoneDataConnection(
+                kind: kind,
+                status: .unavailable,
+                includeInDesktopAnalysis: false
+            )
+            guard let existing = existingByKind[kind] else {
+                return incoming
+            }
+            if existing.status == .connected && incoming.status == .notDetermined {
+                return existing
+            }
+            if existing.status == .requesting && incoming.status == .notDetermined {
+                return existing
+            }
+            return incoming
+        }
+    }
+
+    public mutating func updateIPhoneDataConnection(_ connection: IPhoneDataConnection) {
+        if let index = iPhoneDataConnections.firstIndex(where: { $0.kind == connection.kind }) {
+            iPhoneDataConnections[index] = connection
+        } else {
+            iPhoneDataConnections.append(connection)
+            replaceIPhoneDataConnections(iPhoneDataConnections)
+        }
     }
 
     private mutating func refreshChatPreviews() {

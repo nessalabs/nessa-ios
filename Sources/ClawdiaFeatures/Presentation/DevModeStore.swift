@@ -14,6 +14,7 @@ public final class DevModeStore: ObservableObject {
     private let nostrPlaintextEventSigner: NostrPlaintextRelayEventSigner
     private let chatMessageRepository: any ChatMessagePersisting
     private let chatMessageRetentionPolicy: ChatMessageRetentionPolicy
+    private let iPhoneDataConnectionProvider: any IPhoneDataConnectionProviding
     private let phoneClientDisplayName: String
     private let now: @Sendable () -> Date
     private let initialState: MockAppState
@@ -38,6 +39,7 @@ public final class DevModeStore: ObservableObject {
         nostrPlaintextEventSigner: NostrPlaintextRelayEventSigner = NostrPlaintextRelayEventSigner(),
         chatMessageRepository: any ChatMessagePersisting = InMemoryChatMessageRepository(),
         chatMessageRetentionPolicy: ChatMessageRetentionPolicy = .oneHour,
+        iPhoneDataConnectionProvider: any IPhoneDataConnectionProviding = StaticIPhoneDataConnectionProvider(),
         phoneClientDisplayName: String = "Clawdia iPhone",
         now: @escaping @Sendable () -> Date = Date.init,
         initialDesktopPairingStatus: DesktopPairingStatus? = nil
@@ -63,11 +65,13 @@ public final class DevModeStore: ObservableObject {
         self.nostrPlaintextEventSigner = nostrPlaintextEventSigner
         self.chatMessageRepository = chatMessageRepository
         self.chatMessageRetentionPolicy = chatMessageRetentionPolicy
+        self.iPhoneDataConnectionProvider = iPhoneDataConnectionProvider
         self.phoneClientDisplayName = phoneClientDisplayName
         self.now = now
         self.desktopPairingStatus =
             initialDesktopPairingStatus ?? (nostrMessageSender == nil ? .notPaired : .paired(displayName: nil))
         loadPersistedChatMessages()
+        refreshIPhoneDataConnections()
         telemetry.log("dev mode store initialized", area: .devMode)
         startNostrInboxListenerIfPossible()
     }
@@ -113,6 +117,47 @@ public final class DevModeStore: ObservableObject {
         nostrMessageReceiver = nil
         desktopPairingStatus = .notPaired
         telemetry.metric(MetricEvent(name: "signed_out", area: .devMode))
+    }
+
+    public func refreshIPhoneDataConnections() {
+        let provider = iPhoneDataConnectionProvider
+        let storeReference = WeakDevModeStoreReference(self)
+        Task { [provider, storeReference] in
+            let connections = await provider.loadConnections()
+            await MainActor.run {
+                storeReference.value?.state.replaceIPhoneDataConnections(connections)
+            }
+        }
+    }
+
+    public func requestIPhoneDataConnection(_ kind: IPhoneDataConnectionKind) {
+        state.updateIPhoneDataConnection(
+            IPhoneDataConnection(
+                kind: kind,
+                status: .requesting,
+                includeInDesktopAnalysis: false
+            )
+        )
+        let provider = iPhoneDataConnectionProvider
+        let telemetry = telemetry
+        let storeReference = WeakDevModeStoreReference(self)
+        Task { [provider, storeReference, telemetry] in
+            let connection = await provider.requestConnection(kind)
+            await MainActor.run {
+                storeReference.value?.state.updateIPhoneDataConnection(connection)
+                telemetry.metric(
+                    MetricEvent(
+                        name: "iphone_data_connection_requested",
+                        area: .devMode,
+                        fields: [
+                            "kind": kind.rawValue,
+                            "status": connection.status.rawValue,
+                            "desktop_analysis": "\(connection.includeInDesktopAnalysis)"
+                        ]
+                    )
+                )
+            }
+        }
     }
 
     @discardableResult

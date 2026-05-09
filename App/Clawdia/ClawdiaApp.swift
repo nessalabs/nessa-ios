@@ -39,6 +39,7 @@ struct ClawdiaApp: App {
                 nostrCredentialStore: credentialStore,
                 nostrRelaySubscriber: NostrWebSocketRelaySubscriber(),
                 chatMessageRepository: CoreDataCloudKitChatMessageRepository.productionRepository(),
+                iPhoneDataConnectionProvider: SystemIPhoneDataConnectionProvider(),
                 phoneClientDisplayName: UIDevice.current.name
             )
         }
@@ -52,6 +53,7 @@ struct ClawdiaApp: App {
             nostrCredentialStore: credentialStore,
             nostrRelaySubscriber: NostrWebSocketRelaySubscriber(),
             chatMessageRepository: CoreDataCloudKitChatMessageRepository.productionRepository(),
+            iPhoneDataConnectionProvider: SystemIPhoneDataConnectionProvider(),
             phoneClientDisplayName: UIDevice.current.name,
             initialDesktopPairingStatus: .paired(displayName: credentials.desktopDisplayName)
         )

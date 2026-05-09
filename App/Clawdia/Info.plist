@@ -24,6 +24,10 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan a Clawdia desktop pairing QR code.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Clawdia can use Health data you approve to prepare private context for desktop analysis.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Clawdia can use your location while the app is open to add context to desktop analysis.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 </dict>

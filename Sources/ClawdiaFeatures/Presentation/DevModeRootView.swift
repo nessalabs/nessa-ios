@@ -21,6 +21,7 @@ public struct DevModeRootView: View {
                     AppShell(
                         state: store.state,
                         desktopPairingStatus: store.desktopPairingStatus,
+                        iPhoneDataConnections: store.state.iPhoneDataConnections,
                         selectedTab: $selectedTab,
                         theme: $theme,
                         developmentScreen: $developmentScreen,
@@ -28,6 +29,7 @@ public struct DevModeRootView: View {
                         onCreateArea: { store.createCustomArea(named: $0) },
                         onOpenArea: { navigationPath.append(.area($0)) },
                         onOpenNostrIntegration: { navigationPath.append(.nostrIntegration) },
+                        onRequestIPhoneDataConnection: { store.requestIPhoneDataConnection($0) },
                         onSignOut: {
                             navigationPath.removeAll()
                             developmentScreen = nil
@@ -104,6 +106,7 @@ private enum AppTab: String, CaseIterable, Identifiable {
 private struct AppShell: View {
     let state: MockAppState
     let desktopPairingStatus: DesktopPairingStatus
+    let iPhoneDataConnections: [IPhoneDataConnection]
     @Binding var selectedTab: AppTab
     @Binding var theme: ClawdiaTheme
     @Binding var developmentScreen: DevScreen?
@@ -111,6 +114,7 @@ private struct AppShell: View {
     let onCreateArea: (String) -> UserArea?
     let onOpenArea: (AreaFilter) -> Void
     let onOpenNostrIntegration: () -> Void
+    let onRequestIPhoneDataConnection: (IPhoneDataConnectionKind) -> Void
     let onSignOut: () -> Void
     @State private var showingAreasManager = false
     @State private var showingSearch = false
@@ -168,11 +172,13 @@ private struct AppShell: View {
                         theme: $theme,
                         areaCount: state.availableAreaCount,
                         nostrStatus: desktopPairingStatus,
+                        iPhoneDataConnections: iPhoneDataConnections,
                         showsDevelopmentSection: allowsDevelopment,
                         onOpenAreas: {
                             showingAreasManager = true
                         },
                         onOpenNostrIntegration: onOpenNostrIntegration,
+                        onRequestIPhoneDataConnection: onRequestIPhoneDataConnection,
                         onSignOut: onSignOut
                     ) { screen in
                         developmentScreen = screen
@@ -463,15 +469,20 @@ private struct ConnectionCard: View {
             VStack(alignment: .leading, spacing: ClawdiaSpacing.sm) {
                 Label(title, systemImage: icon)
                     .font(ClawdiaType.subhead)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Text(detail)
                     .font(ClawdiaType.caption)
                     .foregroundStyle(palette.text2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 HStack {
                     StatusPill(statusLabel, systemImage: statusIcon)
                     StatusPill("NIP-44", systemImage: "lock")
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var title: String {
@@ -481,7 +492,7 @@ private struct ConnectionCard: View {
         case .connecting(let displayName):
             "Connecting to \(displayName ?? "your Mac")"
         case .paired(let displayName):
-            "Connected to \(displayName ?? "your Mac")"
+            displayName.map { "Connected to Clawdia + \($0)" } ?? "Connected to Clawdia + Mac"
         case .failed:
             "Could not connect"
         }
@@ -3255,9 +3266,11 @@ public struct SettingsScreen: View {
     @Binding private var theme: ClawdiaTheme
     private let areaCount: Int
     private let nostrStatus: DesktopPairingStatus
+    private let iPhoneDataConnections: [IPhoneDataConnection]
     private let showsDevelopmentSection: Bool
     private let onOpenAreas: () -> Void
     private let onOpenNostrIntegration: () -> Void
+    private let onRequestIPhoneDataConnection: (IPhoneDataConnectionKind) -> Void
     private let onSignOut: () -> Void
     private let onOpenDevelopment: (DevScreen) -> Void
 
@@ -3265,18 +3278,22 @@ public struct SettingsScreen: View {
         theme: Binding<ClawdiaTheme> = .constant(.light),
         areaCount: Int = MockAppState.preview.availableAreaCount,
         nostrStatus: DesktopPairingStatus = .notPaired,
+        iPhoneDataConnections: [IPhoneDataConnection] = IPhoneDataConnection.defaults(),
         showsDevelopmentSection: Bool = false,
         onOpenAreas: @escaping () -> Void = {},
         onOpenNostrIntegration: @escaping () -> Void = {},
+        onRequestIPhoneDataConnection: @escaping (IPhoneDataConnectionKind) -> Void = { _ in },
         onSignOut: @escaping () -> Void = {},
         onOpenDevelopment: @escaping (DevScreen) -> Void = { _ in }
     ) {
         _theme = theme
         self.areaCount = areaCount
         self.nostrStatus = nostrStatus
+        self.iPhoneDataConnections = iPhoneDataConnections
         self.showsDevelopmentSection = showsDevelopmentSection
         self.onOpenAreas = onOpenAreas
         self.onOpenNostrIntegration = onOpenNostrIntegration
+        self.onRequestIPhoneDataConnection = onRequestIPhoneDataConnection
         self.onSignOut = onSignOut
         self.onOpenDevelopment = onOpenDevelopment
     }
@@ -3298,6 +3315,10 @@ public struct SettingsScreen: View {
                     action: onOpenNostrIntegration
                 )
             ])
+            ClawdiaSettingsSection(title: "iPhone Data", rows: IPhoneDataRows.rows(
+                connections: iPhoneDataConnections,
+                onRequest: onRequestIPhoneDataConnection
+            ))
             ClawdiaSettingsSection(title: "Account", rows: [
                 SettingsRowData(icon: "→", label: "Sign out", action: onSignOut)
             ])
@@ -3315,6 +3336,45 @@ public struct SettingsScreen: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, ClawdiaSpacing.md)
         }
+    }
+}
+
+private enum IPhoneDataRows {
+    static func rows(
+        connections: [IPhoneDataConnection],
+        onRequest: @escaping (IPhoneDataConnectionKind) -> Void
+    ) -> [SettingsRowData] {
+        IPhoneDataConnectionKind.allCases.map { kind in
+            let connection = connections.first(where: { $0.kind == kind }) ?? IPhoneDataConnection(
+                kind: kind,
+                status: .unavailable,
+                includeInDesktopAnalysis: false
+            )
+            return SettingsRowData(
+                icon: icon(for: kind),
+                label: kind.title,
+                detail: detail(for: connection),
+                accessory: .status(connection.status.settingsLabel),
+                action: {
+                    onRequest(kind)
+                }
+            )
+        }
+    }
+
+    private static func icon(for kind: IPhoneDataConnectionKind) -> String {
+        switch kind {
+        case .iCloud: "☁︎"
+        case .health: "♡"
+        case .location: "⌖"
+        }
+    }
+
+    private static func detail(for connection: IPhoneDataConnection) -> String {
+        if connection.includeInDesktopAnalysis {
+            return "Included in desktop analysis"
+        }
+        return connection.kind.summary
     }
 }
 
