@@ -196,6 +196,85 @@ public final class DevModeStore: ObservableObject {
         return area
     }
 
+    public func deleteChat(_ chat: ChatPreview) {
+        guard state.deleteChat(id: chat.id) else {
+            return
+        }
+        do {
+            try chatMessageRepository.deleteMessages(conversationID: chat.id.uuidString)
+            telemetry.metric(MetricEvent(name: "chat_deleted", area: .chat, fields: ["area": chat.area.rawValue]))
+        } catch {
+            telemetry.metric(
+                MetricEvent(
+                    name: "chat_delete_failed",
+                    area: .chat,
+                    fields: ["error": String(describing: type(of: error))]
+                )
+            )
+        }
+    }
+
+    public func deleteArea(_ area: AreaFilter) {
+        let lifeArea: LifeArea?
+        switch area {
+        case .all:
+            return
+        case .life(let value):
+            lifeArea = value
+        case .custom:
+            lifeArea = nil
+        }
+
+        guard state.deleteArea(area) else {
+            return
+        }
+
+        if let lifeArea {
+            let remainingAreas = onboardingConfiguration.selectedAreas.subtracting([lifeArea])
+            if !remainingAreas.isEmpty {
+                let configuration = OnboardingConfiguration(
+                    didComplete: onboardingConfiguration.didComplete,
+                    selectedAreas: remainingAreas
+                )
+                onboardingConfiguration = configuration
+                onboardingStore.saveConfiguration(configuration)
+            }
+            do {
+                try chatMessageRepository.deleteMessages(area: lifeArea.rawValue)
+                telemetry.metric(MetricEvent(name: "life_area_deleted", area: .devMode, fields: ["area": lifeArea.rawValue]))
+            } catch {
+                telemetry.metric(
+                    MetricEvent(
+                        name: "life_area_delete_failed",
+                        area: .devMode,
+                        fields: ["error": String(describing: type(of: error))]
+                    )
+                )
+            }
+        } else {
+            telemetry.metric(MetricEvent(name: "custom_area_deleted", area: .devMode))
+        }
+    }
+
+    public func deleteChatMessages(ids: Set<UUID>) {
+        guard !ids.isEmpty else {
+            return
+        }
+        state.deleteChatMessages(ids: ids)
+        do {
+            try chatMessageRepository.deleteMessages(ids: ids)
+            telemetry.metric(MetricEvent(name: "chat_messages_deleted", area: .chat, fields: ["count": "\(ids.count)"]))
+        } catch {
+            telemetry.metric(
+                MetricEvent(
+                    name: "chat_messages_delete_failed",
+                    area: .chat,
+                    fields: ["error": String(describing: type(of: error))]
+                )
+            )
+        }
+    }
+
     @discardableResult
     public func sendChatMessage(_ text: String, in chat: ChatPreview?) -> NostrOutboxEvent? {
         guard let chat else {

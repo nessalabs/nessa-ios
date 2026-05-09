@@ -125,6 +125,50 @@ public struct MockAppState: Equatable, Sendable {
         refreshChatPreviews()
     }
 
+    public mutating func deleteChatMessages(ids: Set<UUID>) {
+        guard !ids.isEmpty else {
+            return
+        }
+        chatMessages.removeAll { ids.contains($0.id) }
+        receivedAgentMessages.removeAll { ids.contains($0.id) }
+        refreshChatPreviews()
+    }
+
+    @discardableResult
+    public mutating func deleteChat(id: UUID) -> Bool {
+        guard let chat = chats.first(where: { $0.id == id }) else {
+            return false
+        }
+        let conversationID = chat.id.uuidString
+        chats.removeAll { $0.id == id }
+        chatMessages.removeAll { $0.conversationID == conversationID }
+        receivedAgentMessages.removeAll { $0.conversationID == conversationID }
+        agentTypingConversationIDs.remove(conversationID)
+        refreshFolderChatCounts()
+        return true
+    }
+
+    @discardableResult
+    public mutating func deleteArea(_ area: AreaFilter) -> Bool {
+        switch area {
+        case .all:
+            return false
+        case .life(let lifeArea):
+            let removedChatIDs = Set(chats.filter { $0.area == lifeArea }.map { $0.id.uuidString })
+            folders.removeAll { $0.id == lifeArea }
+            chats.removeAll { $0.area == lifeArea }
+            chatMessages.removeAll { $0.area == lifeArea.rawValue || removedChatIDs.contains($0.conversationID) }
+            receivedAgentMessages.removeAll { $0.area == lifeArea.rawValue || removedChatIDs.contains($0.conversationID) }
+            agentTypingConversationIDs.subtract(removedChatIDs)
+            refreshFolderChatCounts()
+            return true
+        case .custom(let id):
+            let beforeCount = customAreas.count
+            customAreas.removeAll { $0.id == id }
+            return beforeCount != customAreas.count
+        }
+    }
+
     public func chatMessages(conversationID: String?) -> [StoredChatMessage] {
         chatMessages
             .filter { message in
@@ -196,7 +240,15 @@ public struct MockAppState: Equatable, Sendable {
 
         chats = chats.map { chat in
             guard let latest = latestMessages[chat.id.uuidString] else {
-                return chat
+                return ChatPreview(
+                    id: chat.id,
+                    title: chat.title,
+                    preview: defaultPreview(for: chat),
+                    time: chat.time,
+                    area: chat.area,
+                    unread: false,
+                    pinned: chat.pinned
+                )
             }
             return ChatPreview(
                 id: chat.id,
@@ -208,6 +260,25 @@ public struct MockAppState: Equatable, Sendable {
                 pinned: chat.pinned
             )
         }
+        refreshFolderChatCounts()
+    }
+
+    private mutating func refreshFolderChatCounts() {
+        folders = folders.map { folder in
+            let count = chats.filter { $0.area == folder.id }.count
+            return FolderSummary(
+                id: folder.id,
+                chatCount: count,
+                lastActivity: count == 0 ? "No chats" : folder.lastActivity
+            )
+        }
+    }
+
+    private func defaultPreview(for chat: ChatPreview) -> String {
+        if chat.title == "Clawdia" {
+            return "Send a message to Clawdia on your Mac."
+        }
+        return "No local messages."
     }
 
     public static let production = MockAppState(

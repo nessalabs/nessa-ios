@@ -27,6 +27,7 @@ public struct DevModeRootView: View {
                         developmentScreen: $developmentScreen,
                         allowsDevelopment: allowsDevelopment,
                         onCreateArea: { store.createCustomArea(named: $0) },
+                        onDeleteArea: { store.deleteArea($0) },
                         onOpenArea: { navigationPath.append(.area($0)) },
                         onOpenNostrIntegration: { navigationPath.append(.nostrIntegration) },
                         onRequestIPhoneDataConnection: { store.requestIPhoneDataConnection($0) },
@@ -51,12 +52,21 @@ public struct DevModeRootView: View {
             .navigationDestination(for: AppNavigationRoute.self) { route in
                 switch route {
                 case .area(let area):
-                    AreaChatsScreen(state: store.state, area: area) { chat in
-                        navigationPath.append(.chat(chat))
-                    }
+                    AreaChatsScreen(
+                        state: store.state,
+                        area: area,
+                        onOpenChat: { chat in
+                            navigationPath.append(.chat(chat))
+                        },
+                        onDeleteChat: { chat in
+                            store.deleteChat(chat)
+                        }
+                    )
                 case .chat(let chat):
                     ChatScreen(state: store.state, chat: chat, onSendMessage: { message in
                         store.sendChatMessage(message, in: chat)
+                    }, onDeleteMessages: { ids in
+                        store.deleteChatMessages(ids: ids)
                     })
                 case .nostrIntegration:
                     NostrIntegrationScreen(
@@ -112,6 +122,7 @@ private struct AppShell: View {
     @Binding var developmentScreen: DevScreen?
     let allowsDevelopment: Bool
     let onCreateArea: (String) -> UserArea?
+    let onDeleteArea: (AreaFilter) -> Void
     let onOpenArea: (AreaFilter) -> Void
     let onOpenNostrIntegration: () -> Void
     let onRequestIPhoneDataConnection: (IPhoneDataConnectionKind) -> Void
@@ -135,7 +146,8 @@ private struct AppShell: View {
                 FolderManagerScreen(
                     folders: state.folders,
                     customAreas: state.customAreas,
-                    onCreateArea: onCreateArea
+                    onCreateArea: onCreateArea,
+                    onDeleteArea: onDeleteArea
                 ) {
                     showingAreasManager = false
                 }
@@ -1013,18 +1025,18 @@ private struct AreaChatsScreen: View {
     let state: MockAppState
     let area: AreaFilter
     let onOpenChat: (ChatPreview) -> Void
+    let onDeleteChat: (ChatPreview) -> Void
+    @State private var pendingDeleteChat: ChatPreview?
+    @State private var isConfirmingChatDelete = false
 
     var body: some View {
         let palette = ClawdiaColor.palette(theme)
         let display = areaDisplay(for: area)
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                AreaMessagesList(chats: state.chats(matching: area), onOpenChat: onOpenChat)
-            }
-            .padding(.horizontal, ClawdiaSpacing.lg)
-            .padding(.top, ClawdiaSpacing.md)
-            .padding(.bottom, 96)
-        }
+        AreaMessagesList(
+            chats: state.chats(matching: area),
+            onOpenChat: onOpenChat,
+            onRequestDelete: requestDeleteChat
+        )
         .background(palette.background)
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -1049,8 +1061,30 @@ private struct AreaChatsScreen: View {
                 .accessibilityLabel("\(display.title) details")
             }
         }
+        .confirmationDialog(
+            "Delete this chat?",
+            isPresented: $isConfirmingChatDelete,
+            titleVisibility: .visible
+        ) {
+            if let pendingDeleteChat {
+                Button("Delete Chat", role: .destructive) {
+                    onDeleteChat(pendingDeleteChat)
+                    self.pendingDeleteChat = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                pendingDeleteChat = nil
+            }
+        } message: {
+            Text("This removes the local chat history. If iCloud sync is active, the delete is saved through the synced message store.")
+        }
         .chatNavigationChrome()
         .clawdiaScreenBackground()
+    }
+
+    private func requestDeleteChat(_ chat: ChatPreview) {
+        pendingDeleteChat = chat
+        isConfirmingChatDelete = true
     }
 
     private func areaDisplay(for area: AreaFilter) -> AreaDisplayModel {
@@ -1079,24 +1113,45 @@ private struct AreaDisplayModel {
 }
 
 private struct AreaMessagesList: View {
+    @Environment(\.clawdiaTheme) private var theme
     let chats: [ChatPreview]
     let onOpenChat: (ChatPreview) -> Void
+    let onRequestDelete: (ChatPreview) -> Void
 
     var body: some View {
+        let palette = ClawdiaColor.palette(theme)
         if chats.isEmpty {
-            EmptyAreaMessagesCard()
+            ScrollView {
+                EmptyAreaMessagesCard()
+                    .padding(.horizontal, ClawdiaSpacing.lg)
+                    .padding(.top, ClawdiaSpacing.md)
+                    .padding(.bottom, 96)
+            }
         } else {
-            VStack(spacing: 0) {
+            List {
                 ForEach(chats) { chat in
                     ChatThreadRow(chat: chat) {
                         onOpenChat(chat)
                     }
-                    if chat.id != chats.last?.id {
-                        Divider()
-                            .padding(.leading, 74)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            onRequestDelete(chat)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
                     }
+                    .listRowInsets(EdgeInsets(
+                        top: 0,
+                        leading: ClawdiaSpacing.lg,
+                        bottom: 0,
+                        trailing: ClawdiaSpacing.lg
+                    ))
+                    .listRowSeparatorTint(palette.border)
+                    .listRowBackground(palette.background)
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
     }
 }
@@ -1175,8 +1230,12 @@ public struct ChatScreen: View {
     private let chat: ChatPreview?
     private let showsNavigationHeader: Bool
     private let onSendMessage: (String) -> Void
+    private let onDeleteMessages: (Set<UUID>) -> Void
     @State private var floatingApproval: ApprovalRequest?
     @State private var showingAgentDetails = false
+    @State private var isSelectingMessages = false
+    @State private var selectedMessageIDs = Set<UUID>()
+    @State private var isConfirmingSelectedMessageDelete = false
     @FocusState private var isComposerFocused: Bool
 
     public init(
@@ -1184,12 +1243,14 @@ public struct ChatScreen: View {
         chat: ChatPreview? = nil,
         onBack: @escaping () -> Void = {},
         showsNavigationHeader: Bool = true,
-        onSendMessage: @escaping (String) -> Void = { _ in }
+        onSendMessage: @escaping (String) -> Void = { _ in },
+        onDeleteMessages: @escaping (Set<UUID>) -> Void = { _ in }
     ) {
         self.state = state
         self.chat = chat
         self.showsNavigationHeader = showsNavigationHeader
         self.onSendMessage = onSendMessage
+        self.onDeleteMessages = onDeleteMessages
     }
 
     public var body: some View {
@@ -1200,7 +1261,17 @@ public struct ChatScreen: View {
                         EmptyChatThreadView(chat: chat)
                     } else {
                         ForEach(timelineMessages) { message in
-                            MessageBubble(message.text, fromMe: message.fromMe)
+                            SelectableMessageRow(
+                                message: message,
+                                isSelecting: isSelectingMessages,
+                                isSelected: selectedMessageIDs.contains(message.id),
+                                onToggleSelection: {
+                                    toggleMessageSelection(message.id)
+                                },
+                                onStartSelection: {
+                                    startMessageSelection(with: message.id)
+                                }
+                            )
                         }
                         if state.isAgentTyping(conversationID: chat?.id.uuidString) {
                             TypingIndicatorBubble()
@@ -1218,15 +1289,53 @@ public struct ChatScreen: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            Composer(isDraftFocused: $isComposerFocused) { message in
-                onSendMessage(message)
+            Composer(
+                isDraftFocused: $isComposerFocused,
+                onSend: { message in
+                    onSendMessage(message)
+                }
+            )
+        }
+        .confirmationDialog(
+            "Delete selected messages?",
+            isPresented: $isConfirmingSelectedMessageDelete,
+            titleVisibility: .visible
+        ) {
+            Button(selectedDeleteTitle, role: .destructive) {
+                let ids = selectedMessageIDs
+                onDeleteMessages(ids)
+                stopMessageSelection()
             }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This deletes the selected messages locally. If iCloud sync is active, the delete is saved through the synced message store.")
         }
         .animation(.spring(response: 0.34, dampingFraction: 0.84), value: floatingApproval?.id)
         .clawdiaScreenBackground()
         .chatNavigationChrome()
         .toolbar {
-            if showsNavigationHeader {
+            if isSelectingMessages {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        stopMessageSelection()
+                    }
+                    .font(ClawdiaType.body)
+                }
+                ToolbarItem(placement: .principal) {
+                    Text(selectedCountTitle)
+                        .font(ClawdiaType.body.weight(.semibold))
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button(role: .destructive) {
+                        isConfirmingSelectedMessageDelete = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(ClawdiaType.subhead.weight(.semibold))
+                    }
+                    .disabled(selectedMessageIDs.isEmpty)
+                    .accessibilityLabel("Delete selected messages")
+                }
+            } else if showsNavigationHeader {
                 ToolbarItem(placement: .principal) {
                     Button {
                         showingAgentDetails = true
@@ -1241,13 +1350,19 @@ public struct ChatScreen: View {
         .sheet(isPresented: $showingAgentDetails) {
             AgentDetailsSheet(chat: chat)
         }
+        .onChange(of: timelineMessages.map(\.id)) { _, ids in
+            selectedMessageIDs = selectedMessageIDs.intersection(Set(ids))
+            if selectedMessageIDs.isEmpty {
+                isSelectingMessages = false
+            }
+        }
     }
 
     private var timelineMessages: [ChatTimelineMessage] {
         let conversationID = chat?.id.uuidString
         return state.chatMessages(conversationID: conversationID).map { message in
             ChatTimelineMessage(
-                id: "stored-\(message.id.uuidString)",
+                id: message.id,
                 text: message.text,
                 fromMe: message.sender == .phone,
                 createdAt: Int(message.createdAt.timeIntervalSince1970)
@@ -1259,10 +1374,42 @@ public struct ChatScreen: View {
             return left.createdAt < right.createdAt
         }
     }
+
+    private var selectedCountTitle: String {
+        selectedMessageIDs.count == 1 ? "1 Selected" : "\(selectedMessageIDs.count) Selected"
+    }
+
+    private var selectedDeleteTitle: String {
+        selectedMessageIDs.count == 1 ? "Delete Message" : "Delete \(selectedMessageIDs.count) Messages"
+    }
+
+    private func startMessageSelection(with id: UUID) {
+        isSelectingMessages = true
+        selectedMessageIDs.insert(id)
+    }
+
+    private func toggleMessageSelection(_ id: UUID) {
+        guard isSelectingMessages else {
+            return
+        }
+        if selectedMessageIDs.contains(id) {
+            selectedMessageIDs.remove(id)
+        } else {
+            selectedMessageIDs.insert(id)
+        }
+        if selectedMessageIDs.isEmpty {
+            isSelectingMessages = false
+        }
+    }
+
+    private func stopMessageSelection() {
+        isSelectingMessages = false
+        selectedMessageIDs.removeAll()
+    }
 }
 
 private struct ChatTimelineMessage: Identifiable, Equatable {
-    let id: String
+    let id: UUID
     let text: String
     let fromMe: Bool
     let createdAt: Int
@@ -1302,13 +1449,14 @@ private struct ChatAgentNavigationTitle: View {
 
     var body: some View {
         let palette = ClawdiaColor.palette(theme)
-        VStack(spacing: 1) {
-            ClawdiaAvatar(size: 42)
+        VStack(spacing: 2) {
+            ClawdiaAvatar(size: 46)
             Text("Clawdia")
                 .font(ClawdiaType.caption.weight(.semibold))
                 .foregroundStyle(palette.text)
         }
-        .frame(minWidth: 112, minHeight: 60)
+        .padding(.top, 6)
+        .frame(minWidth: 112, minHeight: 70)
         .contentShape(Rectangle())
     }
 }
@@ -1442,14 +1590,53 @@ private struct ChatContextCard: View {
     }
 }
 
+private struct SelectableMessageRow: View {
+    @Environment(\.clawdiaTheme) private var theme
+    let message: ChatTimelineMessage
+    let isSelecting: Bool
+    let isSelected: Bool
+    let onToggleSelection: () -> Void
+    let onStartSelection: () -> Void
+
+    var body: some View {
+        let palette = ClawdiaColor.palette(theme)
+        HStack(alignment: .center, spacing: ClawdiaSpacing.sm) {
+            if isSelecting {
+                Button(action: onToggleSelection) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(ClawdiaType.title)
+                        .foregroundStyle(isSelected ? palette.accent : palette.text3)
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.plain)
+                .transition(.move(edge: .leading).combined(with: .opacity))
+            }
+            MessageBubble(message.text, fromMe: message.fromMe, isSelected: isSelected)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isSelecting {
+                onToggleSelection()
+            }
+        }
+        .onLongPressGesture(minimumDuration: 0.32) {
+            onStartSelection()
+        }
+        .animation(.spring(response: 0.24, dampingFraction: 0.88), value: isSelecting)
+        .animation(.spring(response: 0.2, dampingFraction: 0.9), value: isSelected)
+    }
+}
+
 private struct MessageBubble: View {
     @Environment(\.clawdiaTheme) private var theme
     let message: String
     let fromMe: Bool
+    let isSelected: Bool
 
-    init(_ message: String, fromMe: Bool) {
+    init(_ message: String, fromMe: Bool, isSelected: Bool = false) {
         self.message = message
         self.fromMe = fromMe
+        self.isSelected = isSelected
     }
 
     var body: some View {
@@ -1466,6 +1653,12 @@ private struct MessageBubble: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: ClawdiaRadius.xl, style: .continuous)
                         .stroke(fromMe ? palette.bubbleMeBackground : palette.border, lineWidth: 0.5)
+                }
+                .overlay {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: ClawdiaRadius.xl, style: .continuous)
+                            .stroke(palette.accent, lineWidth: 2)
+                    }
                 }
             if !fromMe { Spacer(minLength: 48) }
         }
@@ -1634,7 +1827,7 @@ private struct Composer: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, ClawdiaSpacing.lg)
         .padding(.top, ClawdiaSpacing.xxs)
-        .padding(.bottom, -1)
+        .padding(.bottom, ClawdiaSpacing.xs)
         .animation(.spring(response: 0.22, dampingFraction: 0.84), value: canSend)
     }
 
@@ -2988,44 +3181,83 @@ public struct FolderManagerScreen: View {
     let folders: [FolderSummary]
     let customAreas: [UserArea]
     let onCreateArea: (String) -> UserArea?
+    let onDeleteArea: (AreaFilter) -> Void
     let onDone: () -> Void
     @State private var showingNewArea = false
     @State private var draftAreaName = ""
+    @State private var pendingDeleteArea: PendingAreaDelete?
+    @State private var isConfirmingAreaDelete = false
 
     public init(
         folders: [FolderSummary] = MockAppState.preview.folders,
         customAreas: [UserArea] = [],
         onCreateArea: @escaping (String) -> UserArea? = { _ in nil },
+        onDeleteArea: @escaping (AreaFilter) -> Void = { _ in },
         onDone: @escaping () -> Void = {}
     ) {
         self.folders = folders
         self.customAreas = customAreas
         self.onCreateArea = onCreateArea
+        self.onDeleteArea = onDeleteArea
         self.onDone = onDone
     }
 
     public var body: some View {
         let palette = ClawdiaColor.palette(theme)
         let visibleFolders = Array(folders.prefix(6))
-        AppScroll {
+        VStack(spacing: ClawdiaSpacing.md) {
             ManageAreasHeader(onDone: onDone) {
                 showingNewArea = true
             }
+            .padding(.horizontal, ClawdiaSpacing.lg)
+            .padding(.top, ClawdiaSpacing.md)
             Text("Drag to reorder. Pinned areas appear first on home.")
                 .font(ClawdiaType.caption)
                 .foregroundStyle(palette.text2)
-            VStack(spacing: ClawdiaSpacing.xs) {
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, ClawdiaSpacing.lg)
+            List {
                 ForEach(Array(visibleFolders.enumerated()), id: \.element.id) { index, folder in
                     ManageAreaRow(folder: folder, colorIndex: index)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                requestDeleteArea(
+                                    PendingAreaDelete(
+                                        filter: .life(folder.id),
+                                        title: folder.id.title
+                                    )
+                                )
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                        .listRowBackground(palette.background)
                 }
                 ForEach(Array(customAreas.enumerated()), id: \.element.id) { index, area in
                     ManageCustomAreaRow(area: area, colorIndex: index + visibleFolders.count)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                requestDeleteArea(
+                                    PendingAreaDelete(
+                                        filter: .custom(area.id),
+                                        title: area.name
+                                    )
+                                )
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                        .listRowBackground(palette.background)
                 }
                 NewAreaTile(title: "Create new area", subtitle: "Add a new life area", onTap: {
                     showingNewArea = true
                 })
+                .listRowBackground(palette.background)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
+        .background(palette.background)
         .sheet(isPresented: $showingNewArea) {
             NewAreaSheet(name: $draftAreaName) {
                 _ = onCreateArea(draftAreaName)
@@ -3035,6 +3267,44 @@ public struct FolderManagerScreen: View {
                 draftAreaName = ""
                 showingNewArea = false
             }
+        }
+        .confirmationDialog(
+            "Delete area?",
+            isPresented: $isConfirmingAreaDelete,
+            titleVisibility: .visible
+        ) {
+            if let pendingDeleteArea {
+                Button("Delete \(pendingDeleteArea.title)", role: .destructive) {
+                    onDeleteArea(pendingDeleteArea.filter)
+                    self.pendingDeleteArea = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                pendingDeleteArea = nil
+            }
+        } message: {
+            Text("This removes the area, its chats, and local message history. If iCloud sync is active, message deletes are saved through the synced store.")
+        }
+    }
+
+    private func requestDeleteArea(_ area: PendingAreaDelete) {
+        pendingDeleteArea = area
+        isConfirmingAreaDelete = true
+    }
+}
+
+private struct PendingAreaDelete: Identifiable, Equatable {
+    let filter: AreaFilter
+    let title: String
+
+    var id: String {
+        switch filter {
+        case .all:
+            "all"
+        case .life(let area):
+            "life-\(area.rawValue)"
+        case .custom(let id):
+            "custom-\(id.uuidString)"
         }
     }
 }

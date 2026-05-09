@@ -80,6 +80,21 @@ public final class CoreDataCloudKitChatMessageRepository: ChatMessagePersisting,
         }
     }
 
+    public func deleteMessages(ids: Set<UUID>) throws {
+        guard !ids.isEmpty else {
+            return
+        }
+        try deleteMessages(predicate: NSPredicate(format: "id IN %@", Array(ids) as NSArray))
+    }
+
+    public func deleteMessages(conversationID: String) throws {
+        try deleteMessages(predicate: NSPredicate(format: "conversationID == %@", conversationID))
+    }
+
+    public func deleteMessages(area: String) throws {
+        try deleteMessages(predicate: NSPredicate(format: "area == %@", area))
+    }
+
     public func deleteExpired(before date: Date) throws {
         try deleteMessages(predicate: NSPredicate(format: "expiresAt <= %@", date as NSDate))
     }

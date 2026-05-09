@@ -17,6 +17,9 @@ public struct ChatMessageRetentionPolicy: Equatable, Sendable {
 public protocol ChatMessagePersisting: Sendable {
     func loadActiveMessages(now: Date) throws -> [StoredChatMessage]
     func save(_ message: StoredChatMessage) throws
+    func deleteMessages(ids: Set<UUID>) throws
+    func deleteMessages(conversationID: String) throws
+    func deleteMessages(area: String) throws
     func deleteExpired(before date: Date) throws
     func deleteAll() throws
 }
@@ -45,6 +48,26 @@ public final class InMemoryChatMessageRepository: ChatMessagePersisting, @unchec
     public func save(_ message: StoredChatMessage) throws {
         lock.withLock {
             messages[message.id] = message
+        }
+    }
+
+    public func deleteMessages(ids: Set<UUID>) throws {
+        lock.withLock {
+            for id in ids {
+                messages[id] = nil
+            }
+        }
+    }
+
+    public func deleteMessages(conversationID: String) throws {
+        lock.withLock {
+            messages = messages.filter { $0.value.conversationID != conversationID }
+        }
+    }
+
+    public func deleteMessages(area: String) throws {
+        lock.withLock {
+            messages = messages.filter { $0.value.area != area }
         }
     }
 

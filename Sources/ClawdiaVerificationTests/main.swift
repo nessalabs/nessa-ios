@@ -44,6 +44,26 @@ func encodeAgentEnvelope(_ envelope: AgentMessageEnvelope) throws -> String {
     return json
 }
 
+func storedMessage(
+    id: UUID = UUID(),
+    conversationID: String,
+    area: LifeArea,
+    sender: AgentMessageSender = .phone,
+    text: String = "Test message",
+    createdAt: Date
+) -> StoredChatMessage {
+    StoredChatMessage(
+        id: id,
+        conversationID: conversationID,
+        area: area.rawValue,
+        sender: sender,
+        text: text,
+        createdAt: createdAt,
+        expiresAt: createdAt.addingTimeInterval(60 * 60),
+        deliveryState: sender == .phone ? .sent : .received
+    )
+}
+
 func testSharedKernel() throws {
     let value = NonEmptyString("  Clawdia  ")
     try expect(value.value == "Clawdia", "NonEmptyString should trim whitespace")
@@ -143,6 +163,97 @@ func testSystemProviderTreatsMissingICloudIdentityAsUnavailable() async throws {
 
     try expect(iCloud?.status == .unavailable, "system provider should not probe CloudKit when iCloud identity is unavailable")
     try expect(iCloud?.includeInDesktopAnalysis == false, "unavailable iCloud connection should not be included in desktop analysis")
+}
+
+func testStoreDeletesChatAndPersistedConversation() throws {
+    let now = Date(timeIntervalSince1970: 2_000)
+    let homeChat = MockAppState.production.chats.first { $0.area == .home }!
+    let workChat = MockAppState.production.chats.first { $0.area == .work }!
+    let homeMessage = storedMessage(
+        conversationID: homeChat.id.uuidString,
+        area: .home,
+        text: "Delete this chat",
+        createdAt: now
+    )
+    let workMessage = storedMessage(
+        conversationID: workChat.id.uuidString,
+        area: .work,
+        text: "Keep this chat",
+        createdAt: now
+    )
+    let repository = InMemoryChatMessageRepository(messages: [homeMessage, workMessage])
+    let store = DevModeStore(
+        state: .production,
+        chatMessageRepository: repository,
+        now: { now }
+    )
+
+    store.deleteChat(homeChat)
+
+    let active = try repository.loadActiveMessages(now: now)
+    try expect(!store.state.chats.contains(where: { $0.id == homeChat.id }), "deleted chats should disappear from app state")
+    try expect(!store.state.chatMessages.contains(where: { $0.conversationID == homeChat.id.uuidString }), "deleted chats should clear local message state")
+    try expect(!active.contains(where: { $0.conversationID == homeChat.id.uuidString }), "deleted chats should delete persisted conversation messages")
+    try expect(active.contains(where: { $0.conversationID == workChat.id.uuidString }), "deleting one chat should not remove other persisted conversations")
+}
+
+func testStoreDeletesLifeAreaAndPersistedAreaMessages() throws {
+    let now = Date(timeIntervalSince1970: 3_000)
+    let homeChat = MockAppState.production.chats.first { $0.area == .home }!
+    let workChat = MockAppState.production.chats.first { $0.area == .work }!
+    let repository = InMemoryChatMessageRepository(messages: [
+        storedMessage(conversationID: homeChat.id.uuidString, area: .home, text: "Home", createdAt: now),
+        storedMessage(conversationID: workChat.id.uuidString, area: .work, text: "Work", createdAt: now)
+    ])
+    let onboardingStore = InMemoryOnboardingConfigurationStore(
+        configuration: OnboardingConfiguration(didComplete: true, selectedAreas: Set(LifeArea.allCases))
+    )
+    let store = DevModeStore(
+        state: .production,
+        onboardingStore: onboardingStore,
+        chatMessageRepository: repository,
+        now: { now }
+    )
+
+    store.deleteArea(.life(.home))
+
+    let active = try repository.loadActiveMessages(now: now)
+    try expect(!store.state.folders.contains(where: { $0.id == .home }), "deleted areas should disappear from the home area list")
+    try expect(!store.state.chats.contains(where: { $0.area == .home }), "deleted areas should remove chats in that area")
+    try expect(!store.onboardingConfiguration.selectedAreas.contains(.home), "deleted built-in areas should update persisted onboarding selection")
+    try expect(!active.contains(where: { $0.area == LifeArea.home.rawValue }), "deleted areas should delete persisted messages for that area")
+    try expect(active.contains(where: { $0.area == LifeArea.work.rawValue }), "deleting one area should not remove other area messages")
+}
+
+func testStoreDeletesSelectedMessagesOnly() throws {
+    let now = Date(timeIntervalSince1970: 4_000)
+    let chat = MockAppState.production.chats.first { $0.area == .personal }!
+    let first = storedMessage(
+        conversationID: chat.id.uuidString,
+        area: .personal,
+        text: "Remove this",
+        createdAt: now
+    )
+    let second = storedMessage(
+        conversationID: chat.id.uuidString,
+        area: .personal,
+        text: "Keep this",
+        createdAt: now.addingTimeInterval(1)
+    )
+    let repository = InMemoryChatMessageRepository(messages: [first, second])
+    let store = DevModeStore(
+        state: .production,
+        chatMessageRepository: repository,
+        now: { now }
+    )
+
+    store.deleteChatMessages(ids: [first.id])
+
+    let active = try repository.loadActiveMessages(now: now)
+    try expect(!store.state.chatMessages.contains(where: { $0.id == first.id }), "selected message delete should remove only selected local state")
+    try expect(store.state.chatMessages.contains(where: { $0.id == second.id }), "selected message delete should leave unselected messages in local state")
+    try expect(!active.contains(where: { $0.id == first.id }), "selected message delete should remove selected persisted records")
+    try expect(active.contains(where: { $0.id == second.id }), "selected message delete should leave unselected persisted records")
 }
 
 func testStoredChatMessagesRespectOneHourTTL() throws {
@@ -946,6 +1057,9 @@ do {
     try testIPhoneDataConnectionsDefaultToProductionOptions()
     try testStoreRequestsIPhoneDataConnectionForDesktopAnalysis()
     try await testSystemProviderTreatsMissingICloudIdentityAsUnavailable()
+    try testStoreDeletesChatAndPersistedConversation()
+    try testStoreDeletesLifeAreaAndPersistedAreaMessages()
+    try testStoreDeletesSelectedMessagesOnly()
     try testStoredChatMessagesRespectOneHourTTL()
     try testAppFlowAreaConfiguration()
     try testOnboardingCompletionPersistsSelectedAreas()
