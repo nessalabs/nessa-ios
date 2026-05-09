@@ -129,13 +129,11 @@ struct ClawdiaProfileSettingsCard: View {
                 Text("Saurav Atwell")
                     .font(ClawdiaType.subhead)
                     .foregroundStyle(palette.text)
-                Text("Plus - since Jan 2026")
+                Text("Personal Clawdia workspace")
                     .font(ClawdiaType.caption)
                     .foregroundStyle(palette.text2)
             }
             Spacer()
-            Image(systemName: "chevron.right")
-                .foregroundStyle(palette.text3)
         }
         .padding(18)
         .background(palette.surface)

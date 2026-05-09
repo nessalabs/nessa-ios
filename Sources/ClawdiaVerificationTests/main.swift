@@ -89,6 +89,46 @@ func testFeatureCatalog() throws {
     try expect(state.connection == .connected(.localhost(port: 8787)), "preview state should default to localhost connection")
 }
 
+func testProductionStateUsesRealAgentThreads() throws {
+    let state = MockAppState.production
+
+    try expect(state.connection == .disconnected, "production state should not default to localhost dev wiring")
+    try expect(state.approvals.isEmpty, "production state should not show approval examples")
+    try expect(state.chats.count == LifeArea.allCases.count, "production should expose one Clawdia thread per built-in area")
+    try expect(Set(state.chats.map(\.title)) == ["Clawdia"], "production should remove example chat titles")
+    try expect(Set(state.chats.map(\.id)) == Set(LifeArea.allCases.map(\.defaultChatID)), "production chat threads should use stable ids for persisted history")
+    try expect(!state.chats.contains { $0.title == "Mia's birthday" || $0.title == "Q4 planning" }, "production should not include preview/demo chat rows")
+}
+
+func testStoredChatMessagesRespectOneHourTTL() throws {
+    let now = Date(timeIntervalSince1970: 1_000)
+    let fresh = StoredChatMessage(
+        conversationID: LifeArea.home.defaultChatID.uuidString,
+        area: LifeArea.home.rawValue,
+        sender: .phone,
+        text: "Fresh",
+        createdAt: now.addingTimeInterval(-59 * 60),
+        expiresAt: now.addingTimeInterval(60),
+        deliveryState: .sent
+    )
+    let expired = StoredChatMessage(
+        conversationID: LifeArea.home.defaultChatID.uuidString,
+        area: LifeArea.home.rawValue,
+        sender: .desktopClient,
+        text: "Expired",
+        createdAt: now.addingTimeInterval(-61 * 60),
+        expiresAt: now.addingTimeInterval(-60),
+        deliveryState: .received
+    )
+    let repository = InMemoryChatMessageRepository(messages: [fresh, expired])
+
+    try repository.deleteExpired(before: now)
+    let active = try repository.loadActiveMessages(now: now)
+
+    try expect(active == [fresh], "chat message repository should retain only messages inside the TTL window")
+    try expect(ChatMessageRetentionPolicy.oneHour.expirationDate(for: now) == now.addingTimeInterval(60 * 60), "default chat retention should be one hour")
+}
+
 func testAppFlowAreaConfiguration() throws {
     var state = MockAppState.preview
 
@@ -96,6 +136,43 @@ func testAppFlowAreaConfiguration() throws {
 
     try expect(state.folders.map(\.id) == [.personal, .work], "onboarding area selection should keep only chosen built-in areas")
     try expect(state.chats.allSatisfy { [.personal, .work].contains($0.area) }, "onboarding area selection should keep only chats for chosen areas")
+}
+
+func testOnboardingCompletionPersistsSelectedAreas() throws {
+    let onboardingStore = InMemoryOnboardingConfigurationStore()
+    let store = DevModeStore(state: .preview, onboardingStore: onboardingStore)
+
+    store.completeOnboarding(selectedAreas: [.home, .travel])
+
+    try expect(store.onboardingConfiguration == OnboardingConfiguration(didComplete: true, selectedAreas: [.home, .travel]), "onboarding completion should store selected areas")
+    try expect(store.state.folders.map(\.id) == [.home, .travel], "selected onboarding areas should filter the active folder list immediately")
+
+    let reloadedStore = DevModeStore(state: .preview, onboardingStore: onboardingStore)
+    try expect(reloadedStore.onboardingConfiguration.didComplete, "onboarding completion should survive a new store using the same persistence port")
+    try expect(reloadedStore.state.folders.map(\.id) == [.home, .travel], "persisted onboarding areas should filter folders on app start")
+}
+
+func testSignOutReturnsToFreshOnboardingAndClearsPairing() throws {
+    let onboardingStore = InMemoryOnboardingConfigurationStore()
+    let credentialStore = RecordingNostrBridgeCredentialStore()
+    let store = DevModeStore(
+        state: .preview,
+        onboardingStore: onboardingStore,
+        nostrCredentialStore: credentialStore,
+        initialDesktopPairingStatus: .paired(displayName: "Mac mini")
+    )
+
+    store.completeOnboarding(selectedAreas: [.home, .work])
+    store.signOut()
+
+    try expect(!store.onboardingConfiguration.didComplete, "sign out should return the app to initial onboarding")
+    try expect(store.onboardingConfiguration.selectedAreas == LifeArea.defaultOnboardingSelection, "sign out should restore the default onboarding area selection")
+    try expect(store.desktopPairingStatus == .notPaired, "sign out should clear the desktop pairing state")
+    try expect(credentialStore.deleteCount == 1, "sign out should clear persisted desktop pairing credentials")
+    try expect(store.state.folders.count == MockAppState.preview.folders.count, "sign out should restore the default app preview state")
+
+    let reloadedStore = DevModeStore(state: .preview, onboardingStore: onboardingStore)
+    try expect(!reloadedStore.onboardingConfiguration.didComplete, "sign out should persist the fresh onboarding state")
 }
 
 func testAppFlowCustomAreaCreationAndFiltering() throws {
@@ -112,6 +189,21 @@ func testAppFlowCustomAreaCreationAndFiltering() throws {
     if let created {
         try expect(state.chats(matching: .custom(created.id)).isEmpty, "new custom areas should start without associated chats")
     }
+}
+
+func testRuntimeModeDefaultsToProductionAndUsesFlags() throws {
+    let suiteName = "clawdia-runtime-mode-test-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer {
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+
+    try expect(ClawdiaRuntimeModeResolver.resolve(environment: [:], arguments: [], userDefaults: defaults) == .production, "runtime mode should default to production")
+    try expect(ClawdiaRuntimeModeResolver.resolve(environment: [:], arguments: [ClawdiaRuntimeModeResolver.launchArgument], userDefaults: defaults) == .development, "runtime mode should support a launch argument development flag")
+    try expect(ClawdiaRuntimeModeResolver.resolve(environment: [ClawdiaRuntimeModeResolver.environmentKey: "development"], arguments: [], userDefaults: defaults) == .development, "runtime mode should support an environment development flag")
+
+    defaults.set(true, forKey: ClawdiaRuntimeModeResolver.userDefaultsKey)
+    try expect(ClawdiaRuntimeModeResolver.resolve(environment: [:], arguments: [], userDefaults: defaults) == .development, "runtime mode should support a user defaults development flag")
 }
 
 func testPreviewChatsAreScopedToAreas() throws {
@@ -223,15 +315,18 @@ final class RecordingNostrRelayPublisher: NostrRelayPublishing, @unchecked Senda
     private let lock = NSLock()
     private var publishedEvents: [NostrPreparedRelayEvent] = []
     private let receipts: [NostrRelayPublishReceipt]
+    private let onPublish: (@Sendable () -> Void)?
 
-    init(receipts: [NostrRelayPublishReceipt]) {
+    init(receipts: [NostrRelayPublishReceipt], onPublish: (@Sendable () -> Void)? = nil) {
         self.receipts = receipts
+        self.onPublish = onPublish
     }
 
     func publish(_ event: NostrPreparedRelayEvent) async -> [NostrRelayPublishReceipt] {
         lock.withLock {
             publishedEvents.append(event)
         }
+        onPublish?()
         return receipts
     }
 
@@ -259,6 +354,24 @@ final class NostrReceiptBox: @unchecked Sendable {
     }
 }
 
+final class RecordingNostrBridgeCredentialStore: NostrAgentBridgeCredentialStoring {
+    private(set) var savedCredentials: NostrAgentBridgeCredentials?
+    private(set) var deleteCount = 0
+
+    func loadCredentials() throws -> NostrAgentBridgeCredentials? {
+        savedCredentials
+    }
+
+    func saveCredentials(_ credentials: NostrAgentBridgeCredentials) throws {
+        savedCredentials = credentials
+    }
+
+    func deleteCredentials() throws {
+        deleteCount += 1
+        savedCredentials = nil
+    }
+}
+
 func testStorePreparesRelayEventWhenSenderIsConfigured() throws {
     let state = MockAppState.preview
     guard let chat = state.chats(matching: .life(.home)).first else {
@@ -275,12 +388,25 @@ func testStorePreparesRelayEventWhenSenderIsConfigured() throws {
         relayURLs: []
     )
     let sender = RecordingNostrMessageSender(preparedEvent: preparedEvent)
-    let store = DevModeStore(state: state, nostrMessageSender: sender)
+    let repository = InMemoryChatMessageRepository()
+    let sentAt = Date(timeIntervalSince1970: 1_777_777_700)
+    let store = DevModeStore(
+        state: state,
+        nostrMessageSender: sender,
+        chatMessageRepository: repository,
+        now: { sentAt }
+    )
 
     _ = store.sendChatMessage("Can you send this over Nostr?", in: chat)
 
     try expect(sender.sentEvents.count == 1, "configured Nostr senders should receive chat outbox events")
     try expect(store.state.preparedNostrRelayEvents == [preparedEvent], "prepared relay events should stay in phone memory")
+    let persisted = try repository.loadActiveMessages(now: sentAt)
+    try expect(persisted.count == 1, "sent chat messages should be persisted on the phone")
+    try expect(persisted.first?.text == "Can you send this over Nostr?", "persisted outgoing chat message should keep the sent text")
+    try expect(persisted.first?.expiresAt == sentAt.addingTimeInterval(60 * 60), "persisted outgoing chat message should carry a one-hour TTL")
+    try expect(persisted.first?.deliveryState == .sent, "prepared Nostr messages should be marked sent in local history")
+    try expect(store.state.isAgentTyping(conversationID: chat.id.uuidString), "phone UI should show desktop typing after a successful send")
 }
 
 func testPreparedRelayEventEncodesNIP01ClientFrame() throws {
@@ -534,13 +660,18 @@ func testStoreStoresIncomingNostrEnvelopeInPhoneMemory() throws {
         phonePrivateKeyHex: phonePrivateKey,
         expectedSenderPublicKeyHex: desktopKeypair.publicKeyHex
     )
-    let store = DevModeStore(state: .preview, nostrMessageReceiver: receiver)
+    let repository = InMemoryChatMessageRepository()
+    let store = DevModeStore(state: .preview, nostrMessageReceiver: receiver, chatMessageRepository: repository)
 
     let prepared = try sender.send(outboxEvent)
     let received = store.receiveNostrRelayEvent(prepared)
 
     try expect(received == envelope, "store should return the incoming desktop envelope")
     try expect(store.state.receivedAgentMessages == [envelope], "store should retain accepted incoming agent messages in phone memory")
+    let persisted = try repository.loadActiveMessages(now: Date(timeIntervalSince1970: 1_777_777_800))
+    try expect(persisted.map(\.text) == [envelope.text], "incoming desktop envelopes should be persisted into phone chat history")
+    try expect(persisted.first?.deliveryState == .received, "incoming desktop envelopes should be marked received in local history")
+    try expect(!store.state.isAgentTyping(conversationID: envelope.conversationID), "incoming desktop replies should clear the typing indicator")
 }
 
 func testPublishingSenderPublishesPreparedGiftWrap() throws {
@@ -618,6 +749,79 @@ func testNostrBridgeCredentialsDeriveRuntimeConfiguration() throws {
     try expect(configuration.relayURLs == [relayURL], "credentials should retain paired relay URLs")
 }
 
+func testNostrDesktopPairingPayloadRoundTripsURI() throws {
+    let desktopPrivateKey = String(repeating: "0", count: 63) + "2"
+    let desktopKeypair = try NostrAgentKeypair(privateKeyHex: desktopPrivateKey)
+    let relayURL = URL(string: "wss://relay.example.com")!
+    let payload = try NostrDesktopPairingPayload(
+        desktopPublicKeyHex: desktopKeypair.publicKeyHex,
+        relayURLs: [relayURL],
+        desktopName: "Mac mini"
+    )
+
+    let parsed = try NostrDesktopPairingPayload.parse(payload.pairingURI())
+
+    try expect(parsed == payload, "desktop pairing payload should round-trip through the QR URI format")
+}
+
+func testStorePairsDesktopFromPairingPayload() throws {
+    let desktopPrivateKey = String(repeating: "0", count: 63) + "2"
+    let desktopKeypair = try NostrAgentKeypair(privateKeyHex: desktopPrivateKey)
+    let relayURL = URL(string: "wss://relay.example.com")!
+    let payload = try NostrDesktopPairingPayload(
+        desktopPublicKeyHex: desktopKeypair.publicKeyHex,
+        relayURLs: [relayURL],
+        desktopName: "Mac mini"
+    )
+    let credentialStore = RecordingNostrBridgeCredentialStore()
+    let semaphore = DispatchSemaphore(value: 0)
+    let relayPublisher = RecordingNostrRelayPublisher(receipts: [
+        NostrRelayPublishReceipt(relayURL: relayURL, eventID: "ack", accepted: true, message: "")
+    ], onPublish: {
+        semaphore.signal()
+    })
+    let store = DevModeStore(
+        state: .preview,
+        nostrCredentialStore: credentialStore,
+        nostrEntropy: SequenceNostrEntropySource([try dataFromHex(String(repeating: "0", count: 63) + "1")]),
+        nostrRelayPublisher: relayPublisher,
+        phoneClientDisplayName: "Shadow iPhone",
+        now: { Date(timeIntervalSince1970: 1_777_777_777) }
+    )
+
+    let didPair = try store.pairDesktop(with: payload.pairingURI())
+
+    try expect(didPair, "store should accept a valid desktop pairing payload")
+    try expect(store.desktopPairingStatus == .paired(displayName: "Mac mini"), "store should mark the desktop as paired")
+    try expect(credentialStore.savedCredentials?.desktopPublicKeyHex == desktopKeypair.publicKeyHex, "pairing should persist the desktop public key")
+    try expect(credentialStore.savedCredentials?.relayURLStrings == [relayURL.absoluteString], "pairing should persist relay URLs")
+    try expect(credentialStore.savedCredentials?.desktopDisplayName == "Mac mini", "pairing should persist the desktop display name")
+    guard let acknowledgement = store.state.preparedNostrRelayEvents.last else {
+        throw VerificationFailure(description: "pairing should prepare a signed desktop acknowledgement event")
+    }
+    try expect(acknowledgement.kind == NostrDesktopPairingAcknowledgement.kind, "pairing should prepare a signed desktop acknowledgement event")
+    try expect(acknowledgement.tags.contains(["p", desktopKeypair.publicKeyHex]), "pairing acknowledgement should be addressed to the desktop public key")
+    try expect(acknowledgement.content.contains("Shadow iPhone"), "pairing acknowledgement should identify the phone")
+    guard semaphore.wait(timeout: .now() + 2) == .success else {
+        throw VerificationFailure(description: "pairing should publish the signed desktop acknowledgement event")
+    }
+    try expect(relayPublisher.publishedEventIDs() == [acknowledgement.id], "pairing acknowledgement should be sent to the configured relay publisher")
+}
+
+func testStoreReportsFailedDesktopPairing() throws {
+    let store = DevModeStore(state: .preview)
+
+    let didPair = store.pairDesktop(with: "not-a-clawdia-pairing-code")
+
+    try expect(!didPair, "store should reject an invalid desktop pairing payload")
+    switch store.desktopPairingStatus {
+    case .failed(let message):
+        try expect(message.contains("desktop pairing code"), "failed pairing should include a useful retry message")
+    default:
+        throw VerificationFailure(description: "failed pairing should update desktop pairing status")
+    }
+}
+
 func testAgentEnvelopeCarriesReferencesWithoutFileBytes() throws {
     let envelope = AgentMessageEnvelope(
         conversationID: "home:apartment",
@@ -658,8 +862,13 @@ do {
     try testSharedKernel()
     try testDesignSystemTokens()
     try testFeatureCatalog()
+    try testProductionStateUsesRealAgentThreads()
+    try testStoredChatMessagesRespectOneHourTTL()
     try testAppFlowAreaConfiguration()
+    try testOnboardingCompletionPersistsSelectedAreas()
+    try testSignOutReturnsToFreshOnboardingAndClearsPairing()
     try testAppFlowCustomAreaCreationAndFiltering()
+    try testRuntimeModeDefaultsToProductionAndUsesFlags()
     try testPreviewChatsAreScopedToAreas()
     try testAreaChatNavigationKeepsAreaRouteBehindChat()
     try testCalendarCurrentDateResolver()
@@ -676,6 +885,9 @@ do {
     try testPublishingSenderPublishesPreparedGiftWrap()
     try testNostrRelayOKResponseParsing()
     try testNostrBridgeCredentialsDeriveRuntimeConfiguration()
+    try testNostrDesktopPairingPayloadRoundTripsURI()
+    try testStorePairsDesktopFromPairingPayload()
+    try testStoreReportsFailedDesktopPairing()
     try testAgentEnvelopeCarriesReferencesWithoutFileBytes()
     try testLocalConnectionRequestShape()
     print("Clawdia verification tests passed")

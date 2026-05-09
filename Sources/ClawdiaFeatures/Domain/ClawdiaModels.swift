@@ -32,8 +32,21 @@ public enum LifeArea: String, CaseIterable, Identifiable, Hashable, Sendable {
 
     public var id: String { rawValue }
 
+    public static let defaultOnboardingSelection: Set<LifeArea> = [.personal, .work, .money, .health]
+
     public var title: String {
         rawValue.prefix(1).uppercased() + rawValue.dropFirst()
+    }
+
+    public var defaultChatID: UUID {
+        switch self {
+        case .personal: UUID(uuidString: "10000000-0000-4000-8000-000000000001")!
+        case .work: UUID(uuidString: "10000000-0000-4000-8000-000000000002")!
+        case .money: UUID(uuidString: "10000000-0000-4000-8000-000000000003")!
+        case .health: UUID(uuidString: "10000000-0000-4000-8000-000000000004")!
+        case .home: UUID(uuidString: "10000000-0000-4000-8000-000000000005")!
+        case .travel: UUID(uuidString: "10000000-0000-4000-8000-000000000006")!
+        }
     }
 
     public var icon: String {

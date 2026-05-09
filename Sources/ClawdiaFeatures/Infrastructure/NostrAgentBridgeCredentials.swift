@@ -5,8 +5,14 @@ public struct NostrAgentBridgeCredentials: Codable, Equatable, Sendable {
     public let phonePrivateKeyHex: String
     public let desktopPublicKeyHex: String
     public let relayURLStrings: [String]
+    public let desktopDisplayName: String?
 
-    public init(phonePrivateKeyHex: String, desktopPublicKeyHex: String, relayURLs: [URL]) throws {
+    public init(
+        phonePrivateKeyHex: String,
+        desktopPublicKeyHex: String,
+        relayURLs: [URL],
+        desktopDisplayName: String? = nil
+    ) throws {
         _ = try NostrAgentKeypair(privateKeyHex: phonePrivateKeyHex)
         guard Self.isLowercaseHex(desktopPublicKeyHex, byteCount: 32) else {
             throw NostrAgentBridgeCredentialsError.invalidDesktopPublicKey
@@ -14,6 +20,7 @@ public struct NostrAgentBridgeCredentials: Codable, Equatable, Sendable {
         self.phonePrivateKeyHex = phonePrivateKeyHex.lowercased()
         self.desktopPublicKeyHex = desktopPublicKeyHex.lowercased()
         self.relayURLStrings = relayURLs.map(\.absoluteString)
+        self.desktopDisplayName = desktopDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     }
 
     public func bridgeConfiguration() throws -> NostrAgentBridgeConfiguration {
@@ -108,4 +115,10 @@ public struct KeychainNostrAgentBridgeCredentialStore: NostrAgentBridgeCredentia
 
 public enum KeychainNostrAgentBridgeCredentialStoreError: Error, Equatable {
     case unhandledStatus(OSStatus)
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
 }

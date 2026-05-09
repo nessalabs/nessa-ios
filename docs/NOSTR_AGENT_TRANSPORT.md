@@ -23,6 +23,11 @@ Primary sources:
 
 - Domain owns `AgentMessageEnvelope`, a product-neutral payload for chat text plus optional local references for files, diffs, and images.
 - Application owns `NostrAgentEventFactory`, which maps a domain envelope into a Nostr outbox draft tagged with the desktop recipient, app namespace, schema, conversation, and area.
+- Application owns the QR/paste pairing payload format: `clawdia://pair/nostr?desktop_pubkey=<hex>&relay=<wss-url>&name=<desktop-name>`.
+- Application owns the phone-side pairing acknowledgement format. After a
+  successful scan, the phone publishes a signed ephemeral `kind:24133` Nostr
+  event tagged to the desktop public key so the desktop can verify and record
+  the connected iPhone.
 - Presentation only calls the store when a user sends a chat message. The store queues the outbox item in phone memory and can hand it to an injected sender that returns a prepared relay event.
 - `NostrPreparedRelayEvent` encodes to the NIP-01 `["EVENT", <event>]` client frame while keeping relay URLs local to the phone.
 - Infrastructure owns secure event preparation through `NostrEncryptedAgentMessageSender`. It signs NIP-01 events, encrypts payloads with NIP-44, and returns NIP-59 `kind:1059` gift wraps.
@@ -43,5 +48,11 @@ The current implementation queues local outbox drafts, marks them as `requiresEn
 6. Prefer ephemeral custom events for online peer traffic when both devices are connected.
 7. If offline delivery is required, use encrypted gift wraps and treat relay persistence as untrusted encrypted transport, not app storage.
 8. Persist accepted messages and context references in local phone storage, then add iCloud/iMessage sync as a separate persistence/sync layer.
+
+The iOS onboarding flow can now accept the pairing payload, write phone-side
+Keychain credentials, and publish a signed phone acknowledgement to the paired
+relay. The desktop Communication > Nostr tab generates the matching QR payload
+and listens for that acknowledgement while the tab is open so it can update the
+connected-client list.
 
 `nostr-sdk-ios` is the best API fit on paper because it includes NIP-17, NIP-44, NIP-59, and relay primitives, but version `0.3.0` currently fails to compile in this Xcode/SDK setup because its deprecated legacy DM code has a `Data.bytes` ambiguity. Re-check it before adopting more of the SDK.

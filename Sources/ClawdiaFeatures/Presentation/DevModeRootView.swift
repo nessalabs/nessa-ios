@@ -4,31 +4,44 @@ import ClawdiaDesignSystem
 public struct DevModeRootView: View {
     @StateObject private var store: DevModeStore
     @AppStorage("clawdiaTheme") private var theme: ClawdiaTheme = .light
-    @AppStorage("didCompleteOnboarding") private var didCompleteOnboarding = false
+    private let allowsDevelopment: Bool
     @State private var selectedTab: AppTab = .chats
     @State private var navigationPath: [AppNavigationRoute] = []
     @State private var developmentScreen: DevScreen?
 
-    public init(store: DevModeStore = DevModeStore()) {
+    public init(store: DevModeStore = DevModeStore(), allowsDevelopment: Bool = true) {
         _store = StateObject(wrappedValue: store)
+        self.allowsDevelopment = allowsDevelopment
     }
 
     public var body: some View {
         NavigationStack(path: $navigationPath) {
             Group {
-                if didCompleteOnboarding {
+                if store.onboardingConfiguration.didComplete {
                     AppShell(
                         state: store.state,
+                        desktopPairingStatus: store.desktopPairingStatus,
                         selectedTab: $selectedTab,
                         theme: $theme,
                         developmentScreen: $developmentScreen,
+                        allowsDevelopment: allowsDevelopment,
                         onCreateArea: { store.createCustomArea(named: $0) },
-                        onOpenArea: { navigationPath.append(.area($0)) }
+                        onOpenArea: { navigationPath.append(.area($0)) },
+                        onOpenNostrIntegration: { navigationPath.append(.nostrIntegration) },
+                        onSignOut: {
+                            navigationPath.removeAll()
+                            developmentScreen = nil
+                            selectedTab = .chats
+                            store.signOut()
+                        }
                     )
                 } else {
-                    OnboardingFlowView { areas in
-                        store.configureInitialAreas(areas)
-                        didCompleteOnboarding = true
+                    OnboardingFlowView(
+                        initialSelectedAreas: store.onboardingConfiguration.selectedAreas,
+                        desktopPairingStatus: store.desktopPairingStatus,
+                        onPairDesktop: { store.pairDesktop(with: $0) }
+                    ) { areas in
+                        store.completeOnboarding(selectedAreas: areas)
                         selectedTab = .chats
                     }
                 }
@@ -43,13 +56,18 @@ public struct DevModeRootView: View {
                     ChatScreen(state: store.state, chat: chat, onSendMessage: { message in
                         store.sendChatMessage(message, in: chat)
                     })
+                case .nostrIntegration:
+                    NostrIntegrationScreen(
+                        pairingStatus: store.desktopPairingStatus,
+                        onPairDesktop: { store.pairDesktop(with: $0) }
+                    )
                 }
             }
         }
         .clawdiaTheme(theme)
         .preferredColorScheme(theme == .dark ? .dark : .light)
         .onChange(of: developmentScreen) { _, newValue in
-            if let newValue {
+            if let newValue, allowsDevelopment {
                 store.recordScreen(newValue)
             }
         }
@@ -85,17 +103,21 @@ private enum AppTab: String, CaseIterable, Identifiable {
 
 private struct AppShell: View {
     let state: MockAppState
+    let desktopPairingStatus: DesktopPairingStatus
     @Binding var selectedTab: AppTab
     @Binding var theme: ClawdiaTheme
     @Binding var developmentScreen: DevScreen?
+    let allowsDevelopment: Bool
     let onCreateArea: (String) -> UserArea?
     let onOpenArea: (AreaFilter) -> Void
+    let onOpenNostrIntegration: () -> Void
+    let onSignOut: () -> Void
     @State private var showingAreasManager = false
     @State private var showingSearch = false
 
     var body: some View {
         ZStack {
-            if let developmentScreen {
+            if let developmentScreen, allowsDevelopment {
                 DevelopmentScreen(
                     selectedScreen: Binding(
                         get: { developmentScreen },
@@ -142,9 +164,17 @@ private struct AppShell: View {
                             Label(AppTab.voice.title, systemImage: AppTab.voice.systemImage)
                         }
 
-                    SettingsScreen(theme: $theme, areaCount: state.availableAreaCount, onOpenAreas: {
-                        showingAreasManager = true
-                    }) { screen in
+                    SettingsScreen(
+                        theme: $theme,
+                        areaCount: state.availableAreaCount,
+                        nostrStatus: desktopPairingStatus,
+                        showsDevelopmentSection: allowsDevelopment,
+                        onOpenAreas: {
+                            showingAreasManager = true
+                        },
+                        onOpenNostrIntegration: onOpenNostrIntegration,
+                        onSignOut: onSignOut
+                    ) { screen in
                         developmentScreen = screen
                     }
                     .tag(AppTab.settings)
@@ -261,10 +291,24 @@ private struct ScreenHost: View {
 public struct OnboardingFlowView: View {
     @Environment(\.clawdiaTheme) private var theme
     @State private var step = 0
-    @State private var selectedAreas: Set<LifeArea> = [.personal, .work, .money, .health]
+    @State private var selectedAreas: Set<LifeArea>
+    @State private var pairingCode = ""
+    @State private var pairingMessage: String?
+    @State private var isPairingDesktop = false
+    @State private var isShowingScanner = false
+    private let desktopPairingStatus: DesktopPairingStatus
+    private let onPairDesktop: (String) -> Bool
     private let onComplete: (Set<LifeArea>) -> Void
 
-    public init(onComplete: @escaping (Set<LifeArea>) -> Void = { _ in }) {
+    public init(
+        initialSelectedAreas: Set<LifeArea> = LifeArea.defaultOnboardingSelection,
+        desktopPairingStatus: DesktopPairingStatus = .notPaired,
+        onPairDesktop: @escaping (String) -> Bool = { _ in false },
+        onComplete: @escaping (Set<LifeArea>) -> Void = { _ in }
+    ) {
+        _selectedAreas = State(initialValue: initialSelectedAreas.isEmpty ? LifeArea.defaultOnboardingSelection : initialSelectedAreas)
+        self.desktopPairingStatus = desktopPairingStatus
+        self.onPairDesktop = onPairDesktop
         self.onComplete = onComplete
     }
 
@@ -275,7 +319,7 @@ public struct OnboardingFlowView: View {
             if step == 0 {
                 Text("hi, I'm\nClawdia.")
                     .font(ClawdiaType.display(56))
-                Text("I'll help you stay on top of life. We can chat, plan, draft, decide, and review approvals in one place.")
+                Text("Private help for life, work, and everything in between.")
                     .font(ClawdiaType.subhead)
                     .foregroundStyle(palette.text2)
             } else if step == 1 {
@@ -286,12 +330,24 @@ public struct OnboardingFlowView: View {
                     .foregroundStyle(palette.text2)
                 AreaPickerRows(selectedAreas: $selectedAreas)
             } else {
-                Text("connect to Clawdia")
+                Text("connect your Mac")
                     .font(ClawdiaType.display())
-                Text("Local mode talks to the Clawdia process on your machine. Cloud is reserved for the future hosted plan.")
+                Text("Scan the QR from Clawdia on your Mac to link this iPhone.")
                     .font(ClawdiaType.body)
                     .foregroundStyle(palette.text2)
-                ConnectionCard()
+                ConnectionCard(pairingStatus: effectiveDesktopPairingStatus)
+                ClawdiaPillButton("Scan QR", kind: .soft, systemImage: "qrcode.viewfinder") {
+                    isShowingScanner = true
+                }
+                PairingCodeField(text: $pairingCode)
+                if let pairingMessage {
+                    Text(pairingMessage)
+                        .font(ClawdiaType.caption)
+                        .foregroundStyle(pairingMessageColor(palette: palette))
+                }
+                ClawdiaPillButton(isPairingDesktop ? "Connecting..." : "Pair desktop", kind: .soft, systemImage: isPairingDesktop ? "arrow.triangle.2.circlepath" : "link") {
+                    pairDesktop(with: pairingCode)
+                }
             }
             Spacer()
             PageDots(active: step, count: 3)
@@ -305,6 +361,50 @@ public struct OnboardingFlowView: View {
         }
         .padding(ClawdiaSpacing.xl)
         .clawdiaScreenBackground()
+        .sheet(isPresented: $isShowingScanner) {
+            PairingQRCodeScannerSheet {
+                isShowingScanner = false
+            } onScannedCode: { code in
+                pairingCode = code
+                isShowingScanner = false
+                pairDesktop(with: code)
+            } onFailure: { message in
+                isShowingScanner = false
+                pairingMessage = message
+            }
+        }
+    }
+
+    private func pairDesktop(with code: String) {
+        let trimmedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedCode.isEmpty else {
+            pairingMessage = "Paste or scan the desktop QR code first."
+            return
+        }
+        isPairingDesktop = true
+        pairingMessage = "Connecting to your Mac..."
+        Task { @MainActor in
+            await Task.yield()
+            let paired = onPairDesktop(trimmedCode)
+            isPairingDesktop = false
+            pairingMessage = paired
+                ? "Connected. This iPhone is linked to your Mac."
+                : "Could not connect. Scan the desktop QR again."
+        }
+    }
+
+    private var effectiveDesktopPairingStatus: DesktopPairingStatus {
+        isPairingDesktop ? .connecting(displayName: nil) : desktopPairingStatus
+    }
+
+    private func pairingMessageColor(palette: ClawdiaPalette) -> Color {
+        guard let pairingMessage else {
+            return palette.text2
+        }
+        if pairingMessage.hasPrefix("Connected") || pairingMessage.hasPrefix("Connecting") {
+            return palette.accent
+        }
+        return palette.danger
     }
 }
 
@@ -355,22 +455,142 @@ private struct AreaPickerRows: View {
 
 private struct ConnectionCard: View {
     @Environment(\.clawdiaTheme) private var theme
+    let pairingStatus: DesktopPairingStatus
 
     var body: some View {
         let palette = ClawdiaColor.palette(theme)
         ClawdiaCard {
             VStack(alignment: .leading, spacing: ClawdiaSpacing.sm) {
-                Label("Localhost:8787", systemImage: "desktopcomputer")
+                Label(title, systemImage: icon)
                     .font(ClawdiaType.subhead)
-                Text("Ready for local app communication. Cloud endpoint can use the same port interface later.")
+                Text(detail)
                     .font(ClawdiaType.caption)
                     .foregroundStyle(palette.text2)
                 HStack {
-                    StatusPill("Connected", systemImage: "checkmark.circle")
-                    StatusPill("Logs on", systemImage: "waveform")
+                    StatusPill(statusLabel, systemImage: statusIcon)
+                    StatusPill("NIP-44", systemImage: "lock")
                 }
             }
         }
+    }
+
+    private var title: String {
+        switch pairingStatus {
+        case .notPaired:
+            "Nostr desktop bridge"
+        case .connecting(let displayName):
+            "Connecting to \(displayName ?? "your Mac")"
+        case .paired(let displayName):
+            "Connected to \(displayName ?? "your Mac")"
+        case .failed:
+            "Could not connect"
+        }
+    }
+
+    private var detail: String {
+        switch pairingStatus {
+        case .notPaired:
+            "Clawdia will exchange encrypted messages with your Mac after pairing."
+        case .connecting:
+            "Setting up encrypted messaging between this iPhone and the desktop agent."
+        case .paired:
+            "Encrypted desktop-to-phone messaging is ready on this iPhone."
+        case .failed(let message):
+            message
+        }
+    }
+
+    private var icon: String {
+        switch pairingStatus {
+        case .notPaired:
+            "desktopcomputer"
+        case .connecting:
+            "arrow.triangle.2.circlepath"
+        case .paired:
+            "checkmark.seal"
+        case .failed:
+            "exclamationmark.triangle"
+        }
+    }
+
+    private var statusLabel: String {
+        switch pairingStatus {
+        case .notPaired:
+            "Not paired"
+        case .connecting:
+            "Connecting"
+        case .paired:
+            "Connected"
+        case .failed:
+            "Retry"
+        }
+    }
+
+    private var statusIcon: String {
+        switch pairingStatus {
+        case .notPaired:
+            "circle"
+        case .connecting:
+            "arrow.triangle.2.circlepath"
+        case .paired:
+            "checkmark.circle"
+        case .failed:
+            "arrow.clockwise"
+        }
+    }
+}
+
+private struct PairingCodeField: View {
+    @Environment(\.clawdiaTheme) private var theme
+    @Binding var text: String
+
+    var body: some View {
+        let palette = ClawdiaColor.palette(theme)
+        TextField("clawdia://pair/nostr?...", text: $text, axis: .vertical)
+            .font(ClawdiaType.body)
+            .autocorrectionDisabled()
+            .lineLimit(2...5)
+            .padding(ClawdiaSpacing.md)
+            .background(palette.surface)
+            .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.lg, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ClawdiaRadius.lg, style: .continuous)
+                    .stroke(palette.border, lineWidth: 0.5)
+            }
+    }
+}
+
+private struct PairingQRCodeScannerSheet: View {
+    @Environment(\.clawdiaTheme) private var theme
+    let onClose: () -> Void
+    let onScannedCode: (String) -> Void
+    let onFailure: (String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            QRCodeScannerView(onCodeScanned: onScannedCode, onFailure: onFailure)
+                .ignoresSafeArea(edges: .bottom)
+                .overlay(alignment: .bottom) {
+                    scannerHint
+                }
+                .navigationTitle("Pair Mac")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done", action: onClose)
+                    }
+                }
+        }
+    }
+
+    private var scannerHint: some View {
+        let palette = ClawdiaColor.palette(theme)
+        return Text("Point the camera at the QR code in Clawdia desktop settings.")
+            .font(ClawdiaType.caption)
+            .multilineTextAlignment(.center)
+            .foregroundStyle(palette.text)
+            .padding(ClawdiaSpacing.md)
+            .frame(maxWidth: .infinity)
+            .background(.ultraThinMaterial)
     }
 }
 
@@ -944,7 +1164,6 @@ public struct ChatScreen: View {
     private let chat: ChatPreview?
     private let showsNavigationHeader: Bool
     private let onSendMessage: (String) -> Void
-    @State private var sentMessages: [String] = []
     @State private var floatingApproval: ApprovalRequest?
     @State private var showingAgentDetails = false
     @FocusState private var isComposerFocused: Bool
@@ -966,27 +1185,15 @@ public struct ChatScreen: View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
                 AppScroll(keyboardDismissMode: .interactively, bottomPadding: ClawdiaSpacing.lg) {
-                    if let chat {
-                        ChatContextCard(chat: chat)
-                        MessageBubble(chat.preview, fromMe: false)
+                    if timelineMessages.isEmpty {
+                        EmptyChatThreadView(chat: chat)
                     } else {
-                        MessageBubble("Morning. I noticed your sister's birthday is in 4 days. Want me to start a reminder thread?", fromMe: false)
-                    }
-                    MessageBubble("yes pls. and help me draft her a card", fromMe: true)
-                    ToolUseInline()
-                    MessageBubble("Here's a draft leaning warm with a tiny joke.", fromMe: false)
-                    if let approval = state.approvals.first {
-                        ApprovalInlineSurface(request: approval) {
-                            floatingApproval = approval
+                        ForEach(timelineMessages) { message in
+                            MessageBubble(message.text, fromMe: message.fromMe)
                         }
-                    }
-                    MessageBubble("love it. what's my week look like and where's spending?", fromMe: true)
-                    TodoCard()
-                    FinanceCard()
-                    StockCard()
-                    ForEach(sentMessages, id: \.self) { message in
-                        MessageBubble(message, fromMe: true)
-                        MessageBubble("Got it. I logged that in dev mode so we can wire the local Clawdia response next.", fromMe: false)
+                        if state.isAgentTyping(conversationID: chat?.id.uuidString) {
+                            TypingIndicatorBubble()
+                        }
                     }
                 }
                 .onTapGesture {
@@ -1001,7 +1208,6 @@ public struct ChatScreen: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Composer(isDraftFocused: $isComposerFocused) { message in
-                sentMessages.append(message)
                 onSendMessage(message)
             }
         }
@@ -1025,6 +1231,59 @@ public struct ChatScreen: View {
             AgentDetailsSheet(chat: chat)
         }
     }
+
+    private var timelineMessages: [ChatTimelineMessage] {
+        let conversationID = chat?.id.uuidString
+        return state.chatMessages(conversationID: conversationID).map { message in
+            ChatTimelineMessage(
+                id: "stored-\(message.id.uuidString)",
+                text: message.text,
+                fromMe: message.sender == .phone,
+                createdAt: Int(message.createdAt.timeIntervalSince1970)
+            )
+        }.sorted { left, right in
+            if left.createdAt == right.createdAt {
+                return left.id < right.id
+            }
+            return left.createdAt < right.createdAt
+        }
+    }
+}
+
+private struct ChatTimelineMessage: Identifiable, Equatable {
+    let id: String
+    let text: String
+    let fromMe: Bool
+    let createdAt: Int
+}
+
+private struct EmptyChatThreadView: View {
+    @Environment(\.clawdiaTheme) private var theme
+    let chat: ChatPreview?
+
+    var body: some View {
+        let palette = ClawdiaColor.palette(theme)
+        VStack(spacing: ClawdiaSpacing.sm) {
+            ClawdiaAvatar(size: 72)
+            Text("Clawdia")
+                .font(ClawdiaType.title.weight(.semibold))
+                .foregroundStyle(palette.text)
+            Text(emptyText)
+                .font(ClawdiaType.body)
+                .foregroundStyle(palette.text2)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 300)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 96)
+    }
+
+    private var emptyText: String {
+        if let chat {
+            return "\(chat.area.title) messages route through your paired Mac."
+        }
+        return "Messages route through your paired Mac."
+    }
 }
 
 private struct ChatAgentNavigationTitle: View {
@@ -1040,6 +1299,44 @@ private struct ChatAgentNavigationTitle: View {
         }
         .frame(minWidth: 112, minHeight: 60)
         .contentShape(Rectangle())
+    }
+}
+
+private struct TypingIndicatorBubble: View {
+    @Environment(\.clawdiaTheme) private var theme
+    @State private var animates = false
+
+    var body: some View {
+        let palette = ClawdiaColor.palette(theme)
+        HStack {
+            HStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { index in
+                    Circle()
+                        .fill(palette.text2)
+                        .frame(width: 6, height: 6)
+                        .scaleEffect(animates ? 1 : 0.72)
+                        .opacity(animates ? 1 : 0.42)
+                        .animation(
+                            .easeInOut(duration: 0.58)
+                                .repeatForever()
+                                .delay(Double(index) * 0.16),
+                            value: animates
+                        )
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(palette.bubbleThemBackground)
+            .clipShape(RoundedRectangle(cornerRadius: ClawdiaRadius.xl, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ClawdiaRadius.xl, style: .continuous)
+                    .stroke(palette.border, lineWidth: 0.5)
+            }
+            Spacer(minLength: 48)
+        }
+        .onAppear {
+            animates = true
+        }
     }
 }
 
@@ -2822,21 +3119,165 @@ private struct ManageAreaListRow: View {
     }
 }
 
+private struct NostrIntegrationScreen: View {
+    @Environment(\.clawdiaTheme) private var theme
+    let pairingStatus: DesktopPairingStatus
+    let onPairDesktop: (String) -> Bool
+    @State private var pairingCode = ""
+    @State private var pairingMessage: String?
+    @State private var isPairingDesktop = false
+    @State private var isShowingScanner = false
+
+    var body: some View {
+        let palette = ClawdiaColor.palette(theme)
+        AppScroll {
+            Text("Nostr")
+                .font(ClawdiaType.display())
+            Text("Encrypted communication between this iPhone and your Clawdia desktop agent.")
+                .font(ClawdiaType.body)
+                .foregroundStyle(palette.text2)
+            ConnectionCard(pairingStatus: effectivePairingStatus)
+            ClawdiaSettingsSection(title: "Connection", rows: [
+                SettingsRowData(icon: "●", label: "Status", accessory: .status(effectivePairingStatus.settingsDetail)),
+                SettingsRowData(icon: "⌁", label: "Transport", detail: "Nostr relays", accessory: .status("Ready")),
+                SettingsRowData(icon: "🔒", label: "Encryption", detail: "NIP-44 / NIP-59", accessory: .status("On"))
+            ])
+            if effectivePairingStatus.allowsPairingControls {
+                pairingControls
+            } else {
+                pairedConnectionControls
+            }
+        }
+        .navigationTitle("Nostr")
+        .sheet(isPresented: $isShowingScanner) {
+            PairingQRCodeScannerSheet {
+                isShowingScanner = false
+            } onScannedCode: { code in
+                pairingCode = code
+                isShowingScanner = false
+                pairDesktop(with: code)
+            } onFailure: { message in
+                isShowingScanner = false
+                pairingMessage = message
+            }
+        }
+    }
+
+    private var pairingControls: some View {
+        VStack(alignment: .leading, spacing: ClawdiaSpacing.sm) {
+            ClawdiaPillButton("Scan QR", kind: .soft, systemImage: "qrcode.viewfinder") {
+                isShowingScanner = true
+            }
+            PairingCodeField(text: $pairingCode)
+            if let pairingMessage {
+                Text(pairingMessage)
+                    .font(ClawdiaType.caption)
+                    .foregroundStyle(pairingMessageColor)
+            }
+            ClawdiaPillButton(isPairingDesktop ? "Connecting..." : "Pair desktop", kind: .soft, systemImage: isPairingDesktop ? "arrow.triangle.2.circlepath" : "link") {
+                pairDesktop(with: pairingCode)
+            }
+        }
+    }
+
+    private var pairedConnectionControls: some View {
+        VStack(alignment: .leading, spacing: ClawdiaSpacing.sm) {
+            if let pairingMessage {
+                Text(pairingMessage)
+                    .font(ClawdiaType.caption)
+                    .foregroundStyle(pairingMessageColor)
+            }
+            ClawdiaPillButton(isPairingDesktop ? "Connecting..." : "Pair another Mac", kind: .soft, systemImage: isPairingDesktop ? "arrow.triangle.2.circlepath" : "qrcode.viewfinder") {
+                isShowingScanner = true
+            }
+        }
+    }
+
+    private var effectivePairingStatus: DesktopPairingStatus {
+        isPairingDesktop ? .connecting(displayName: nil) : pairingStatus
+    }
+
+    private var pairingMessageColor: Color {
+        let palette = ClawdiaColor.palette(theme)
+        guard let pairingMessage else {
+            return palette.text2
+        }
+        if pairingMessage.hasPrefix("Connected") || pairingMessage.hasPrefix("Connecting") {
+            return palette.accent
+        }
+        return palette.danger
+    }
+
+    private func pairDesktop(with code: String) {
+        let trimmedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedCode.isEmpty else {
+            pairingMessage = "Paste or scan the desktop QR code first."
+            return
+        }
+        isPairingDesktop = true
+        pairingMessage = "Connecting to your Mac..."
+        Task { @MainActor in
+            await Task.yield()
+            let paired = onPairDesktop(trimmedCode)
+            isPairingDesktop = false
+            pairingMessage = paired
+                ? "Connected. This iPhone is linked to your Mac."
+                : "Could not connect. Scan the desktop QR again."
+        }
+    }
+}
+
+private extension DesktopPairingStatus {
+    var settingsDetail: String {
+        switch self {
+        case .notPaired:
+            "Not paired"
+        case .connecting:
+            "Connecting"
+        case .paired:
+            "Connected"
+        case .failed:
+            "Issue"
+        }
+    }
+
+    var allowsPairingControls: Bool {
+        switch self {
+        case .notPaired, .failed:
+            true
+        case .connecting, .paired:
+            false
+        }
+    }
+}
+
 public struct SettingsScreen: View {
     @Binding private var theme: ClawdiaTheme
     private let areaCount: Int
+    private let nostrStatus: DesktopPairingStatus
+    private let showsDevelopmentSection: Bool
     private let onOpenAreas: () -> Void
+    private let onOpenNostrIntegration: () -> Void
+    private let onSignOut: () -> Void
     private let onOpenDevelopment: (DevScreen) -> Void
 
     public init(
         theme: Binding<ClawdiaTheme> = .constant(.light),
         areaCount: Int = MockAppState.preview.availableAreaCount,
+        nostrStatus: DesktopPairingStatus = .notPaired,
+        showsDevelopmentSection: Bool = false,
         onOpenAreas: @escaping () -> Void = {},
+        onOpenNostrIntegration: @escaping () -> Void = {},
+        onSignOut: @escaping () -> Void = {},
         onOpenDevelopment: @escaping (DevScreen) -> Void = { _ in }
     ) {
         _theme = theme
         self.areaCount = areaCount
+        self.nostrStatus = nostrStatus
+        self.showsDevelopmentSection = showsDevelopmentSection
         self.onOpenAreas = onOpenAreas
+        self.onOpenNostrIntegration = onOpenNostrIntegration
+        self.onSignOut = onSignOut
         self.onOpenDevelopment = onOpenDevelopment
     }
 
@@ -2846,39 +3287,28 @@ public struct SettingsScreen: View {
                 .font(ClawdiaType.display())
             ClawdiaProfileSettingsCard()
             ThemeModeCard(theme: $theme)
-            ClawdiaSettingsSection(title: "Clawdia", rows: [
-                SettingsRowData(icon: "◆", label: "Personality", detail: "Warm friend"),
-                SettingsRowData(icon: "✦", label: "Voice", detail: "Hazel - soft"),
-                SettingsRowData(icon: "🔔", label: "When to interrupt", detail: "Approvals only"),
-                SettingsRowData(icon: "🌙", label: "Quiet hours", detail: "10 PM - 7 AM")
-            ])
             ClawdiaSettingsSection(title: "Areas", rows: [
-                SettingsRowData(icon: "◇", label: "Manage areas", detail: "\(areaCount) active", action: onOpenAreas),
-                SettingsRowData(icon: "🔗", label: "Connected apps", detail: "3 of 5"),
-                SettingsRowData(icon: "⚶", label: "Memory & context", detail: "On")
+                SettingsRowData(icon: "◇", label: "Manage areas", detail: "\(areaCount) active", action: onOpenAreas)
             ])
-            ClawdiaSettingsSection(title: "Notifications", rows: [
-                SettingsRowData(icon: "📣", label: "Push notifications", detail: "On", accessory: .toggle),
-                SettingsRowData(icon: "🖇", label: "Daily digest", detail: "8:00 AM"),
-                SettingsRowData(icon: "⏱", label: "Smart batching", detail: "On", accessory: .toggle)
-            ])
-            ClawdiaSettingsSection(title: "Privacy", rows: [
-                SettingsRowData(icon: "🔒", label: "On-device first", detail: "Always"),
-                SettingsRowData(icon: "↻", label: "What Clawdia remembers"),
-                SettingsRowData(icon: "👁", label: "Audit log", detail: "Last 90 days"),
-                SettingsRowData(icon: "↓", label: "Export your data")
+            ClawdiaSettingsSection(title: "Integrations", rows: [
+                SettingsRowData(
+                    icon: "⌁",
+                    label: "Nostr",
+                    detail: nostrStatus.settingsDetail,
+                    action: onOpenNostrIntegration
+                )
             ])
             ClawdiaSettingsSection(title: "Account", rows: [
-                SettingsRowData(icon: "💳", label: "Subscription", detail: "Plus"),
-                SettingsRowData(icon: "↗", label: "Help & feedback"),
-                SettingsRowData(icon: "→", label: "Sign out")
+                SettingsRowData(icon: "→", label: "Sign out", action: onSignOut)
             ])
-            ClawdiaSettingsSection(title: "Development", rows: [
-                SettingsRowData(icon: "▣", label: "Component gallery", detail: "Tokens and controls", action: { onOpenDevelopment(.designSystem) }),
-                SettingsRowData(icon: "✓", label: "Approvals and diffs", detail: "Bottom sheets", action: { onOpenDevelopment(.approvals) }),
-                SettingsRowData(icon: "{}", label: "Code review cards", detail: "Email and diff states", action: { onOpenDevelopment(.approvals) }),
-                SettingsRowData(icon: "⚶", label: "Memory graph", detail: "Tap and inspect", action: { onOpenDevelopment(.memory) })
-            ])
+            if showsDevelopmentSection {
+                ClawdiaSettingsSection(title: "Development", rows: [
+                    SettingsRowData(icon: "▣", label: "Component gallery", detail: "Tokens and controls", action: { onOpenDevelopment(.designSystem) }),
+                    SettingsRowData(icon: "✓", label: "Approvals and diffs", detail: "Bottom sheets", action: { onOpenDevelopment(.approvals) }),
+                    SettingsRowData(icon: "{}", label: "Code review cards", detail: "Email and diff states", action: { onOpenDevelopment(.approvals) }),
+                    SettingsRowData(icon: "⚶", label: "Memory graph", detail: "Tap and inspect", action: { onOpenDevelopment(.memory) })
+                ])
+            }
             Text("Clawdia 1.4.2 - made with care")
                 .font(ClawdiaType.caption)
                 .foregroundStyle(ClawdiaColor.palette(theme).text3)

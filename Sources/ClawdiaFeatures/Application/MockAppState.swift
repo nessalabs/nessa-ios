@@ -12,6 +12,8 @@ public struct MockAppState: Equatable, Sendable {
     public var customAreas: [UserArea]
     public var chats: [ChatPreview]
     public var approvals: [ApprovalRequest]
+    public var chatMessages: [StoredChatMessage]
+    public var agentTypingConversationIDs: Set<String>
     public var receivedAgentMessages: [AgentMessageEnvelope]
     public var outgoingNostrEvents: [NostrOutboxEvent]
     public var preparedNostrRelayEvents: [NostrPreparedRelayEvent]
@@ -22,6 +24,8 @@ public struct MockAppState: Equatable, Sendable {
         customAreas: [UserArea] = [],
         chats: [ChatPreview],
         approvals: [ApprovalRequest],
+        chatMessages: [StoredChatMessage] = [],
+        agentTypingConversationIDs: Set<String> = [],
         receivedAgentMessages: [AgentMessageEnvelope] = [],
         outgoingNostrEvents: [NostrOutboxEvent] = [],
         preparedNostrRelayEvents: [NostrPreparedRelayEvent] = []
@@ -31,6 +35,8 @@ public struct MockAppState: Equatable, Sendable {
         self.customAreas = customAreas
         self.chats = chats
         self.approvals = approvals
+        self.chatMessages = chatMessages
+        self.agentTypingConversationIDs = agentTypingConversationIDs
         self.receivedAgentMessages = receivedAgentMessages
         self.outgoingNostrEvents = outgoingNostrEvents
         self.preparedNostrRelayEvents = preparedNostrRelayEvents
@@ -82,6 +88,112 @@ public struct MockAppState: Equatable, Sendable {
     public mutating func queueReceivedAgentMessage(_ envelope: AgentMessageEnvelope) {
         receivedAgentMessages.append(envelope)
     }
+
+    public mutating func replaceChatMessages(_ messages: [StoredChatMessage], now: Date = Date()) {
+        chatMessages = messages.filter { !$0.isExpired(now: now) }
+        refreshChatPreviews()
+    }
+
+    public mutating func upsertChatMessage(_ message: StoredChatMessage, now: Date = Date()) {
+        guard !message.isExpired(now: now) else {
+            chatMessages.removeAll { $0.id == message.id }
+            refreshChatPreviews()
+            return
+        }
+
+        if let index = chatMessages.firstIndex(where: { $0.id == message.id }) {
+            chatMessages[index] = message
+        } else {
+            chatMessages.append(message)
+        }
+        refreshChatPreviews()
+    }
+
+    public mutating func updateChatMessageDeliveryState(id: UUID, deliveryState: ChatMessageDeliveryState) {
+        guard let index = chatMessages.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        chatMessages[index].deliveryState = deliveryState
+        refreshChatPreviews()
+    }
+
+    public mutating func pruneExpiredChatMessages(now: Date) {
+        chatMessages.removeAll { $0.isExpired(now: now) }
+        refreshChatPreviews()
+    }
+
+    public func chatMessages(conversationID: String?) -> [StoredChatMessage] {
+        chatMessages
+            .filter { message in
+                conversationID == nil || message.conversationID == conversationID
+            }
+            .sorted { left, right in
+                if left.createdAt == right.createdAt {
+                    return left.id.uuidString < right.id.uuidString
+                }
+                return left.createdAt < right.createdAt
+            }
+    }
+
+    public mutating func setAgentTyping(_ isTyping: Bool, conversationID: String) {
+        if isTyping {
+            agentTypingConversationIDs.insert(conversationID)
+        } else {
+            agentTypingConversationIDs.remove(conversationID)
+        }
+    }
+
+    public func isAgentTyping(conversationID: String?) -> Bool {
+        guard let conversationID else {
+            return false
+        }
+        return agentTypingConversationIDs.contains(conversationID)
+    }
+
+    private mutating func refreshChatPreviews() {
+        let latestMessages = Dictionary(grouping: chatMessages, by: \.conversationID)
+            .compactMapValues { messages in
+                messages.max { left, right in
+                    if left.createdAt == right.createdAt {
+                        return left.id.uuidString < right.id.uuidString
+                    }
+                    return left.createdAt < right.createdAt
+                }
+            }
+
+        chats = chats.map { chat in
+            guard let latest = latestMessages[chat.id.uuidString] else {
+                return chat
+            }
+            return ChatPreview(
+                id: chat.id,
+                title: chat.title,
+                preview: latest.sender == .phone ? "You: \(latest.text)" : latest.text,
+                time: "Now",
+                area: chat.area,
+                unread: latest.sender != .phone,
+                pinned: chat.pinned
+            )
+        }
+    }
+
+    public static let production = MockAppState(
+        connection: .disconnected,
+        folders: LifeArea.allCases.map { area in
+            FolderSummary(id: area, chatCount: 1, lastActivity: "Now")
+        },
+        chats: LifeArea.allCases.map { area in
+            ChatPreview(
+                id: area.defaultChatID,
+                title: "Clawdia",
+                preview: "Send a message to Clawdia on your Mac.",
+                time: "Now",
+                area: area,
+                pinned: true
+            )
+        },
+        approvals: []
+    )
 
     public static let preview = MockAppState(
         connection: .connected(.localhost(port: 8787)),

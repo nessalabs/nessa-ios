@@ -36,6 +36,38 @@ public struct NostrAgentKeypair: Equatable, Sendable {
     }
 }
 
+public struct NostrPlaintextRelayEventSigner: Sendable {
+    public init() {}
+
+    public func sign(
+        _ draft: NostrEventDraft,
+        privateKeyHex: String,
+        relayURLs: [URL]
+    ) throws -> NostrPreparedRelayEvent {
+        let signed = try NostrWireEvent.signed(
+            pubkey: draft.pubkey,
+            privateKeyHex: privateKeyHex,
+            createdAt: draft.createdAt,
+            kind: draft.kind,
+            tags: draft.tags,
+            content: draft.content
+        )
+        guard let signature = signed.signature else {
+            throw NostrCryptoError.invalidSignature
+        }
+        return NostrPreparedRelayEvent(
+            id: signed.id,
+            pubkey: signed.pubkey,
+            createdAt: signed.createdAt,
+            kind: signed.kind,
+            tags: signed.tags,
+            content: signed.content,
+            signature: signature,
+            relayURLs: relayURLs
+        )
+    }
+}
+
 public enum NostrCryptoError: Error, Equatable {
     case aadLengthInvalid(Int)
     case conversationKeyLengthInvalid(Int)

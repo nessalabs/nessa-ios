@@ -112,15 +112,20 @@ public struct NostrWebSocketRelaySubscriber: NostrRelaySubscribing {
 
         do {
             try await task.send(.string(subscription.relayClientMessageJSON()))
-            let response = try await task.receive()
-            switch response {
-            case .string(let json):
-                return NostrRelayResponseParser.preparedEvent(fromRelayMessage: json, relayURL: relayURL)
-            case .data:
-                return nil
-            @unknown default:
-                return nil
+            while !Task.isCancelled {
+                let response = try await task.receive()
+                switch response {
+                case .string(let json):
+                    if let event = NostrRelayResponseParser.preparedEvent(fromRelayMessage: json, relayURL: relayURL) {
+                        return event
+                    }
+                case .data:
+                    continue
+                @unknown default:
+                    continue
+                }
             }
+            return nil
         } catch {
             return nil
         }
