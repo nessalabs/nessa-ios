@@ -294,6 +294,10 @@ public final class DevModeStore: ObservableObject {
         )
         state.upsertChatMessage(outgoingMessage, now: sentAt)
         persistChatMessage(outgoingMessage)
+        telemetry.log(
+            "outbound chat appended id=\(outgoingMessage.id) conv=\(outgoingMessage.conversationID) total=\(state.chatMessages(conversationID: outgoingMessage.conversationID).count)",
+            area: .chat
+        )
         state.setAgentTyping(true, conversationID: chat.id.uuidString)
         state.queueOutgoingNostrEvent(event)
         if let nostrMessageSender {

@@ -86,7 +86,7 @@ public struct NostrWebSocketRelaySubscriber: NostrRelaySubscribing {
         guard !subscription.relayURLs.isEmpty else {
             return []
         }
-        return await withTaskGroup(of: NostrPreparedRelayEvent?.self) { group in
+        return await withTaskGroup(of: [NostrPreparedRelayEvent].self) { group in
             for relayURL in subscription.relayURLs {
                 group.addTask {
                     await receiveOnce(subscription, from: relayURL)
@@ -94,30 +94,38 @@ public struct NostrWebSocketRelaySubscriber: NostrRelaySubscribing {
             }
 
             var events: [NostrPreparedRelayEvent] = []
-            for await event in group {
-                if let event {
-                    events.append(event)
-                }
+            for await batch in group {
+                events.append(contentsOf: batch)
             }
             return events.sorted { $0.relayURLs.first?.absoluteString ?? "" < $1.relayURLs.first?.absoluteString ?? "" }
         }
     }
 
-    private func receiveOnce(_ subscription: NostrRelaySubscription, from relayURL: URL) async -> NostrPreparedRelayEvent? {
+    private func receiveOnce(_ subscription: NostrRelaySubscription, from relayURL: URL) async -> [NostrPreparedRelayEvent] {
         let task = session.webSocketTask(with: relayURL)
         task.resume()
         defer {
             task.cancel(with: .normalClosure, reason: nil)
         }
 
+        var collected: [NostrPreparedRelayEvent] = []
         do {
             try await task.send(.string(subscription.relayClientMessageJSON()))
             while !Task.isCancelled {
                 let response = try await task.receive()
                 switch response {
                 case .string(let json):
-                    if let event = NostrRelayResponseParser.preparedEvent(fromRelayMessage: json, relayURL: relayURL) {
-                        return event
+                    if NostrRelayResponseParser.isEndOfStoredEvents(
+                        from: json,
+                        subscriptionID: subscription.id
+                    ) {
+                        return collected
+                    }
+                    if let event = NostrRelayResponseParser.preparedEvent(
+                        fromRelayMessage: json,
+                        relayURL: relayURL
+                    ) {
+                        collected.append(event)
                     }
                 case .data:
                     continue
@@ -125,9 +133,9 @@ public struct NostrWebSocketRelaySubscriber: NostrRelaySubscribing {
                     continue
                 }
             }
-            return nil
+            return collected
         } catch {
-            return nil
+            return collected
         }
     }
 }
@@ -172,6 +180,18 @@ public enum NostrRelayResponseParser {
             return nil
         }
         return NostrRelayPublishReceipt(relayURL: relayURL, eventID: eventID, accepted: accepted, message: message)
+    }
+
+    public static func isEndOfStoredEvents(from json: String, subscriptionID: String) -> Bool {
+        guard let data = json.data(using: .utf8),
+              let values = try? JSONSerialization.jsonObject(with: data) as? [Any],
+              values.count >= 2,
+              values[0] as? String == "EOSE",
+              let id = values[1] as? String,
+              id == subscriptionID else {
+            return false
+        }
+        return true
     }
 
     public static func preparedEvent(fromRelayMessage json: String, relayURL: URL) -> NostrPreparedRelayEvent? {
