@@ -1,7 +1,8 @@
-# Clawdia iOS Agent Instructions
+# Nessa iOS Agent Instructions
 
 - Never create a branch unless the user explicitly asks for one. If a branch seems necessary, ask for approval first.
-- Treat this repository as the native iOS workspace for Clawdia.
+- Treat this repository as the native iOS workspace for Nessa.
+- The user uses “mainline” to mean the `main` branch.
 - Prefer Swift, SwiftUI, Swift Package Manager, and small POSIX shell scripts for project automation.
 - Avoid Ruby unless there is a clear project-specific reason; document that reason before adding it.
 - Use `NavigationStack` by default for screen-to-screen navigation unless the user explicitly asks for another navigation model.

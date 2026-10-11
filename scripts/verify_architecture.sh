@@ -16,11 +16,11 @@ check_no_imports() {
   done
 }
 
-check_no_imports "Domain" "Sources/ClawdiaFeatures/Domain" SwiftUI UIKit Combine ClawdiaDesignSystem ClawdiaObservability
-check_no_imports "Application" "Sources/ClawdiaFeatures/Application" SwiftUI UIKit ClawdiaDesignSystem
+check_no_imports "Domain" "Sources/NessaFeatures/Domain" SwiftUI UIKit Combine NessaDesignSystem NessaObservability
+check_no_imports "Application" "Sources/NessaFeatures/Application" SwiftUI UIKit Combine NessaDesignSystem
 
-if rg -n "^import SwiftUI\\b|^import UIKit\\b" "$ROOT/Sources/SharedKernel" "$ROOT/Sources/ClawdiaObservability"; then
-  echo "Architecture violation: SharedKernel and Observability must stay UI-free" >&2
+if rg -n 'NessaGatewayClient\(|NessaCredentialStore\(|UserDefaultsChatPreferences\(|MockRepository\(' "$ROOT/Sources/NessaFeatures/Presentation"; then
+  echo "Architecture violation: presentation must receive adapters through composition" >&2
   failures=$((failures + 1))
 fi
 

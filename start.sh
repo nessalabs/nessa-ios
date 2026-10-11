@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT="$ROOT/App/Clawdia.xcodeproj"
-SCHEME="Clawdia"
-APP_BUNDLE_ID="com.clawdia.mobile"
+PROJECT="$ROOT/App/Nessa.xcodeproj"
+SCHEME="Nessa"
+APP_BUNDLE_ID="app.nessa.mobile"
 
 find_xcode_developer_dir() {
   local candidates=()
