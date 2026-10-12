@@ -58,7 +58,7 @@ remain pending until stronger confirmation is available.
 
 ## Remaining product work
 
-General mobile file uploads, audio, push notifications, full offline history, device pairing UI,
+General mobile file uploads, audio attachments, push notifications, full offline history, device pairing UI,
 agent questions, full transcript pagination, uncertain deletion recovery, and
 shared retained-sync integration are not yet implemented in the new surface. Live gateway credential and network
 setup must be supplied before testing against a real Nessa deployment.
@@ -90,6 +90,10 @@ Source layout:
 - `NessaDesignSystem/`: shared visual tokens, shapes, glass and scroll-dependent header blur.
 
 The plus menu provides Camera, Photos and Add Files. Camera requires a physical iPhone; the simulator reports that it is unavailable. The system photo picker needs no broad photo-library permission. Draft attachments stay until a send succeeds. Live image sending uses `attachment.begin` and a single-use-ticket `PUT /attachments`; tickets are never logged, and redirects and cookies are disabled. General files can be selected and sent in mock mode. The current live protocol only links general files already on the gateway machine, so it cannot send general iPhone files yet; the app reports this and retains the draft.
+
+The waveform starts Apple speech recognition and fills the message field with text. Stop dictation, review the text, and tap Send. Live mode requests microphone and speech-recognition permission; development mode injects a mocked transcript. Physical-iPhone microphone verification remains outstanding. The menu has no Clear Draft action.
+
+New phone chats retain the gateway's default model when it supports images, otherwise selecting an image-capable model from the gateway's advertised list. Existing chats retain their model. If no offered model supports images, photo sending reports the refusal and keeps the draft. The local Codex image-input fix is tracked in [gateway PR #779](https://github.com/nessalabs/nessa-agent/pull/779); other gateways need that support before Codex photo sending will work.
 
 ## Header behavior
 
