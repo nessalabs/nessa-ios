@@ -360,10 +360,12 @@ public final class MessagesViewModel: ObservableObject {
       agentProfiles = agents
       try await refreshList()
       guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
+      let lease = snapshotLease
+      if let lease { await snapshots?.recordAgents(agents, lease: lease) }
+      guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
       try credentials.save(profile.credential)
       connected = true
       connectionRevision += 1
-      if let snapshotLease { await snapshots?.recordAgents(agents, lease: snapshotLease) }
     } catch {
       await service.retire(receipt)
       throw error
@@ -421,6 +423,9 @@ public final class MessagesViewModel: ObservableObject {
     if ConnectionRecovery.retryable(error) {
       if connected {
         connected = false
+        busy = false
+        sending = false
+        if manualAttempt == expected { manualAttempt = nil }
         unlistedCreations = [:]
         generation += 1
         connectionRevision += 1

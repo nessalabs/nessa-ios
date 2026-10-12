@@ -56,6 +56,33 @@ private actor SwitchingGateway: MessagingRepository, AgentDirectory, Conversatio
   var connections: [String] = []
   var sends = 0
   var disconnects = 0
+  private var configuredAgents: [AgentProfile]?
+  private var blockList = false
+  private var listGate: CheckedContinuation<Void, Never>?
+  var listing = false
+  func setAgents(_ agents: [AgentProfile]) { configuredAgents = agents }
+  func blockNextList() { blockList = true }
+  func releaseList() {
+    listGate?.resume()
+    listGate = nil
+  }
+  var heldCommands = 0
+  private var holdSends = false
+  private var holdCreates = false
+  private var commandGates: [Int: CheckedContinuation<Bool, Never>] = [:]
+  func holdCommands(send: Bool) {
+    holdSends = send
+    holdCreates = !send
+  }
+  func releaseCommand(_ index: Int, fail: Bool) {
+    commandGates.removeValue(forKey: index)?.resume(returning: fail)
+  }
+  private func heldCommand() async throws {
+    heldCommands += 1
+    let index = heldCommands
+    let fail = await withCheckedContinuation { commandGates[index] = $0 }
+    if fail { throw NessaGatewayError.disconnected }
+  }
   private var block = false
   private var connectionGate: CheckedContinuation<Void, Never>?
   private var blockDisconnection = false
@@ -94,16 +121,28 @@ private actor SwitchingGateway: MessagingRepository, AgentDirectory, Conversatio
     await base.disconnect()
   }
   func restore() { online = true }
-  func list() async throws -> NessaConversationList { try await base.list() }
-  func agents() async throws -> [AgentProfile] { try await base.agents() }
+  func list() async throws -> NessaConversationList {
+    if blockList {
+      blockList = false
+      listing = true
+      await withCheckedContinuation { listGate = $0 }
+    }
+    return try await base.list()
+  }
+  func agents() async throws -> [AgentProfile] {
+    if let configuredAgents { return configuredAgents }
+    return try await base.agents()
+  }
   func read(_ id: String) async throws -> NessaConversationView { try await base.read(id) }
   func create(agent: String?, model: String?) async throws -> String {
-    try await base.create(agent: agent, model: model)
+    if holdCreates { try await heldCommand() }
+    return try await base.create(agent: agent, model: model)
   }
   func send(_ text: String, attachments: [DraftAttachment], conversationID: String) async throws
     -> String
   {
     sends += 1
+    if holdSends { try await heldCommand() }
     return try await base.send(text, attachments: attachments, conversationID: conversationID)
   }
   func answer(_ permission: NessaPermission, option: NessaPermission.Option, conversationID: String)
@@ -117,6 +156,69 @@ private actor SwitchingGateway: MessagingRepository, AgentDirectory, Conversatio
   > {
     try await base.follow(id, after: after)
   }
+}
+@Test @MainActor func obsoleteDirectoryCannotEnterReplacementSnapshotScope() async throws {
+  let repository = SwitchingGateway()
+  let disk = InMemoryPhoneSnapshotStore()
+  let snapshots = PhoneSnapshotSession(store: disk, coalescingDelay: .zero)
+  let old = AgentProfile(id: "old", displayName: "Old directory")
+  let next = AgentProfile(id: "new", displayName: "New directory")
+  let model = MessagesViewModel(
+    service: MessagingService(repository: repository, directory: repository),
+    credentials: InMemoryCredentialStore(), preferences: InMemoryChatPreferences(),
+    snapshots: snapshots)
+  await repository.setAgents([old])
+  await repository.blockNextList()
+  let first = Task {
+    await model.connect(address: "mock://old", credential: "old", instance: "phone")
+  }
+  await eventually { await repository.listing }
+  await repository.setAgents([next])
+  await model.connect(address: "mock://new", credential: "new", instance: "phone")
+  await repository.releaseList()
+  await first.value
+  await snapshots.flush()
+  let scope = PhoneCacheScope(address: "mock://new", credential: "new", instance: "phone")
+  #expect(await disk.load(scope)?.agents == [next])
+  #expect(model.agentProfiles == [next])
+  #expect(model.connected)
+  await model.suspendConnection()
+}
+@Test(arguments: [false, true]) @MainActor
+func interruptedCommandUnlocksUIAndCannotClearReplacementOperation(send: Bool) async throws {
+  let repository = SwitchingGateway()
+  let model = MessagesViewModel(
+    service: MessagingService(repository: repository, directory: repository),
+    credentials: InMemoryCredentialStore(), preferences: InMemoryChatPreferences(),
+    recovery: ConnectionRecovery(waiting: SystemRecoveryWait()))
+  await model.connect(address: "mock://gateway", credential: "first", instance: "phone")
+  let id = try #require(model.conversations.first?.id)
+  let inbox = Task { await model.watchInbox() }
+  await repository.holdCommands(send: send)
+  let first = Task {
+    if send { return await model.send("Interrupted", to: id) }
+    return await model.create() != nil
+  }
+  await eventually { await repository.heldCommands == 1 }
+  await repository.cut()
+  await eventually { model.reconnecting }
+  await repository.restore()
+  await eventually { model.connected && !model.reconnecting }
+  #expect(!model.busy && !model.sending)
+  let replacement = Task {
+    if send { return await model.send("New intent", to: id) }
+    return await model.create() != nil
+  }
+  await eventually { await repository.heldCommands == 2 }
+  await repository.releaseCommand(1, fail: true)
+  #expect(await first.value == false)
+  #expect(send ? model.sending : model.busy)
+  await repository.releaseCommand(2, fail: false)
+  #expect(await replacement.value)
+  #expect(!model.busy && !model.sending)
+  #expect(await repository.heldCommands == 2)
+  inbox.cancel()
+  await model.suspendConnection()
 }
 /// Controls post-authentication failure/cancellation independently of socket replacement.
 private actor LeasedGateway: MessagingRepository, AgentDirectory, ConnectionLeasing {

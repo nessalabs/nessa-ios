@@ -4,7 +4,7 @@ Scope: product replacement-view subscriptions, durable display snapshots and con
 
 ## Application and lifecycle
 
-- Architecture/design-system checks, 85 Swift tests and signed iPhone 17 Pro simulator build pass.
+- Architecture/design-system checks, 87 Swift tests and signed iPhone 17 Pro simulator build pass.
 - Scripted peer: cancel-before-ack with inbox; rapid A→B→C latest navigation; asynchronous cancellation with delayed unsubscribe ack; foreign publication rejection; missing-first-publication deadline; old connection cleanup leaving a ready replacement usable; lost registration closing the socket and other feeds. Publication deadlines and a 75-second process watchdog bound verification failures.
 - Intentional production reversions failed the right runtime checks: bypassing registration admission caused duplicate watcher refusal; removing latest-navigation fencing admitted obsolete B. Restored source passed.
 - Independent Astra medium implementation review passed production ownership/buffering/correlation. Harness review identified unbounded publication waits; these were replaced with deadlines and a missing-publication experiment.
@@ -35,7 +35,8 @@ Dictation tests cover partial replacement, stop/final result, stale callback fen
 - Complete inbox absence does not prove deletion because archived chats are omitted. A failed deletion reconciles against an exact read with typed conversation-not-found proof. Confirmed deletion evicts the snapshot and fences late frames in that session.
 - The installed iPhone 17 Pro simulator retained an open chat and photo when the isolated gateway was stopped. A cold offline relaunch restored the inbox and opened the saved transcript/photo; New message was disabled. The process launch command completed in 178 ms, which is not a rendered-startup measurement.
 - Restarting the same gateway restored the app connection automatically: Reconnecting disappeared and New message became enabled. The post-restart native five-message run received six inbox events, resubscribed immediately and cleaned up its chat. The post-restart generated-image run again returned the correct colors/shapes and matching cached bytes.
-- Astra medium passed the final implementation. This approval covers cache and connection ownership, not the remaining retained-core or command-journal work.
+- Interrupted send/create regressions hold the old command through disconnect/recovery, start a replacement operation, then deliver the old failure. Recovery releases stale UI locks and the old completion cannot clear the replacement lock. A separate delayed directory test prevents an obsolete dial from writing agents into a new snapshot scope. Removing either safeguard produces runtime failures; restored source passes.
+- Astra medium passed the final implementation and the interrupted-command follow-up. This approval covers cache and connection ownership, not the remaining retained-core or command-journal work.
 
 ## Remaining gates
 
