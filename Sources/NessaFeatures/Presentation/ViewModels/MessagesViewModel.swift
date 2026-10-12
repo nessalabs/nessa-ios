@@ -9,7 +9,13 @@ public final class MessagesViewModel: ObservableObject {
   private var reactionKey = ""
   @Published public private(set) var replyTargets: [String: String] = [:]
   private var replyKey = ""
-  private var replyProjections: [String: (name: String, value: ConversationReplies)] = [:]
+  private struct ReplyProjection {
+    let name: String
+    let turns: [NessaTurn]
+    let targets: [String: String]
+    let value: ConversationReplies
+  }
+  private var replyProjections: [String: ReplyProjection] = [:]
   private var listVersion = 0
   private var readVersions: [String: Int] = [:]
   private var viewCursors: [String: ConversationCursor] = [:]
@@ -111,11 +117,17 @@ public final class MessagesViewModel: ObservableObject {
   }
   public func replyProjection(in conversation: String) -> ConversationReplies {
     let name = agentName(for: conversation)
-    if let cached = replyProjections[conversation], cached.name == name { return cached.value }
+    let turns = views[conversation]?.messages ?? []
+    let targets = replies(in: conversation)
+    // Hydration can replace a view without a live apply. Reuse requires the
+    // same inputs, including the initially absent history and saved reply links.
+    if let cached = replyProjections[conversation], cached.name == name,
+      cached.turns == turns, cached.targets == targets
+    { return cached.value }
     let value = ConversationReplies(
-      turns: views[conversation]?.messages ?? [],
-      targets: replies(in: conversation), agentName: name)
-    replyProjections[conversation] = (name, value)
+      turns: turns, targets: targets, agentName: name)
+    replyProjections[conversation] = ReplyProjection(
+      name: name, turns: turns, targets: targets, value: value)
     return value
   }
   public func imageData(for attachment: NessaImageAttachment) async -> Data? {

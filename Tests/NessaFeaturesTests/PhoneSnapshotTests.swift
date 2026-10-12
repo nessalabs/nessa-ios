@@ -171,6 +171,39 @@ private actor DelayedLoads: PhoneSnapshotStoring {
     continuation = nil
   }
 }
+@Test @MainActor func chatRenderedBeforeHydrationShowsItsSavedMessagesAfterLoading() async throws {
+  let repository = MockRepository()
+  await repository.connect(address: "mock://history", credential: "", instance: "phone")
+  let conversation = try #require(await repository.list().conversations.first)
+  let history = try await repository.read(conversation.id)
+  let turn = try #require(history.messages.first)
+  var saved = PhoneSnapshot()
+  saved.list = list([conversation.id])
+  saved.views = [conversation.id: history]
+  saved.recentViews = [conversation.id]
+  let disk = DelayedLoads()
+  let snapshots = PhoneSnapshotSession(store: disk, coalescingDelay: .zero)
+  let model = MessagesViewModel(
+    service: MessagingService(repository: repository), credentials: InMemoryCredentialStore(),
+    preferences: InMemoryChatPreferences(), snapshots: snapshots)
+  let connecting = Task {
+    await model.connect(address: "mock://history", credential: "", instance: "phone")
+  }
+  for _ in 0..<2000 {
+    if await disk.loads == 1 { break }
+    await Task.yield()
+  }
+  #expect(await disk.loads == 1)
+  // The chat can render while the disk actor is still loading its saved view.
+  #expect(model.replyProjection(in: conversation.id).messages.isEmpty)
+  await disk.release(saved)
+  await connecting.value
+  #expect(model.views[conversation.id] == history)
+  #expect(!model.replyProjection(in: conversation.id).messages(in: turn.id).isEmpty)
+  // Identical live data should preserve the already-visible saved history.
+  await model.refresh(conversation.id)
+  #expect(!model.replyProjection(in: conversation.id).messages(in: turn.id).isEmpty)
+}
 @Test func delayedHydrationCannotReplaceNewerIdentitySession() async throws {
   let store = DelayedLoads()
   let session = PhoneSnapshotSession(store: store, coalescingDelay: .zero)
