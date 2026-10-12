@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-/// A private display-cache identity, not a retained receiver or access epoch.
+/// A private phone-persistence identity, not a retained receiver or access epoch.
 public struct PhoneCacheScope: Sendable, Equatable {
   public let key: String
   public init(address: String, credential: String, instance: String) {

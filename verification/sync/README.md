@@ -8,7 +8,7 @@ Run deterministic local lifecycle experiments on macOS with Swift/Xcode and Pyth
 
 The runner installs the pinned peer dependency in a temporary environment, starts a loopback-only peer on an ephemeral port, builds the production Swift adapter into `PhoneSyncVerification`, and cleans up the peer and temporary environment. Set `NESSA_VERIFICATION_PYTHON` to an existing interpreter with the pinned dependency to reuse it. The peer accepts only `fixture-only`; never supply a real credential to it.
 
-Cases: cancel before subscribe acknowledgment with a live inbox; rapid A→B→C navigation; asynchronous termination with a delayed unsubscribe acknowledgment; foreign conversation publication; acknowledged registration with a missing first publication; old connection cleanup versus a ready replacement; lost registration acknowledgment. Publication waits have deadlines and the verification process has a 75-second watchdog. The final case waits the production 30-second request deadline and verifies its socket owner and other streams retire.
+Cases: cancel before subscribe acknowledgment with a live inbox; rapid A→B→C navigation; asynchronous termination with a delayed unsubscribe acknowledgment; foreign conversation publication; acknowledged registration with a missing first publication; old connection cleanup versus a ready replacement; lost registration acknowledgment; lost create/submit acknowledgments with disk recreation and exact retries; foreign command identities and cross-scope dispatch. Publication waits have deadlines and the verification process has a 75-second watchdog. The final case waits the production 30-second request deadline and verifies its socket owner and other streams retire.
 
 Run real transport/model latency experiments against an isolated gateway using a credential file:
 
@@ -28,3 +28,11 @@ To verify phone photo input against the same isolated gateway:
 ```
 
 This generates a blue PNG with a red circle and yellow square, applies the phone's model-selection logic, uploads and sends it, checks the history reference and exact locally cached bytes, waits for a completed model response, and deletes the test chat. It does not open or send photos from the user's library. The gateway must advertise and implement image input for its selected agent/model. Recognition quality is reported through the response rather than asserted against an exact sentence. Photo preparation/downsampling is covered by the app tests; picker and rendering verification still requires the app.
+
+To check exact command identities and durable receipts against the isolated real gateway:
+
+```sh
+.build/debug/PhoneSyncVerification --command-live ws://127.0.0.1:18743/session /absolute/path/to/test-panel.token
+```
+
+This uses the new application journal and production typed socket port. It creates a disposable chat, repeats the same creation ID, submits one frozen message, recreates the disk journal before observing the submission confirmation, looks up its receipt, retries the same request/execution IDs, verifies one turn and resolves the record durably. It then deletes its test chat. Legacy product composer/create callers are not yet journal-backed; this runner does not claim otherwise.

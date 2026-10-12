@@ -41,3 +41,11 @@ Dictation tests cover partial replacement, stop/final result, stale callback fen
 ## Remaining gates
 
 Uncertain command identity/receipt recovery, shared retained receiver/checkpoints/native enrollment, remote artifact recovery, larger latency sampling and network/revocation experiments remain in PLAN.md. A display snapshot or live subscription cursor is not physical-record progress. Camera/microphone interruptions and physical-device dictation still need device checks.
+
+## Command foundation verification
+
+99 app tests and the iOS build pass for the prepared-command/journal foundation and shared private-file extraction. New tests cover persistence-before-dispatch, cancellation after persistence, lost ACK with exact identity recreation, resolution-save failure, unknown/attempted receipts, foreign correlation, ordered attachment references, serialized delayed saves, scope changes, corruption/size/symlink refusal, quota without eviction, stable nonblocking locks, and CAS across separate stores. Missing documents remain distinct from existing empty journals.
+
+The scripted production socket runner adds lost create and submit ACKs: the peer accepts the command and closes the socket without its response; recreated disk state recovers its receipt, and exact retries yield one creation/turn. Foreign acknowledgment/receipt identities and dispatch across authenticated scope changes are refused. Removing CAS caused stale-write runtime failures; removing scope validation caused the native cross-scope assertion to fail. Both safeguards were restored.
+
+The real gateway exact-command experiment passes: creation retry, one accepted submit, journal recreation before observing confirmation, receipt lookup, same-ID submission retry, exactly one turn, durable resolution and test-chat cleanup. This verifies native primitives and persistence, not current composer integration; legacy create/send still need to switch to these identities and pending-delivery behavior. The shared retained core also remains incomplete.

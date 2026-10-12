@@ -9,6 +9,13 @@ import websockets
 A = "00000000-0000-4000-8000-000000000001"
 B = "00000000-0000-4000-8000-000000000002"
 C = "00000000-0000-4000-8000-000000000003"
+commands = {}
+creation_counts = {}
+
+def frozen(params, operation):
+    fields = ["conversationId", "requestId", "agent", "model"] if operation == "create" else [
+        "conversationId", "requestId", "executionId", "text", "attachments", "files"]
+    return {"operation": operation, **{field: params.get(field) for field in fields}}
 
 async def peer(socket):
     mode = ""
@@ -55,6 +62,45 @@ async def peer(socket):
                     return
                 mode = params["surface"]["instance"]
                 await reply(request, {"version": 1})
+            elif mode.startswith("journal") and method in ("conversation.create", "conversation.send"):
+                operation = "create" if method == "conversation.create" else "submit"
+                value = frozen(params, operation)
+                key = (mode, params["requestId"])
+                existing = commands.get(key)
+                if existing is not None and existing != value:
+                    await reply(request, code="conversation_request_conflict")
+                    continue
+                if existing is None:
+                    commands[key] = value
+                    if operation == "create":
+                        count_key = (mode, params["conversationId"])
+                        creation_counts[count_key] = creation_counts.get(count_key, 0) + 1
+                    if mode == "journal-lost-" + operation:
+                        await socket.close()
+                        return
+                if operation == "create":
+                    target = B if mode == "journal-wrong" else params["conversationId"]
+                    await reply(request, {"conversationId": target})
+                else:
+                    await reply(request, {"executionId": params["executionId"], "disposition": "queued"})
+            elif mode.startswith("journal") and method == "conversation.receipt":
+                value = frozen(params, params["operation"])
+                existing = commands.get((mode, params["requestId"]))
+                if existing is not None and existing != value:
+                    await reply(request, code="conversation_request_conflict")
+                    continue
+                result = {"found": existing is not None, "requestId": B if mode == "journal-wrong" else params["requestId"]}
+                if existing is not None:
+                    result["stage"] = "ready" if params["operation"] == "create" else "settled"
+                    if params["operation"] == "submit": result["outcome"] = "dispatched"
+                await reply(request, result)
+            elif mode.startswith("journal") and method == "conversation.read":
+                target = params["conversationId"]
+                messages = [{"executionId": value["executionId"], "userText": value["text"], "parts": [], "status": "completed"}
+                    for (instance, _), value in commands.items()
+                    if instance == mode and value["operation"] == "submit" and value["conversationId"] == target]
+                await reply(request, {"conversationId": target, "messages": messages, "permissions": [], "truncated": False,
+                    "runtime": {"agent": "creates-" + str(creation_counts.get((mode, target), 0))}})
             elif method == "conversation.subscribeList":
                 live["inbox"] = None
                 await reply(request, {"subscriptionId": "inbox"})

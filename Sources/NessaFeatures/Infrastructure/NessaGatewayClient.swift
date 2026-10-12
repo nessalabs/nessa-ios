@@ -3,7 +3,7 @@ import Foundation
 
 /// Native implementation of Nessa's product v1 req/res protocol. Commands are never replayed.
 public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ConversationFollowing,
-  ConnectionLeasing
+  ConnectionLeasing, PreparedCommandTransport
 {
   public nonisolated var attachmentPolicy: AttachmentPolicy { .nessa }
   private var imageCache: AttachmentImageCache?
@@ -28,6 +28,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   private var authenticated = false
   private var connectionGeneration = 0
   private var connectionLease: GatewayConnectionLease?
+  private var connectionScope: PhoneCacheScope?
 
   public init() {}
 
@@ -97,6 +98,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     guard result.version == 1 else { throw NessaGatewayError.incompatibleProtocol }
     guard generation == connectionGeneration else { throw NessaGatewayError.disconnected }
     authenticated = true
+    connectionScope = PhoneCacheScope(address: address, credential: credential, instance: instance)
   }
 
   public func list() async throws -> NessaConversationList {
@@ -119,6 +121,84 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
       "conversation.create",
       params: Create(conversationId: id, requestId: UUID().uuidString, agent: agent, model: model))
     return id
+  }
+  public func dispatch(
+    _ command: PreparedConversationCommand, connection: GatewayConnectionLease,
+    scope: PhoneCacheScope
+  ) async throws -> ConversationCommandAcknowledgment {
+    try requireCommandConnection(connection, scope: scope)
+    try command.validate()
+    let acknowledgment: ConversationCommandAcknowledgment
+    switch command {
+    case .create(let value):
+      let result: Created = try await request(
+        "conversation.create",
+        params: Create(
+          conversationId: value.conversationID, requestId: value.requestID,
+          agent: value.agent, model: value.model))
+      acknowledgment = .created(result.conversationId)
+    case .submit(let value):
+      struct Submission: Decodable {
+        enum Disposition: String, Decodable { case queued, injected, settled }
+        let executionId: String
+        let disposition: Disposition
+      }
+      let result: Submission = try await request(
+        "conversation.send",
+        params: Send(
+          conversationId: value.conversationID, requestId: value.requestID,
+          executionId: value.executionID, text: value.text, attachments: value.images, files: []))
+      acknowledgment = .submitted(result.executionId)
+    }
+    try requireCommandConnection(connection, scope: scope)
+    guard acknowledgment.validates(command) else { throw NessaGatewayError.invalidFrame }
+    return acknowledgment
+  }
+  public func receipt(
+    _ command: PreparedConversationCommand, connection: GatewayConnectionLease,
+    scope: PhoneCacheScope
+  ) async throws -> ConversationCommandReceipt {
+    try requireCommandConnection(connection, scope: scope)
+    try command.validate()
+    struct Lookup: Encodable {
+      let conversationId: String
+      let requestId: String
+      let operation: String
+      let executionId: String?
+      let text: String?
+      let attachments: [NessaImageAttachment]?
+      let files: [String]?
+      let agent: String?
+      let model: String?
+    }
+    let lookup: Lookup
+    switch command {
+    case .create(let value):
+      lookup = Lookup(
+        conversationId: value.conversationID, requestId: value.requestID,
+        operation: "create", executionId: nil, text: nil, attachments: nil, files: nil,
+        agent: value.agent, model: value.model)
+    case .submit(let value):
+      lookup = Lookup(
+        conversationId: value.conversationID, requestId: value.requestID,
+        operation: "submit", executionId: value.executionID, text: value.text,
+        attachments: value.images, files: [], agent: nil, model: nil)
+    }
+    let result: ConversationCommandReceipt = try await request(
+      "conversation.receipt", params: lookup)
+    try requireCommandConnection(connection, scope: scope)
+    do { _ = try result.acknowledgment(for: command) } catch {
+      throw NessaGatewayError.invalidFrame
+    }
+    return result
+  }
+  private func requireCommandConnection(
+    _ connection: GatewayConnectionLease, scope: PhoneCacheScope
+  ) throws {
+    try requireConnection()
+    guard connectionLease == connection, connectionScope == scope else {
+      throw NessaGatewayError.disconnected
+    }
   }
   public func delete(_ conversationID: String) async throws {
     try requireConnection()
@@ -321,6 +401,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   public func disconnect() { close(NessaGatewayError.disconnected) }
   private func close(_ error: Error) {
     connectionLease = nil
+    connectionScope = nil
     connectionGeneration += 1
     let waiters = registrationWaiters.values.flatMap { $0 }
     registrationWaiters.removeAll()

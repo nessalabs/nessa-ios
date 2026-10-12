@@ -117,6 +117,11 @@ private func connectionOwnership(_ endpoint: String) async throws {
 @main struct NativeVerification {
   static func main() async {
     do {
+      if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "--command-live" {
+        try await CommandVerification.live(
+          endpoint: CommandLine.arguments[2], credentialFile: CommandLine.arguments[3])
+        return
+      }
       if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "--image" {
         try await ImageVerification.run(
           endpoint: CommandLine.arguments[2], credentialFile: CommandLine.arguments[3])
@@ -137,6 +142,7 @@ private func connectionOwnership(_ endpoint: String) async throws {
       try await rejectedForeignPublication(endpoint)
       try await missingPublication(endpoint)
       try await connectionOwnership(endpoint)
+      try await CommandVerification.fixtures(endpoint)
       try await lostRegistration(endpoint)
     } catch {
       say("FAIL: \(error)")
