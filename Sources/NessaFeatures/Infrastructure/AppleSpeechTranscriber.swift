@@ -19,9 +19,8 @@ import Foundation
     public func start() async throws -> AsyncThrowingStream<SpeechTranscript, Error> {
       cancel()
       let expected = token
-      let authorization = await withCheckedContinuation { continuation in
-        SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
-      }
+      let authorization = await SpeechPermissionCallback.request(
+        using: SFSpeechRecognizer.requestAuthorization)
       guard expected == token, !Task.isCancelled else { throw CancellationError() }
       guard authorization == .authorized else { throw DictationError.speechPermission }
       let microphone = await AVAudioApplication.requestRecordPermission()
@@ -50,11 +49,11 @@ import Foundation
         guard format.sampleRate > 0, format.channelCount > 0 else {
           throw DictationError.unavailable
         }
-        node.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        node.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable buffer, _ in
           request.append(buffer)
         }
         tapped = true
-        recognition = recognizer.recognitionTask(with: request) { [weak self] result, error in
+        recognition = recognizer.recognitionTask(with: request) { @Sendable [weak self] result, error in
           let text = result?.bestTranscription.formattedString
           let final = result?.isFinal == true
           let failed = error != nil
