@@ -3,6 +3,7 @@ import asyncio
 import json
 import sys
 import time
+import uuid
 from pathlib import Path
 import websockets
 
@@ -22,8 +23,9 @@ async def peer(socket):
     mode = ""
     live = {}
     jobs = set()
+    nonce = "fixture-" + uuid.uuid4().hex
     await socket.send(json.dumps({"type": "event", "event": "session.challenge", "payload": {
-        "minVersion": 1, "maxVersion": 1, "nonce": "fixture", "expiresAt": time.time() + 60}}))
+        "minVersion": 1, "maxVersion": 1, "nonce": nonce, "expiresAt": time.time() + 60}}))
     async def reply(request, payload=None, code=None):
         frame = {"type": "res", "id": request["id"], "ok": code is None}
         if code: frame["error"] = {"code": code, "message": code}
@@ -58,11 +60,30 @@ async def peer(socket):
             request = json.loads(raw)
             method, params = request["method"], request["params"]
             if method == "session.authenticate":
+                if params["nonce"] != nonce:
+                    Path(sys.argv[1]).parent.joinpath("foreign-challenge").touch()
+                    await reply(request, code="unauthorized")
+                    return
                 if params["credential"] != "fixture-only":
                     await reply(request, code="unauthorized")
                     return
                 mode = params["surface"]["instance"]
-                await reply(request, {"version": 1})
+                ready = {"version": 1, "gatewayId": "fixture-gateway", "principalId": "owner-" + mode,
+                    "organizationId": "fixture-org", "membershipId": "fixture-membership",
+                    "credentialId": "fixture-credential", "audienceId": "fixture-audience",
+                    "expiresAt": None, "grants": [], "methods": []}
+                if mode.startswith("auth-delay-"):
+                    Path(sys.argv[1]).parent.joinpath(mode).touch()
+                    await asyncio.sleep(0.3)
+                    if "refusal" in mode:
+                        await reply(request, code="unauthorized")
+                        continue
+                if mode == "identity-incomplete": ready.pop("principalId")
+                await reply(request, ready)
+                if mode == "identity-drop":
+                    await asyncio.sleep(0.05)
+                    await socket.close()
+                    return
             elif mode.startswith("journal") and method in ("conversation.create", "conversation.send"):
                 operation = "create" if method == "conversation.create" else "submit"
                 value = frozen(params, operation)

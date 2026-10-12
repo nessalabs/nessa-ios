@@ -101,13 +101,25 @@ private func connectionOwnership(_ endpoint: String) async throws {
   let old = try await client.connectWithLease(
     address: endpoint, credential: "fixture-only", instance: "lease")
   let replacement = try await client.connectWithLease(
-    address: endpoint, credential: "fixture-only", instance: "lease")
+    address: endpoint, credential: "fixture-only", instance: "lease-replacement")
+  do {
+    _ = try await client.authenticatedSession(for: old)
+    throw Failure.assertion("Old lease disclosed replacement identity")
+  } catch NessaGatewayError.disconnected {}
   await client.retire(old)
+  let identity = try await client.authenticatedSession(for: replacement)
+  guard identity.connection == replacement,
+    identity.snapshot.identity.principalID == "owner-lease-replacement"
+  else { throw Failure.assertion("Current authenticated identity not preserved") }
   let inbox = try await client.follow(nil)
   guard case .list = try await firstPublication(inbox) else {
     throw Failure.assertion("Old cleanup retired the replacement connection")
   }
   await client.retire(replacement)
+  do {
+    _ = try await client.authenticatedSession(for: replacement)
+    throw Failure.assertion("Retired lease retained authenticated identity")
+  } catch NessaGatewayError.disconnected {}
   do {
     _ = try await client.list()
     throw Failure.assertion("Current connection lease failed to retire its socket")
@@ -117,6 +129,17 @@ private func connectionOwnership(_ endpoint: String) async throws {
 @main struct NativeVerification {
   static func main() async {
     do {
+      if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "--identity-fixture" {
+        try await IdentityVerification.run(
+          endpoint: CommandLine.arguments[2], markers: CommandLine.arguments[3])
+        try await connectionOwnership(CommandLine.arguments[2])
+        return
+      }
+      if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "--identity-live" {
+        try await IdentityVerification.live(
+          endpoint: CommandLine.arguments[2], credentialFile: CommandLine.arguments[3])
+        return
+      }
       if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "--command-live" {
         try await CommandVerification.live(
           endpoint: CommandLine.arguments[2], credentialFile: CommandLine.arguments[3])
@@ -132,10 +155,13 @@ private func connectionOwnership(_ endpoint: String) async throws {
           endpoint: CommandLine.arguments[2], credentialFile: CommandLine.arguments[3])
         return
       }
-      guard CommandLine.arguments.count == 2 else {
+      guard [2, 3].contains(CommandLine.arguments.count) else {
         throw Failure.assertion("Expected fixture endpoint")
       }
       let endpoint = CommandLine.arguments[1]
+      if CommandLine.arguments.count == 3 {
+        try await IdentityVerification.run(endpoint: endpoint, markers: CommandLine.arguments[2])
+      }
       try await registrationHandoff(endpoint, rapid: false)
       try await registrationHandoff(endpoint, rapid: true)
       try await asynchronousActiveCleanup(endpoint)

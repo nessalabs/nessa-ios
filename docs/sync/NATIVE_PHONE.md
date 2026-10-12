@@ -37,10 +37,10 @@ host static-library probe is not evidence for a new dynamic packaging layout.
 ## Setup and cross-transport identity
 
 The product ready frame already reports authenticated gateway, principal,
-organization, membership, credential and audience identities. The phone currently
-decodes only its version. Preserve the real ready identity tied to the socket
-lease before correlating it with native setup; strings in UI configuration are
-not authenticated identity.
+organization, membership, credential and audience identities. The phone captures
+the complete ready snapshot through `GatewayReadyDTO` and publishes it only for
+the exact current `GatewayConnectionLease`. Correlate that authenticated identity
+with native setup; strings in UI configuration are not authenticated identity.
 
 Native disclosure contains audience and gateway grant/resource/organization. It
 intentionally omits the owner principal and membership. In local composition,
@@ -205,3 +205,29 @@ This completes packaging/runtime evidence only. The application-owned factory an
 lossless status/read mapping, production enrollment/profile coordination, retained
 repository, artifacts, durable deletion and performance/failure experiments remain
 open. The debug probe does not pair, contact a gateway or replace product history.
+
+## Authenticated connection identity
+
+`AuthenticatedGatewaySessionProviding` returns an immutable application snapshot
+for the caller's exact live lease. The infrastructure DTO enforces the current
+ready schema, retaining all six identities, required-nullable exact expiry,
+complete grants/resources and methods. Lengths count Unicode scalars; methods
+are not trimmed or deduplicated. Unknown fields fail at each object boundary.
+These restrictions describe the handshake; gateway policy still decides every
+command. Old lease reads fail, old retirement preserves the replacement, and
+disconnect/current transport failure removes the publication.
+The passive values have public constructors so normal module imports can
+substitute the application port. Authentication checks its original generation
+and socket after receiving a challenge, and dispatch refuses a different socket.
+
+Actual socket fixtures signal delayed authentication entry before replacement or
+disconnect, and cover old success/failure, incomplete ready frames, current
+transport failure, and old/current lease reads and retirement.
+The peer checks unique per-socket nonces across 100 overlapping dials; the final
+connection authenticates without an observed foreign challenge. This stress
+check does not deterministically force every executor interleaving.
+Removing lease
+matching exposes the replacement identity and fails the regression; discarding
+the captured publication also fails. The restored cases pass. This supplies the
+authenticated product input for enrollment correlation, not the native profile
+binding or retained repository by itself.

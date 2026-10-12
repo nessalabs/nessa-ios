@@ -10,6 +10,17 @@ The runner installs the pinned peer dependency in a temporary environment, start
 
 Cases: cancel before subscribe acknowledgment with a live inbox; rapid A→B→C navigation; asynchronous termination with a delayed unsubscribe acknowledgment; foreign conversation publication; acknowledged registration with a missing first publication; old connection cleanup versus a ready replacement; lost registration acknowledgment; lost create/submit acknowledgments with disk recreation and exact retries; foreign command identities and cross-scope dispatch. Publication waits have deadlines and the verification process has a 75-second watchdog. The final case waits the production 30-second request deadline and verifies its socket owner and other streams retire.
 
+Authenticated identity cases use the real full ready frame. A disposable peer
+marker proves delayed authentication entered before replacement/disconnect.
+Late old success/refusal cannot replace or clear current identity; old lease reads
+and retirement, incomplete ready frames, and current transport loss are checked.
+To check full identity decoding and retirement against a real gateway without
+creating chats or sending messages:
+
+```sh
+.build/debug/PhoneSyncVerification --identity-live ws://127.0.0.1:18743/session /absolute/path/to/test-panel.token
+```
+
 Run real transport/model latency experiments against an isolated gateway using a credential file:
 
 ```sh

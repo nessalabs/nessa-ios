@@ -27,7 +27,7 @@ for _ in {1..200}; do
 done
 [[ -s "$TASK_TEMP/port" ]]
 swift build --package-path "$TASK_ROOT" --product PhoneSyncVerification
-"$TASK_PYTHON" - "$TASK_ROOT/.build/debug/PhoneSyncVerification" "ws://127.0.0.1:$(cat "$TASK_TEMP/port")/session" <<'PY'
+"$TASK_PYTHON" - "$TASK_ROOT/.build/debug/PhoneSyncVerification" "ws://127.0.0.1:$(cat "$TASK_TEMP/port")/session" "$TASK_TEMP" <<'PY'
 import subprocess
 import sys
 

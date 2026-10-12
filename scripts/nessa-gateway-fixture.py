@@ -19,7 +19,10 @@ async def session(request):
         if method=='session.authenticate':
             assert p['nonce']=='test-nonce' and p['credential']=='fixture'
             assert p['surface']['kind']=='panel' and p['minVersion']==p['maxVersion']==1
-            result={'version':1}
+            result={'version':1, 'gatewayId':'fixture-gateway', 'principalId':'fixture-owner',
+                'organizationId':'fixture-org', 'membershipId':'fixture-membership',
+                'credentialId':'fixture-credential', 'audienceId':'fixture-audience',
+                'expiresAt':None, 'grants':[], 'methods':[]}
         elif method=='agents.list':
             result={'agents':[{'agent':a,'defaultModel':'test-model'} for a in ['nessa','codex','claude','opencode','research','planner','writer','reviewer','assistant']]}
         elif method=='conversation.list':

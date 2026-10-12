@@ -3,7 +3,8 @@ import Foundation
 
 /// Native implementation of Nessa's product v1 req/res protocol. Commands are never replayed.
 public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ConversationFollowing,
-  ConnectionLeasing, PreparedCommandTransport, CommandRecoveryProviding
+  ConnectionLeasing, PreparedCommandTransport, CommandRecoveryProviding,
+  AuthenticatedGatewaySessionProviding
 {
   public nonisolated var attachmentPolicy: AttachmentPolicy { .nessa }
   private var imageCache: AttachmentImageCache?
@@ -29,6 +30,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   private var connectionGeneration = 0
   private var connectionLease: GatewayConnectionLease?
   private var connectionScope: PhoneCacheScope?
+  private var authenticatedPublication: AuthenticatedGatewaySession?
 
   private let commands: JournaledGatewayCommands?
   private var commandBinding: JournaledGatewayCommands.Binding?
@@ -70,6 +72,15 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   public func retire(_ lease: GatewayConnectionLease) {
     if connectionLease == lease { close(NessaGatewayError.disconnected) }
   }
+  public func authenticatedSession(for lease: GatewayConnectionLease) throws
+    -> AuthenticatedGatewaySession
+  {
+    try requireConnection()
+    guard connectionLease == lease, let publication = authenticatedPublication,
+      publication.connection == lease
+    else { throw NessaGatewayError.disconnected }
+    return publication
+  }
   private func openConnection(
     address: String, credential: String, instance: String, generation: Int
   ) async throws {
@@ -101,6 +112,9 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
       } catch { await self?.transportFailed(task: task, error: error) }
     }
     let challengeData = try await waitForChallenge()
+    guard generation == connectionGeneration, socket === task else {
+      throw NessaGatewayError.disconnected
+    }
     let challenge = try JSONDecoder().decode(Challenge.self, from: challengeData)
     guard challenge.minVersion <= 1, challenge.maxVersion >= 1,
       challenge.expiresAt > Date().timeIntervalSince1970
@@ -109,9 +123,12 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
       minVersion: 1, maxVersion: 1, nonce: challenge.nonce,
       credential: credential, client: .init(id: "nessa-ios"),
       surface: .init(kind: "panel", instance: instance))
-    let result: Ready = try await request("session.authenticate", params: params)
-    guard result.version == 1 else { throw NessaGatewayError.incompatibleProtocol }
+    let result: GatewayReadyDTO = try await request(
+      "session.authenticate", params: params, expectedSocket: task)
     guard generation == connectionGeneration else { throw NessaGatewayError.disconnected }
+    guard let lease = connectionLease else { throw NessaGatewayError.disconnected }
+    authenticatedPublication = AuthenticatedGatewaySession(
+      connection: lease, snapshot: result.snapshot)
     authenticated = true
     connectionScope = PhoneCacheScope(address: address, credential: credential, instance: instance)
   }
@@ -495,6 +512,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   }
   public func disconnect() { close(NessaGatewayError.disconnected) }
   private func close(_ error: Error) {
+    authenticatedPublication = nil
     connectionLease = nil
     connectionScope = nil
     commandBinding = nil
@@ -536,9 +554,11 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   }
   private func request<P: Encodable, R: Decodable>(
     _ method: String, params: P,
-    id: String = UUID().uuidString
+    id: String = UUID().uuidString, expectedSocket: URLSessionWebSocketTask? = nil
   ) async throws -> R {
-    guard let socket else { throw NessaGatewayError.disconnected }
+    guard let socket, expectedSocket == nil || socket === expectedSocket else {
+      throw NessaGatewayError.disconnected
+    }
     let data = try JSONEncoder().encode(
       Request(type: "req", id: id, method: method, params: params))
     let payload: Data = try await withCheckedThrowingContinuation { continuation in
@@ -649,7 +669,6 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     let nonce: String
     let expiresAt: Double
   }
-  private struct Ready: Decodable { let version: Int }
   private struct Authenticate: Encodable {
     let minVersion: Int
     let maxVersion: Int
