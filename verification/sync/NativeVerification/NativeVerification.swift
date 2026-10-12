@@ -96,6 +96,24 @@ private func missingPublication(_ endpoint: String) async throws {
   await client.disconnect()
   say("PASS: acknowledged subscription with missing publication hits its deadline")
 }
+private func connectionOwnership(_ endpoint: String) async throws {
+  let client = NessaGatewayClient()
+  let old = try await client.connectWithLease(
+    address: endpoint, credential: "fixture-only", instance: "lease")
+  let replacement = try await client.connectWithLease(
+    address: endpoint, credential: "fixture-only", instance: "lease")
+  await client.retire(old)
+  let inbox = try await client.follow(nil)
+  guard case .list = try await firstPublication(inbox) else {
+    throw Failure.assertion("Old cleanup retired the replacement connection")
+  }
+  await client.retire(replacement)
+  do {
+    _ = try await client.list()
+    throw Failure.assertion("Current connection lease failed to retire its socket")
+  } catch NessaGatewayError.disconnected {}
+  say("PASS: old connection cleanup leaves replacement usable; current lease retires it")
+}
 @main struct NativeVerification {
   static func main() async {
     do {
@@ -118,6 +136,7 @@ private func missingPublication(_ endpoint: String) async throws {
       try await asynchronousActiveCleanup(endpoint)
       try await rejectedForeignPublication(endpoint)
       try await missingPublication(endpoint)
+      try await connectionOwnership(endpoint)
       try await lostRegistration(endpoint)
     } catch {
       say("FAIL: \(error)")

@@ -1,5 +1,5 @@
 /// Provider-independent identity. IDs are opaque; they are not model or vendor names.
-public struct AgentProfile: Identifiable, Sendable, Equatable {
+public struct AgentProfile: Codable, Identifiable, Sendable, Equatable {
   public let id: String
   public let displayName: String
   public let description: String?
@@ -27,7 +27,7 @@ public struct AgentProfile: Identifiable, Sendable, Equatable {
   }
 }
 
-public struct AgentModel: Identifiable, Sendable, Equatable {
+public struct AgentModel: Codable, Identifiable, Sendable, Equatable {
   public let id: String
   public let displayName: String
   public let supportsImages: Bool

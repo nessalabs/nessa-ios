@@ -1,7 +1,7 @@
 import Foundation
 
 /// A file supplied by an adapter. Missing content remains browseable as metadata.
-public struct NessaFileAttachment: Decodable, Sendable, Equatable {
+public struct NessaFileAttachment: Codable, Sendable, Equatable {
   public let name: String
   public let mimeType: String
   public let data: Data?

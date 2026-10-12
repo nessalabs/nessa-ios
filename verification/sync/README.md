@@ -8,7 +8,7 @@ Run deterministic local lifecycle experiments on macOS with Swift/Xcode and Pyth
 
 The runner installs the pinned peer dependency in a temporary environment, starts a loopback-only peer on an ephemeral port, builds the production Swift adapter into `PhoneSyncVerification`, and cleans up the peer and temporary environment. Set `NESSA_VERIFICATION_PYTHON` to an existing interpreter with the pinned dependency to reuse it. The peer accepts only `fixture-only`; never supply a real credential to it.
 
-Cases: cancel before subscribe acknowledgment with a live inbox; rapid A→B→C navigation; asynchronous termination with a delayed unsubscribe acknowledgment; foreign conversation publication; acknowledged registration with a missing first publication; lost registration acknowledgment. Publication waits have deadlines and the verification process has a 75-second watchdog. The final case waits the production 30-second request deadline and verifies its socket owner and other streams retire.
+Cases: cancel before subscribe acknowledgment with a live inbox; rapid A→B→C navigation; asynchronous termination with a delayed unsubscribe acknowledgment; foreign conversation publication; acknowledged registration with a missing first publication; old connection cleanup versus a ready replacement; lost registration acknowledgment. Publication waits have deadlines and the verification process has a 75-second watchdog. The final case waits the production 30-second request deadline and verifies its socket owner and other streams retire.
 
 Run real transport/model latency experiments against an isolated gateway using a credential file:
 
@@ -19,7 +19,7 @@ swift build --product PhoneSyncVerification
 
 The live check creates one disposable Codex/Terra conversation, follows the inbox and conversation, sends five tool-free timing probes, measures authentication, provider session creation, send acknowledgment, first visible view and completed model reply separately, verifies immediate resubscription, and deletes the conversation. It fails if delivery fails; it does not print the credential. Use a non-production test namespace. These are native-client transport measurements, not render-frame or physical-device timing.
 
-See [the sync plan](../../docs/sync/PLAN.md) for the remaining durable-cache and retained-core gates. Replacement views and their cursors do not establish physical-record retained progress.
+See [the sync plan](../../docs/sync/PLAN.md) for the remaining command-recovery and retained-core gates. Replacement views and their cursors do not establish physical-record retained progress.
 
 To verify phone photo input against the same isolated gateway:
 

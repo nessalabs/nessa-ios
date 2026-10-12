@@ -22,7 +22,7 @@ struct MessagesInboxView: View {
           PinnedChatsGrid(store: store, onOpen: onOpen)
         }
         if !store.connected {
-          Button("Connect to Nessa", action: onSettings)
+          Button(store.reconnecting ? "Reconnecting…" : "Connect to Nessa", action: onSettings)
             .font(MessagesStyle.body).padding(NessaSpacing.xl)
         } else if store.visibleConversations.isEmpty {
           VStack(spacing: NessaSpacing.sm) {
@@ -75,7 +75,7 @@ struct MessagesInboxView: View {
                   pendingDeletion = [conversation.id]
                 } label: {
                   Label("Delete", systemImage: "trash")
-                }.tint(MessagesStyle.danger)
+                }.tint(MessagesStyle.danger).disabled(!store.connected)
                 Button(showingArchived ? "Unarchive" : "Archive", systemImage: "archivebox") {
                   store.setArchived(!showingArchived, conversationID: conversation.id)
                 }.tint(MessagesStyle.archiveAction)

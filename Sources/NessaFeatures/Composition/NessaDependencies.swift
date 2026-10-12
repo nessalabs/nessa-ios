@@ -7,19 +7,27 @@ import Foundation
   public let service: MessagingService
   public let credentials: any NessaCredentialStoring
   public let preferences: any ChatPreferences
+  private let snapshots: PhoneSnapshotSession
+  private let recovery: ConnectionRecovery
   private let speechFactory: @MainActor () -> any SpeechTranscribing
   let launchConnection: (address: String, credential: String)?
   public init(
     mode: Mode, repository: any MessagingRepository, directory: (any AgentDirectory)? = nil,
     credentials: any NessaCredentialStoring, preferences: any ChatPreferences,
     launchConnection: (address: String, credential: String)? = nil,
-    speechFactory: (@MainActor () -> any SpeechTranscribing)? = nil
+    speechFactory: (@MainActor () -> any SpeechTranscribing)? = nil,
+    snapshots: PhoneSnapshotSession? = nil, recovery: ConnectionRecovery? = nil
   ) {
     self.mode = mode
     self.service = MessagingService(
       repository: repository, directory: directory ?? (repository as? any AgentDirectory))
     self.credentials = credentials
     self.preferences = preferences
+    self.snapshots =
+      snapshots
+      ?? PhoneSnapshotSession(
+        store: mode == .live ? PhoneSnapshotStore() : InMemoryPhoneSnapshotStore())
+    self.recovery = recovery ?? ConnectionRecovery(waiting: SystemRecoveryWait())
     self.launchConnection = launchConnection
     self.speechFactory =
       speechFactory ?? {
@@ -61,7 +69,9 @@ import Foundation
     #endif
   }
   public func makeMessagesViewModel() -> MessagesViewModel {
-    MessagesViewModel(service: service, credentials: credentials, preferences: preferences)
+    MessagesViewModel(
+      service: service, credentials: credentials, preferences: preferences,
+      snapshots: snapshots, recovery: recovery)
   }
   public func makeDictationViewModel() -> DictationViewModel {
     DictationViewModel(transcriber: speechFactory())

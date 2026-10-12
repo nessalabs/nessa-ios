@@ -2,11 +2,12 @@ import CryptoKit
 import Foundation
 
 /// Native implementation of Nessa's product v1 req/res protocol. Commands are never replayed.
-public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ConversationFollowing {
+public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ConversationFollowing,
+  ConnectionLeasing
+{
   public nonisolated var attachmentPolicy: AttachmentPolicy { .nessa }
   private var imageCache: AttachmentImageCache?
   public func imageData(for attachment: NessaImageAttachment) async throws -> Data? {
-    try requireConnection()
     return await imageCache?.read(attachment.digest)
   }
   private var uploadURL: URL?
@@ -26,12 +27,36 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   private var challengeWaiter: CheckedContinuation<Data, Error>?
   private var authenticated = false
   private var connectionGeneration = 0
+  private var connectionLease: GatewayConnectionLease?
 
   public init() {}
 
   public func connect(address: String, credential: String, instance: String) async throws {
+    _ = try await connectWithLease(address: address, credential: credential, instance: instance)
+  }
+  public func connectWithLease(address: String, credential: String, instance: String) async throws
+    -> GatewayConnectionLease
+  {
     disconnect()
     let generation = connectionGeneration
+    let lease = GatewayConnectionLease()
+    connectionLease = lease
+    do {
+      try await openConnection(
+        address: address, credential: credential, instance: instance, generation: generation)
+      guard generation == connectionGeneration else { throw NessaGatewayError.disconnected }
+      return lease
+    } catch {
+      if generation == connectionGeneration { close(error) }
+      throw error
+    }
+  }
+  public func retire(_ lease: GatewayConnectionLease) {
+    if connectionLease == lease { close(NessaGatewayError.disconnected) }
+  }
+  private func openConnection(
+    address: String, credential: String, instance: String, generation: Int
+  ) async throws {
     guard let url = URL(string: address), ["ws", "wss"].contains(url.scheme), url.host != nil,
       url.path == "/session", url.user == nil, url.password == nil, url.query == nil
     else {
@@ -57,7 +82,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
           let message = try await task.receive()
           await self?.receive(message, task: task)
         }
-      } catch { await self?.transportFailed(task: task) }
+      } catch { await self?.transportFailed(task: task, error: error) }
     }
     let challengeData = try await waitForChallenge()
     let challenge = try JSONDecoder().decode(Challenge.self, from: challengeData)
@@ -96,6 +121,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     return id
   }
   public func delete(_ conversationID: String) async throws {
+    try requireConnection()
     struct Delete: Encodable {
       let conversationId: String
       let requestId: String
@@ -294,6 +320,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   }
   public func disconnect() { close(NessaGatewayError.disconnected) }
   private func close(_ error: Error) {
+    connectionLease = nil
     connectionGeneration += 1
     let waiters = registrationWaiters.values.flatMap { $0 }
     registrationWaiters.removeAll()
@@ -423,9 +450,10 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
       }
     } catch { close(error) }
   }
-  private func transportFailed(task: URLSessionWebSocketTask) {
+  private func transportFailed(task: URLSessionWebSocketTask, error: Error) {
     guard socket === task else { return }
-    close(NessaGatewayError.disconnected)
+    // Preserve certificate and transport outcomes for the recovery policy.
+    close((error as? URLError) ?? NessaGatewayError.disconnected)
   }
   private func failPending(_ error: Error) {
     for timeout in timeouts.values { timeout.cancel() }

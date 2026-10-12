@@ -9,6 +9,7 @@ public struct NessaMessagesView: View {
   @AppStorage("nessaSurfaceInstance") private var instance = ""
   @State private var settings = false
   @State private var path: [String] = []
+  @Environment(\.scenePhase) private var scenePhase
   public init(dependencies: NessaDependencies) {
     self.dependencies = dependencies
     _store = StateObject(wrappedValue: dependencies.makeMessagesViewModel())
@@ -59,8 +60,16 @@ public struct NessaMessagesView: View {
         }
       }
     }
-    .task(id: store.connected) {
+    .task(id: store.connectionRevision) {
       if store.connected { await store.watchInbox() }
+    }
+    .task(id: scenePhase) {
+      guard !Task.isCancelled else { return }
+      if scenePhase == .background {
+        await store.suspendConnection()
+      } else if scenePhase == .active {
+        store.resumeConnection()
+      }
     }
     .preferredColorScheme(.dark)
     .tint(MessagesStyle.foreground)

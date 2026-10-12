@@ -35,32 +35,25 @@ Live-feed fault and image-input experiments are reproducible through
 [the native verification runner](verification/sync/README.md). See the
 [sync plan](docs/sync/PLAN.md) for the durable-cache and retained-core work that remains.
 
-For the native wire-client integration test, install Python `aiohttp` in a
-virtual environment and run `scripts/nessa-gateway-fixture.py`. In another terminal:
+Run the native adapter's scripted socket lifecycle checks with synthetic data:
 
 ```sh
-swiftc Sources/NessaFeatures/Domain/AgentProfile.swift \
-  Sources/NessaFeatures/Application/AgentDirectory.swift \
-  Sources/NessaFeatures/Infrastructure/GatewayAgentDTO.swift \
-  Sources/NessaFeatures/Domain/DraftAttachment.swift \
-  Sources/NessaFeatures/Application/MessagingRepository.swift \
-  Sources/NessaFeatures/Application/MessagingRepositoryError.swift \
-  Sources/NessaFeatures/Infrastructure/AttachmentUploadTransport.swift \
-  Sources/NessaFeatures/Domain/NessaConversation.swift \
-  Sources/NessaFeatures/Infrastructure/NessaGatewayClient.swift \
-  Sources/NessaFeatures/Application/AttachmentPolicy.swift \
-  Sources/NessaFeatures/Infrastructure/AttachmentImageCache.swift \
-  scripts/verify-nessa-gateway.swift -o /tmp/verify-nessa-gateway
-/tmp/verify-nessa-gateway
+./verification/sync/run-fixtures.sh
 ```
 
-The fixture contains synthetic data and accepts only the test credential `fixture`.
+The runner uses a temporary loopback peer and the fixture-only credential. Real
+message and image experiments accept a credential file; see the runner's guide.
+
+Live builds retain a private, bounded cache of the inbox, agent metadata and the
+20 most recently viewed chats for offline display. Cache identities include the
+gateway, instance and credential fingerprint. Reconnecting replaces live feeds;
+offline display does not enable sending or establish retained-sync checkpoints.
 
 ## Remaining product work
 
 General mobile file uploads, audio, push notifications, full offline history, device pairing UI,
-agent questions, full transcript pagination, and reconnection subscriptions are
-not yet implemented in the new surface. Live gateway credential and network
+agent questions, full transcript pagination, uncertain-command recovery, and
+shared retained-sync integration are not yet implemented in the new surface. Live gateway credential and network
 setup must be supplied before testing against a real Nessa deployment.
 
 Simulator builds need ad hoc signing for Keychain access; an unsigned build can
@@ -73,7 +66,7 @@ Pin up to three existing chats. Tap **Edit** to pin or unpin a chat, or long-pre
 
 ## Dependency injection and development
 
-`App/Nessa/NessaApp.swift` is the app composition entry point. `Composition/NessaDependencies.swift` constructs either live adapters or in-memory development adapters. Pages receive a view model from that container; view models receive a `MessagingService`, credential port, and preferences port. They never construct infrastructure.
+`App/Nessa/NessaApp.swift` is the app composition entry point. `Composition/NessaDependencies.swift` constructs either live adapters or in-memory development adapters. Pages receive a view model from that container; view models receive a `MessagingService`, credential and preferences ports, a snapshot session, and a recovery policy. They never construct infrastructure.
 
 Debug defaults to fake data: twelve chats with scrollable message histories. Send, create, pin, preview, and delete work in memory. Restarting resets development data. Set `NESSA_MODE=live` in the Xcode scheme environment to use your real backend during Debug. Release always selects live. Tests and previews can inject a custom repository with `NessaDependencies.development(repository:)`.
 

@@ -3,6 +3,7 @@ import Foundation
 public enum NessaGatewayError: LocalizedError {
   case invalidAddress, invalidFrame, incompatibleProtocol, disconnected, timeout
   case unknownSubscription
+  case conversationNotFound
   case imageInputUnsupported
   case rejected(String)
   public var errorDescription: String? {
@@ -15,6 +16,7 @@ public enum NessaGatewayError: LocalizedError {
     case .timeout:
       "The gateway did not reply in time. A sent command may still have been accepted; refresh before trying again."
     case .unknownSubscription: "Live updates already stopped."
+    case .conversationNotFound: "This chat is no longer available."
     case .imageInputUnsupported:
       "This chat’s model cannot receive photos. Start a new chat with an image-capable model."
     case .rejected(let message): message

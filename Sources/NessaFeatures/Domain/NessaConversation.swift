@@ -1,6 +1,6 @@
 import Foundation
 
-public struct NessaConversation: Decodable, Identifiable, Sendable, Equatable {
+public struct NessaConversation: Codable, Identifiable, Sendable, Equatable {
   public var id: String { conversationId }
   public let conversationId: String
   public let title: String?
@@ -9,12 +9,12 @@ public struct NessaConversation: Decodable, Identifiable, Sendable, Equatable {
   public let running: Bool
 }
 
-public struct NessaConversationList: Decodable, Sendable, Equatable {
+public struct NessaConversationList: Codable, Sendable, Equatable {
   public let conversations: [NessaConversation]
   public let complete: Bool
 }
 
-public struct NessaConversationView: Decodable, Sendable, Equatable {
+public struct NessaConversationView: Codable, Sendable, Equatable {
   public let conversationId: String
   public let messages: [NessaTurn]
   public let permissions: [NessaPermission]
@@ -23,7 +23,7 @@ public struct NessaConversationView: Decodable, Sendable, Equatable {
   public let runtime: NessaRuntime?
 }
 
-public struct NessaTurn: Decodable, Identifiable, Sendable, Equatable {
+public struct NessaTurn: Codable, Identifiable, Sendable, Equatable {
   public var id: String { executionId }
   public let executionId: String
   public let userText: String
@@ -59,14 +59,14 @@ public struct NessaTurn: Decodable, Identifiable, Sendable, Equatable {
   }
 }
 
-public struct NessaPart: Decodable, Sendable, Equatable {
+public struct NessaPart: Codable, Sendable, Equatable {
   public let offset: Int
   public let kind: String
   public let text: String
   public let messageId: String?
 }
 
-public struct NessaPermission: Decodable, Identifiable, Sendable, Equatable {
+public struct NessaPermission: Codable, Identifiable, Sendable, Equatable {
   public var id: String { executionId + ":" + permissionId }
   public let executionId: String
   public let permissionId: String
@@ -74,14 +74,14 @@ public struct NessaPermission: Decodable, Identifiable, Sendable, Equatable {
   public let toolName: String
   public let argumentsJson: String
   public let options: [Option]
-  public struct Option: Decodable, Identifiable, Sendable, Equatable {
+  public struct Option: Codable, Identifiable, Sendable, Equatable {
     public let id: String
     public let label: String
     public let effect: String
   }
 }
 
-public struct NessaRuntime: Decodable, Sendable, Equatable {
+public struct NessaRuntime: Codable, Sendable, Equatable {
   public let agent: String
   public var model: String? = nil
 }

@@ -13,6 +13,7 @@ public final class MessagesViewModel: ObservableObject {
   private var listVersion = 0
   private var readVersions: [String: Int] = [:]
   private var viewCursors: [String: ConversationCursor] = [:]
+  private var unlistedCreations: [String: NessaConversation] = [:]
   private var deletedIDs: Set<String> = []
   @Published public private(set) var pendingDeletionIDs: Set<String> = []
   public var visibleConversations: [NessaConversation] {
@@ -43,15 +44,34 @@ public final class MessagesViewModel: ObservableObject {
   private let service: MessagingService
   private let credentials: any NessaCredentialStoring
   private var generation = 0
+  @Published public private(set) var connectionRevision = 0
+  @Published public private(set) var reconnecting = false
+  private let snapshots: PhoneSnapshotSession?
+  private var snapshotLease: PhoneSnapshotSession.Lease?
+  private let recovery: ConnectionRecovery?
+  private var recoveryTask: Task<Void, Never>?
+  private var retirementTask: Task<Void, Never>?
+  private var manualAttempt: Int?
+  private var foreground = true
+  private struct Profile: Equatable, Sendable {
+    let address: String
+    let credential: String
+    let instance: String
+  }
+  private var profile: Profile?
 
   public init(
     service: MessagingService, credentials: any NessaCredentialStoring,
-    preferences: any ChatPreferences
+    preferences: any ChatPreferences, snapshots: PhoneSnapshotSession? = nil,
+    recovery: ConnectionRecovery? = nil
   ) {
     self.credentials = credentials
     self.service = service
     self.preferences = preferences
+    self.snapshots = snapshots
+    self.recovery = recovery
   }
+  deinit { recoveryTask?.cancel() }
   public func reaction(message: String, in conversation: String) -> String? {
     reactions[conversation + ":" + message]
   }
@@ -151,7 +171,7 @@ public final class MessagesViewModel: ObservableObject {
   }
   public func hasConversation(_ agent: String) -> Bool { conversationID(for: agent) != nil }
   public func deleteConversation(for agent: String) async {
-    guard let id = conversationID(for: agent) else { return }
+    guard connected, let id = conversationID(for: agent) else { return }
     let currentGeneration = generation
     pendingDeletionIDs.insert(id)
     listVersion += 1
@@ -162,22 +182,26 @@ public final class MessagesViewModel: ObservableObject {
     do {
       try await service.delete(id)
       guard generation == currentGeneration else { return }
-      removeDeletedConversation(id, identifier: agent)
+      await removeDeletedConversation(id, identifier: agent)
     } catch {
       if generation == currentGeneration {
         self.error = error.localizedDescription
-        // A failed acknowledgement can follow a committed gateway tombstone.
+        // The inbox excludes archived chats, so its absence cannot prove deletion.
         try? await refreshList()
-        if generation == currentGeneration, listComplete,
-          !conversations.contains(where: { $0.id == id })
-        {
-          removeDeletedConversation(id, identifier: agent)
+        guard generation == currentGeneration else { return }
+        do { _ = try await service.read(id) } catch NessaGatewayError.conversationNotFound {
+          if generation == currentGeneration {
+            await removeDeletedConversation(id, identifier: agent)
+          }
+        } catch {
+          // An uncertain read preserves the cached chat and preferences.
         }
       }
     }
   }
-  private func removeDeletedConversation(_ id: String, identifier agent: String) {
+  private func removeDeletedConversation(_ id: String, identifier agent: String) async {
     deletedIDs.insert(id)
+    unlistedCreations.removeValue(forKey: id)
     listVersion += 1
     readVersions[id, default: 0] += 1
     conversationAgents.removeValue(forKey: id)
@@ -197,6 +221,7 @@ public final class MessagesViewModel: ObservableObject {
     replyTargets = replyTargets.filter { !$0.key.hasPrefix(id + ":") }
     preferences.save(replyTargets, forKey: replyKey)
     replyProjections.removeValue(forKey: id)
+    if let snapshotLease { await snapshots?.remove(id, lease: snapshotLease) }
   }
   public func openAgent(_ agent: String) async -> String? {
     if let id = agentThreads[agent] {
@@ -221,12 +246,26 @@ public final class MessagesViewModel: ObservableObject {
   }
   public func savedCredential() -> String { credentials.load() ?? "" }
   public func connect(address: String, credential: String, instance: String) async {
-    guard !busy else { return }
+    recoveryTask?.cancel()
+    recoveryTask = nil
+    reconnecting = false
+    let next = Profile(address: address, credential: credential, instance: instance)
+    profile = next
+    generation += 1
+    connectionRevision += 1
+    let expected = generation
+    manualAttempt = expected
+    defer {
+      if manualAttempt == expected {
+        manualAttempt = nil
+        busy = false
+      }
+    }
     busy = true
     connected = false
-    error = nil
-    generation += 1
     sending = false
+    error = nil
+    snapshotLease = nil
     conversations = []
     agentProfiles = []
     pinnedChats = []
@@ -244,46 +283,157 @@ public final class MessagesViewModel: ObservableObject {
     views = [:]
     readVersions = [:]
     viewCursors = [:]
+    unlistedCreations = [:]
+    loadPreferences(next)
     do {
-      try await service.connect(address: address, credential: credential, instance: instance)
-      let scope = address + ":" + instance
-      pinKey = "nessa.pinnedChats." + scope
-      threadKey = "nessa.agentThreads." + scope
-      identityKey = "nessa.conversationAgents." + scope
-      conversationAgents = preferences.mapping(forKey: identityKey) ?? [:]
-      agentProfiles = try await service.agents()
-      reactionKey = "nessa.reactions." + scope
-      reactions = preferences.mapping(forKey: reactionKey) ?? [:]
-      replyKey = "nessa.replies." + scope
-      replyTargets = preferences.mapping(forKey: replyKey) ?? [:]
-      statusKey = "nessa.status." + scope
-      unreadChats = preferences.strings(forKey: statusKey + ".unread") ?? []
-      mutedChats = preferences.strings(forKey: statusKey + ".muted") ?? []
-      archivedChats = preferences.strings(forKey: statusKey + ".archived") ?? []
-      agentPreviews = [:]
-      let savedPins = preferences.strings(forKey: pinKey) ?? []
-      pinnedChats = NessaPinPolicy.normalize(savedPins)
-      preferences.save(pinnedChats, forKey: pinKey)
-      agentThreads = preferences.mapping(forKey: threadKey) ?? [:]
-      try await refreshList()
-      try credentials.save(credential)
-      connected = true
+      try await hydrate(next, generation: expected)
+      guard generation == expected, foreground else { return }
+      try await dial(next, generation: expected)
     } catch {
-      conversations = []
-      agentProfiles = []
-      pinnedChats = []
-      unreadChats = []
-      mutedChats = []
-      archivedChats = []
-      reactions = [:]
-      replyTargets = [:]
-      agentThreads = [:]
-      conversationAgents = [:]
-      await service.disconnect()
-      connected = false
-      self.error = error.localizedDescription
+      guard generation == expected else { return }
+      if error is CancellationError {
+        busy = false
+        return
+      }
+      if ConnectionRecovery.retryable(error), recovery != nil {
+        manualAttempt = nil
+        busy = false
+        startRecovery()
+      } else {
+        if !ConnectionRecovery.retryable(error) {
+          conversations = []
+          views = [:]
+          pinnedChats = []
+          agentProfiles = []
+        }
+        self.error = error.localizedDescription
+      }
     }
+    if generation == expected { busy = false }
+  }
+  private func hydrate(_ profile: Profile, generation expected: Int) async throws {
+    guard let snapshots else { return }
+    let (lease, saved) = try await snapshots.prepare(
+      PhoneCacheScope(
+        address: profile.address, credential: profile.credential, instance: profile.instance))
+    guard generation == expected, !Task.isCancelled else { throw CancellationError() }
+    snapshotLease = lease
+    if let saved {
+      conversations = saved.list?.conversations ?? []
+      listComplete = saved.list?.complete ?? true
+      views = saved.views
+      agentProfiles = saved.agents
+    }
+  }
+  private func loadPreferences(_ profile: Profile) {
+    let scope = profile.address + ":" + profile.instance
+    pinKey = "nessa.pinnedChats." + scope
+    threadKey = "nessa.agentThreads." + scope
+    identityKey = "nessa.conversationAgents." + scope
+    conversationAgents = preferences.mapping(forKey: identityKey) ?? [:]
+    reactionKey = "nessa.reactions." + scope
+    reactions = preferences.mapping(forKey: reactionKey) ?? [:]
+    replyKey = "nessa.replies." + scope
+    replyTargets = preferences.mapping(forKey: replyKey) ?? [:]
+    statusKey = "nessa.status." + scope
+    unreadChats = preferences.strings(forKey: statusKey + ".unread") ?? []
+    mutedChats = preferences.strings(forKey: statusKey + ".muted") ?? []
+    archivedChats = preferences.strings(forKey: statusKey + ".archived") ?? []
+    agentPreviews = [:]
+    let savedPins = preferences.strings(forKey: pinKey) ?? []
+    pinnedChats = NessaPinPolicy.normalize(savedPins)
+    preferences.save(pinnedChats, forKey: pinKey)
+    agentThreads = preferences.mapping(forKey: threadKey) ?? [:]
+  }
+  private func dial(_ profile: Profile, generation expected: Int) async throws {
+    await retirementTask?.value
+    guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
+    if snapshotLease == nil { try await hydrate(profile, generation: expected) }
+    guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
+    var receipt: GatewayConnectionLease?
+    do {
+      receipt = try await service.connect(
+        address: profile.address, credential: profile.credential, instance: profile.instance)
+      guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
+      let agents = try await service.agents()
+      guard generation == expected, !Task.isCancelled else { throw CancellationError() }
+      agentProfiles = agents
+      try await refreshList()
+      guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
+      try credentials.save(profile.credential)
+      connected = true
+      connectionRevision += 1
+      if let snapshotLease { await snapshots?.recordAgents(agents, lease: snapshotLease) }
+    } catch {
+      await service.retire(receipt)
+      throw error
+    }
+  }
+  /// Retire authority before waiting for any cache I/O. The cache writer is already owned.
+  public func suspendConnection() async {
+    foreground = false
+    generation += 1
+    connectionRevision += 1
+    recoveryTask?.cancel()
+    recoveryTask = nil
+    manualAttempt = nil
+    reconnecting = false
+    connected = false
     busy = false
+    sending = false
+    unlistedCreations = [:]
+    let service = service
+    let retirement = Task { await service.disconnect() }
+    retirementTask = retirement
+    await retirement.value
+    let snapshots = snapshots
+    Task { await snapshots?.flush() }
+  }
+  public func resumeConnection() {
+    foreground = true
+    if !connected { startRecovery() }
+  }
+  private func startRecovery() {
+    guard let recovery, let profile, foreground, recoveryTask == nil, manualAttempt == nil
+    else { return }
+    let expected = generation
+    reconnecting = true
+    recoveryTask = Task { [weak self] in
+      defer {
+        if let self, self.generation == expected {
+          self.recoveryTask = nil
+          self.reconnecting = false
+        }
+      }
+      do {
+        try await recovery.run { [weak self] in
+          guard let self else { throw CancellationError() }
+          try await self.dial(profile, generation: expected)
+        }
+      } catch {
+        guard let self, self.generation == expected, !(error is CancellationError) else { return }
+        self.error = error.localizedDescription
+      }
+    }
+  }
+  private func connectionLost(_ error: Error, generation expected: Int) {
+    guard generation == expected else { return }
+    if ConnectionRecovery.retryable(error) {
+      if connected {
+        connected = false
+        unlistedCreations = [:]
+        generation += 1
+        connectionRevision += 1
+      }
+      if recovery != nil {
+        startRecovery()
+        return
+      }
+    }
+    self.error = error.localizedDescription
+  }
+  private func cache(_ update: ConversationUpdate) async {
+    if let snapshotLease { await snapshots?.record(update, lease: snapshotLease) }
   }
   public func refreshList() async throws {
     let currentGeneration = generation
@@ -294,9 +444,7 @@ public final class MessagesViewModel: ObservableObject {
       guard currentGeneration == generation, !Task.isCancelled, version == listVersion else {
         return
       }
-      let visible = result.conversations.filter { !deletedIDs.contains($0.id) }
-      if conversations != visible { conversations = visible }
-      if listComplete != result.complete { listComplete = result.complete }
+      await cache(.list(applyList(result)))
     } catch {
       guard currentGeneration == generation, !Task.isCancelled, version == listVersion else {
         return
@@ -304,8 +452,18 @@ public final class MessagesViewModel: ObservableObject {
       throw error
     }
   }
+  private func applyList(_ result: NessaConversationList) -> NessaConversationList {
+    let observed = Set(result.conversations.map(\.id))
+    unlistedCreations = unlistedCreations.filter { !observed.contains($0.key) }
+    var visible = result.conversations.filter { !deletedIDs.contains($0.id) }
+    visible += unlistedCreations.values
+    if !unlistedCreations.isEmpty { visible.sort { $0.updatedAtMs > $1.updatedAtMs } }
+    if conversations != visible { conversations = visible }
+    if listComplete != result.complete { listComplete = result.complete }
+    return NessaConversationList(conversations: visible, complete: result.complete)
+  }
   public func refresh(_ id: String) async {
-    guard !deletedIDs.contains(id), !pendingDeletionIDs.contains(id) else { return }
+    guard connected, !deletedIDs.contains(id), !pendingDeletionIDs.contains(id) else { return }
     let currentGeneration = generation
     let version = (readVersions[id] ?? 0) + 1
     readVersions[id] = version
@@ -317,12 +475,13 @@ public final class MessagesViewModel: ObservableObject {
         return
       }
       apply(result, to: id)
+      let cursor = try ConversationCursor(incarnation: "snapshot", position: "0")
+      await cache(.view(cursor, result))
     } catch {
       guard currentGeneration == generation, !Task.isCancelled, readVersions[id] == version else {
         return
       }
-      if case NessaGatewayError.disconnected = error { connected = false }
-      self.error = error.localizedDescription
+      connectionLost(error, generation: currentGeneration)
     }
   }
   private func apply(_ result: NessaConversationView, to id: String) {
@@ -359,19 +518,18 @@ public final class MessagesViewModel: ObservableObject {
       return
     } catch {
       guard generation == expectedGeneration, !Task.isCancelled else { return }
-      if case NessaGatewayError.disconnected = error { connected = false }
-      self.error = error.localizedDescription
+      connectionLost(error, generation: expectedGeneration)
     }
   }
   private func receive(_ update: ConversationUpdate, in id: String?, generation expected: Int)
-    throws
+    async throws
   {
     guard generation == expected, !Task.isCancelled else { throw CancellationError() }
+    var accepted = update
     switch update {
     case .list(let list):
       listVersion += 1
-      conversations = list.conversations.filter { !deletedIDs.contains($0.id) }
-      listComplete = list.complete
+      accepted = .list(applyList(list))
     case .view(let cursor, let view):
       guard !deletedIDs.contains(view.conversationId),
         !pendingDeletionIDs.contains(view.conversationId)
@@ -380,6 +538,7 @@ public final class MessagesViewModel: ObservableObject {
       readVersions[view.conversationId, default: 0] += 1
       apply(view, to: view.conversationId)
     }
+    await cache(accepted)
   }
   public func create(agent: String? = nil) async -> String? {
     guard connected, !busy else { return nil }
@@ -398,10 +557,13 @@ public final class MessagesViewModel: ObservableObject {
         conversationId: id, messages: [], permissions: [],
         truncated: false, interactionViewError: nil,
         runtime: agent.map { NessaRuntime(agent: $0) })
-      conversations.insert(
-        NessaConversation(
+      if !conversations.contains(where: { $0.id == id }) {
+        let row = NessaConversation(
           conversationId: id, title: nil, preview: nil,
-          updatedAtMs: Date().timeIntervalSince1970 * 1000, running: false), at: 0)
+          updatedAtMs: Date().timeIntervalSince1970 * 1000, running: false)
+        unlistedCreations[id] = row
+        conversations.insert(row, at: 0)
+      }
       if let agent {
         agentThreads[agent] = id
         unreadChats.removeAll { $0 == agent }
@@ -424,7 +586,7 @@ public final class MessagesViewModel: ObservableObject {
     _ text: String, attachments: [DraftAttachment] = [], reply: MessageReply? = nil,
     to id: String
   ) async -> Bool {
-    guard !sending else { return false }
+    guard connected, !sending else { return false }
     let currentGeneration = generation
     sending = true
     defer { if generation == currentGeneration { sending = false } }
@@ -451,6 +613,7 @@ public final class MessagesViewModel: ObservableObject {
   public func answer(_ permission: NessaPermission, option: NessaPermission.Option, in id: String)
     async
   {
+    guard connected else { return }
     let currentGeneration = generation
     do {
       try await service.answer(permission, option: option, conversationID: id)

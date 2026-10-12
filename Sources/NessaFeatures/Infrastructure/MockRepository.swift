@@ -133,7 +133,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ConversationFo
   public func read(_ id: String) throws -> NessaConversationView {
     try requireConnection()
     guard let view = threads[id] else {
-      throw NessaGatewayError.rejected("Conversation not found.")
+      throw NessaGatewayError.conversationNotFound
     }
     return view
   }

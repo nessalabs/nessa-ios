@@ -13,8 +13,20 @@ public struct MessagingService: Sendable {
   }
   public var attachmentPolicy: AttachmentPolicy { repository.attachmentPolicy }
   public func agents() async throws -> [AgentProfile] { try await directory?.agents() ?? [] }
-  public func connect(address: String, credential: String, instance: String) async throws {
+  @discardableResult
+  public func connect(address: String, credential: String, instance: String) async throws
+    -> GatewayConnectionLease?
+  {
+    if let owner = repository as? any ConnectionLeasing {
+      return try await owner.connectWithLease(
+        address: address, credential: credential, instance: instance)
+    }
     try await repository.connect(address: address, credential: credential, instance: instance)
+    return nil
+  }
+  public func retire(_ lease: GatewayConnectionLease?) async {
+    guard let lease, let owner = repository as? any ConnectionLeasing else { return }
+    await owner.retire(lease)
   }
   public func follow(_ id: String?, after: ConversationCursor? = nil) async throws
     -> AsyncThrowingStream<ConversationUpdate, Error>?

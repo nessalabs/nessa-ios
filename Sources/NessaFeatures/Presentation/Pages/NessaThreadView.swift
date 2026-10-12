@@ -73,7 +73,7 @@ struct NessaThreadView: View {
           ForEach(current?.permissions ?? []) { permission in
             PermissionReview(permission: permission) { option in
               Task { await store.answer(permission, option: option, in: conversationID) }
-            }
+            }.disabled(!store.connected)
           }
           if let error = current?.interactionViewError {
             Text(error).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
@@ -159,7 +159,7 @@ struct NessaThreadView: View {
     .sheet(isPresented: $details) {
       AgentDetailsView(name: name, conversationID: conversationID, store: store)
     }
-    .task(id: conversationID) { await store.watchConversation(conversationID) }
+    .task(id: store.connectionRevision) { await store.watchConversation(conversationID) }
   }
 
   private func send() {

@@ -6,13 +6,21 @@ private actor DeleteGateRepository: MessagingRepository {
   private let repository = MockRepository()
   private var deletion: CheckedContinuation<Void, Error>?
   private var waiter: CheckedContinuation<Void, Never>?
+  private var omitted: String?
+  func omitFromInbox(_ id: String) { omitted = id }
   func connect(address: String, credential: String, instance: String) async {
     await repository.connect(address: address, credential: credential, instance: instance)
   }
   func disconnect() async { await repository.disconnect() }
-  func list() async throws -> NessaConversationList { try await repository.list() }
+  func list() async throws -> NessaConversationList {
+    let list = try await repository.list()
+    return NessaConversationList(
+      conversations: list.conversations.filter { $0.id != omitted }, complete: list.complete)
+  }
   func read(_ id: String) async throws -> NessaConversationView { try await repository.read(id) }
-  func create(agent: String?, model: String?) async throws -> String { try await repository.create(agent: agent, model: model) }
+  func create(agent: String?, model: String?) async throws -> String {
+    try await repository.create(agent: agent, model: model)
+  }
   func send(_ text: String, attachments: [DraftAttachment], conversationID: String) async throws
     -> String
   {
@@ -86,6 +94,24 @@ private actor DeleteGateRepository: MessagingRepository {
   #expect(model.isPinned(id))
   #expect(model.pendingDeletionIDs.isEmpty)
   #expect(model.error != nil)
+}
+@Test @MainActor func failedDeleteDoesNotTreatArchivedInboxAbsenceAsATombstone() async throws {
+  let repository = DeleteGateRepository()
+  let model = MessagesViewModel(
+    service: MessagingService(repository: repository),
+    credentials: InMemoryCredentialStore(), preferences: InMemoryChatPreferences())
+  await model.connect(address: "mock://archived", credential: "", instance: "test")
+  let id = try #require(model.conversations.first?.id)
+  await model.refresh(id)
+  model.togglePin(id)
+  let deletion = Task { await model.deleteConversation(for: id) }
+  await repository.waitForDelete()
+  await repository.omitFromInbox(id)
+  await repository.finish(.failure(NessaGatewayError.rejected("Delete failed")))
+  await deletion.value
+  #expect(model.views[id] != nil)
+  #expect(model.isPinned(id))
+  #expect(model.pendingDeletionIDs.isEmpty)
 }
 
 @Test @MainActor func bulkDeleteHidesAllTargetsBeforeFirstAcknowledgement() async throws {
