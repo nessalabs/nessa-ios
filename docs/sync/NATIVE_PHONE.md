@@ -2,7 +2,9 @@
 
 The gateway bridge is published in
 [#789](https://github.com/nessalabs/nessa-agent/pull/789). The native API at
-`69499fe7890f4d2ee6f2d358e3db4a2a9bf76347` passed its final independent review. Its library
+`9f155528064076460ee3c82a61f1a168852ff4a6` passed independent review of its passive
+correlation/cursor and admitted capture extension, following the reviewed bridge
+at `69499fe7890f4d2ee6f2d358e3db4a2a9bf76347`. Its library
 and Swift worker have run against paired records, offline reopen, restart and
 revocation; a release library also runs in a disposable simulator app. These
 checks do not mean Nessa's production repository uses the receiver yet.
@@ -52,9 +54,9 @@ through existing `pairing.create/status/approve` operations, correlate the nativ
 attempt with that exact invitation and claimed key, and persist its binding to
 the original authenticated principal/membership. Owner status includes exact
 invitation/consent/generation/class, claimed key, credential and receiver. The
-native API currently exports phase/credential/receiver/disclosed scope but not
-public invitation/key selectors; inspect and expose the existing immutable
-correlation through its owner when needed. Do not reconstruct these selectors in
+native API exports phase/credential/receiver/disclosed scope and exact public
+invitation/attempt/consent/generation/expiry/class correlation. Claimed-key
+correlation still needs export through its admitted local owner. Do not reconstruct these selectors in
 Swift or treat a manually supplied code as proof of a product-owner relationship.
 
 Only the existing gateway policy decides whether a credential may manage pairing
@@ -158,7 +160,7 @@ status/selection/read/withdrawal/recheck evidence. Completion capture, original
 enrollment failure, purge and private removal/publication failure remain distinct;
 neither an Active Boolean nor one success/error can substitute for them.
 
-Before enabling retained publication, add the existing owner's public intent/key
+Before enabling retained publication, add the existing owner's claimed-key
 correlation API and persist the product principal/membership binding. Product
 bearer and native issued credential IDs are distinct; their enrollment relationship
 is checked rather than requiring equal credential IDs. Native terminal evidence
@@ -183,7 +185,8 @@ filesystem regressions pass, and removing either the inventory or exclusive
 publication protection makes those regressions fail.
 
 The app's relative package dependency builds without gateway-worktree paths.
-All 123 app tests pass; the new actual-library test opens a private scope,
+All 126 app tests pass; the actual-library test opens a private scope,
+captures unreachable status off UI and restores an exact UInt64-max cursor,
 receives native NoCredential, receives the worker's post-close refusal, and
 reopens the same scope after physical drain. Removing close or making the probe
 a no-op fails it; changed distributed header bytes fail the provenance check.
@@ -204,7 +207,8 @@ current sandbox root on each launch, not retain a container UUID as identity.
 This completes packaging/runtime evidence only. The application-owned factory and
 lossless status/read mapping, production enrollment/profile coordination, retained
 repository, artifacts, durable deletion and performance/failure experiments remain
-open. The debug probe does not pair, contact a gateway or replace product history.
+open. The debug probe uses a disposable loopback endpoint for unreachable status;
+it does not pair or replace product history.
 
 ## Authenticated connection identity
 

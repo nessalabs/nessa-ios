@@ -13,7 +13,7 @@ extension NessaDependencies {
       else { return }
       do {
         try await NativePackageVerification.run(root: root, directory: directory, address: address)
-        print("NESSA_NATIVE_PACKAGE_PASS open/no-credential/closed/reopen")
+        print("NESSA_NATIVE_PACKAGE_PASS open/capture/cursor/no-credential/closed/reopen")
       } catch {
         print("NESSA_NATIVE_PACKAGE_FAIL \(error)")
       }

@@ -564,6 +564,24 @@ fileprivate struct FfiConverterString: FfiConverter {
     }
 }
 
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterData: FfiConverterRustBuffer {
+    typealias SwiftType = Data
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
+        let len: Int32 = try readInt(&buf)
+        return Data(try readBytes(&buf, count: Int(len)))
+    }
+
+    public static func write(_ value: Data, into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        writeBytes(&buf, value)
+    }
+}
+
 
 
 
@@ -1626,6 +1644,11 @@ public protocol NativeEnrollmentReceiptProtocol: AnyObject, Sendable {
     func phase()  -> NativeEnrollmentPhase
     
     /**
+     * Exact historical public correlation; this is not claim or read authority.
+     */
+    func publicIntent()  -> NativePublicIntent
+    
+    /**
      * Issued receiver only when Active was reported.
      */
     func receiver()  -> String?
@@ -1788,6 +1811,18 @@ open func phase() -> NativeEnrollmentPhase  {
 }
     
     /**
+     * Exact historical public correlation; this is not claim or read authority.
+     */
+open func publicIntent() -> NativePublicIntent  {
+    return try!  FfiConverterTypeNativePublicIntent_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeenrollmentreceipt_public_intent(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Issued receiver only when Active was reported.
      */
 open func receiver() -> String?  {
@@ -1887,7 +1922,7 @@ public func FfiConverterTypeNativeEnrollmentReceipt_lower(_ value: NativeEnrollm
 
 
 /**
- * Immutable saved entry cursor. Public foreign code cannot alter its key pair.
+ * Immutable saved entry cursor. Restoration selects order, not read authority.
  */
 public protocol NativeEntryKeyProtocol: AnyObject, Sendable {
     
@@ -1903,7 +1938,7 @@ public protocol NativeEntryKeyProtocol: AnyObject, Sendable {
     
 }
 /**
- * Immutable saved entry cursor. Public foreign code cannot alter its key pair.
+ * Immutable saved entry cursor. Restoration selects order, not read authority.
  */
 open class NativeEntryKey: NativeEntryKeyProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -1944,7 +1979,21 @@ open class NativeEntryKey: NativeEntryKeyProtocol, @unchecked Sendable {
     public func uniffiCloneHandle() -> UInt64 {
         return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeentrykey(self.handle, $0) }
     }
-    // No primary constructor declared for this class.
+    /**
+     * Restore one saved ordering selector through the existing Id owner.
+     * Current issued receiver/scope selection still belongs to the native session.
+     */
+public convenience init(creation: UInt64, id: String)throws  {
+    let handle =
+        try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_constructor_nativeentrykey_new(
+        FfiConverterUInt64.lower(creation),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
 
     deinit {
         if handle == 0 {
@@ -2188,6 +2237,220 @@ public func FfiConverterTypeNativePrivateStateFailure_lift(_ handle: UInt64) thr
 #endif
 public func FfiConverterTypeNativePrivateStateFailure_lower(_ value: NativePrivateStateFailure) -> UInt64 {
     return FfiConverterTypeNativePrivateStateFailure.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Immutable public correlation from the original native receipt, not private state.
+ */
+public protocol NativePublicIntentProtocol: AnyObject, Sendable {
+    
+    /**
+     * Exact admitted attempt bytes; retries may select another attempt.
+     */
+    func attempt()  -> Data
+    
+    /**
+     * Exact immutable public consent bytes.
+     */
+    func consent()  -> Data
+    
+    /**
+     * Original owner-selected public consent class.
+     */
+    func consentClass()  -> NativeConsentClass
+    
+    /**
+     * Original exclusive invitation expiry in Unix milliseconds.
+     */
+    func expiryMs()  -> UInt64
+    
+    /**
+     * Original immutable consent generation, without integer narrowing.
+     */
+    func generation()  -> UInt64
+    
+    /**
+     * Exact public invitation bytes, with the owner's fixed identity width.
+     */
+    func invitation()  -> Data
+    
+}
+/**
+ * Immutable public correlation from the original native receipt, not private state.
+ */
+open class NativePublicIntent: NativePublicIntentProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativepublicintent(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativepublicintent(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Exact admitted attempt bytes; retries may select another attempt.
+     */
+open func attempt() -> Data  {
+    return try!  FfiConverterData.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativepublicintent_attempt(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Exact immutable public consent bytes.
+     */
+open func consent() -> Data  {
+    return try!  FfiConverterData.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativepublicintent_consent(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original owner-selected public consent class.
+     */
+open func consentClass() -> NativeConsentClass  {
+    return try!  FfiConverterTypeNativeConsentClass_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativepublicintent_consent_class(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original exclusive invitation expiry in Unix milliseconds.
+     */
+open func expiryMs() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativepublicintent_expiry_ms(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original immutable consent generation, without integer narrowing.
+     */
+open func generation() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativepublicintent_generation(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Exact public invitation bytes, with the owner's fixed identity width.
+     */
+open func invitation() -> Data  {
+    return try!  FfiConverterData.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativepublicintent_invitation(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativePublicIntent: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativePublicIntent
+
+    public static func lift(_ handle: UInt64) throws -> NativePublicIntent {
+        return NativePublicIntent(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativePublicIntent) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativePublicIntent {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativePublicIntent, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePublicIntent_lift(_ handle: UInt64) throws -> NativePublicIntent {
+    return try FfiConverterTypeNativePublicIntent.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePublicIntent_lower(_ value: NativePublicIntent) -> UInt64 {
+    return FfiConverterTypeNativePublicIntent.lower(value)
 }
 
 
@@ -4723,6 +4986,91 @@ public func FfiConverterTypeNativeCallError_lift(_ buf: RustBuffer) throws -> Na
 public func FfiConverterTypeNativeCallError_lower(_ value: NativeCallError) -> RustBuffer {
     return FfiConverterTypeNativeCallError.lower(value)
 }
+
+
+/**
+ * Existing public consent classes, without manufacturing an enrollment grant.
+ */
+
+public enum NativeConsentClass: Equatable, Hashable {
+    
+    /**
+     * One owner's reading device.
+     */
+    case deviceRead
+    /**
+     * A peer gateway's reading identity.
+     */
+    case peerRead
+    /**
+     * A peer environment-serving identity.
+     */
+    case peerEnvironment
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeConsentClass: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeConsentClass: FfiConverterRustBuffer {
+    typealias SwiftType = NativeConsentClass
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeConsentClass {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .deviceRead
+        
+        case 2: return .peerRead
+        
+        case 3: return .peerEnvironment
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeConsentClass, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .deviceRead:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .peerRead:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .peerEnvironment:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeConsentClass_lift(_ buf: RustBuffer) throws -> NativeConsentClass {
+    return try FfiConverterTypeNativeConsentClass.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeConsentClass_lower(_ value: NativeConsentClass) -> RustBuffer {
+    return FfiConverterTypeNativeConsentClass.lower(value)
+}
+
 
 
 /**
@@ -7367,6 +7715,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nessa_device_client_checksum_method_nativeenrollmentreceipt_phase() != 54285) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nessa_device_client_checksum_method_nativeenrollmentreceipt_public_intent() != 38635) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nessa_device_client_checksum_method_nativeenrollmentreceipt_receiver() != 1680) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -7383,6 +7734,24 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativeentrykey_id() != 47163) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativepublicintent_attempt() != 60912) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativepublicintent_consent() != 14600) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativepublicintent_consent_class() != 60791) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativepublicintent_expiry_ms() != 48526) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativepublicintent_generation() != 48646) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativepublicintent_invitation() != 31890) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativepurge_catalogue_entries() != 38657) {
@@ -7503,6 +7872,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_constructor_nativedevicesession_open() != 61495) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_constructor_nativeentrykey_new() != 53828) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_constructor_nativereadstop_new() != 36867) {
