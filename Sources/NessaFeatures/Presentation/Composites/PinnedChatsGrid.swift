@@ -10,7 +10,7 @@ struct PinnedChatsGrid: View {
       columns: Array(repeating: GridItem(.flexible(), spacing: MessagesStyle.pinGap), count: 3),
       spacing: MessagesStyle.pinRowGap
     ) {
-      ForEach(store.pinnedChats, id: \.self) { agent in
+      ForEach(store.pinnedChats.filter { !store.isDeleting($0) }, id: \.self) { agent in
         Button {
           onOpen(agent)
         } label: {

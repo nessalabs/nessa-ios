@@ -16,17 +16,22 @@ struct MessagesInboxView: View {
   var body: some View {
     List {
       Group {
-        if !editing && !showingArchived && !store.pinnedChats.isEmpty && search.isEmpty {
+        if !editing && !showingArchived
+          && store.pinnedChats.contains(where: { !store.isDeleting($0) }) && search.isEmpty
+        {
           PinnedChatsGrid(store: store, onOpen: onOpen)
         }
         if !store.connected {
           Button("Connect to Nessa", action: onSettings)
             .font(MessagesStyle.body).padding(NessaSpacing.xl)
-        } else if store.conversations.isEmpty {
+        } else if store.visibleConversations.isEmpty {
           VStack(spacing: NessaSpacing.sm) {
             Text("Your chats, one message away.").font(MessagesStyle.title)
             Button("New message", action: onCompose).font(MessagesStyle.body)
           }.padding(.vertical, NessaSpacing.xl)
+        } else if showingArchived && filtered.isEmpty {
+          Text("No archived chats.").font(MessagesStyle.body)
+            .foregroundStyle(MessagesStyle.secondary).padding(.vertical, NessaSpacing.xl)
         }
         ForEach(filtered) { conversation in
           Button {
@@ -66,9 +71,11 @@ struct MessagesInboxView: View {
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
               if !editing {
-                Button("Delete", systemImage: "trash", role: .destructive) {
+                Button {
                   pendingDeletion = [conversation.id]
-                }
+                } label: {
+                  Label("Delete", systemImage: "trash")
+                }.tint(MessagesStyle.danger)
                 Button(showingArchived ? "Unarchive" : "Archive", systemImage: "archivebox") {
                   store.setArchived(!showingArchived, conversationID: conversation.id)
                 }.tint(MessagesStyle.archiveAction)
@@ -102,6 +109,7 @@ struct MessagesInboxView: View {
             selected = []
           }
         )
+        .disabled(deleting)
         .messagesHeaderBlur(scrollOffset: scrollOffset)
       }
       .messagesBar(edge: .bottom) {
@@ -109,8 +117,13 @@ struct MessagesInboxView: View {
           HStack {
             Text("\(selected.count) selected").font(MessagesStyle.body)
             Spacer()
-            Button("Delete", role: .destructive) { pendingDeletion = selected }
-              .font(MessagesStyle.title).disabled(selected.isEmpty || deleting || !store.connected)
+            Button(role: .destructive) {
+              pendingDeletion = selected
+            } label: {
+              Label("Delete", systemImage: "trash")
+            }
+            .font(MessagesStyle.title).foregroundStyle(MessagesStyle.danger)
+            .disabled(selected.isEmpty || deleting || !store.connected)
           }.padding(MessagesStyle.horizontal).foregroundStyle(MessagesStyle.foreground)
         } else {
           HStack(spacing: MessagesStyle.toolbarGap) {
@@ -120,21 +133,26 @@ struct MessagesInboxView: View {
             }.padding(.horizontal, NessaSpacing.md).frame(height: MessagesStyle.composerHeight)
               .messagesGlass()
             Button(action: onCompose) {
-              Image(systemName: "square.and.pencil").font(MessagesStyle.icon)
-                .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
-                .messagesGlass()
-            }.disabled(!store.connected || store.busy).accessibilityLabel("New message")
+              Group {
+                if store.busy {
+                  ProgressView()
+                } else {
+                  Image(systemName: "square.and.pencil").font(MessagesStyle.icon)
+                }
+              }
+              .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
+              .messagesGlass()
+            }.disabled(!store.connected || store.busy)
+              .accessibilityLabel(store.busy ? "Creating chat" : "New message")
           }.padding(.horizontal, MessagesStyle.horizontal).padding(
             .bottom, MessagesStyle.bottomInset)
         }
       }
-      .confirmationDialog(
-        "Delete selected conversations permanently?",
+      .sheet(
         isPresented: Binding(
-          get: { !pendingDeletion.isEmpty }, set: { if !$0 { pendingDeletion = [] } }),
-        titleVisibility: .visible
+          get: { !pendingDeletion.isEmpty }, set: { if !$0 { pendingDeletion = [] } })
       ) {
-        Button("Delete \(pendingDeletion.count) chat(s)", role: .destructive) {
+        DeleteChatsConfirmation(count: pendingDeletion.count, onCancel: { pendingDeletion = [] }) {
           let ids = pendingDeletion
           pendingDeletion = []
           deleting = true
@@ -144,17 +162,19 @@ struct MessagesInboxView: View {
             deleting = false
           }
         }
-        Button("Cancel", role: .cancel) { pendingDeletion = [] }
-      } message: {
-        Text("This removes the selected conversations and their history from Nessa.")
       }
       .nessaHideNavigationBar()
+      .onChange(of: store.connected) { _, _ in
+        selected = []
+        pendingDeletion = []
+        editing = false
+      }
       .refreshable {
         do { try await store.refreshList() } catch { store.error = error.localizedDescription }
       }
   }
   private var filtered: [NessaConversation] {
-    store.conversations.filter {
+    store.visibleConversations.filter {
       (store.archivedChats.contains($0.id) == showingArchived)
         && (editing || showingArchived || !store.isPinned($0.id))
         && (search.isEmpty || ($0.title ?? "").localizedCaseInsensitiveContains(search)

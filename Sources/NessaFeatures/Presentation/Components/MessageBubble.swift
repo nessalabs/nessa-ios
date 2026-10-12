@@ -36,11 +36,11 @@ private struct TextMessageContent: View {
       .foregroundStyle(MessagesStyle.foreground)
       .tint(MessagesStyle.outgoing)
       .nessaTextSelection(enabled: selectable)
-      .padding(.horizontal, MessagesStyle.bubbleInset + 6)
+      .padding(.horizontal, MessagesStyle.bubbleHorizontalInset)
       .padding(.vertical, MessagesStyle.bubbleInset)
       .background(
         outgoing ? MessagesStyle.outgoing : MessagesStyle.incoming,
-        in: MessagesBubbleShape(outgoing: outgoing)
+        in: RoundedRectangle(cornerRadius: MessagesStyle.bubbleRadius, style: .continuous)
       )
   }
 }

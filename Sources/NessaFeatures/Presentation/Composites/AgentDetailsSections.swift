@@ -24,9 +24,11 @@ extension AgentDetailsSection where Content == Text {
 struct AgentOverview: View {
   let profile: AgentProfile?
   var body: some View {
-    AgentDetailsSection(title: "Agent prompt") {
-      Text(profile?.prompt ?? "The connected service hasn’t supplied this agent’s prompt.")
-        .textSelection(.enabled)
+    if let prompt = profile?.prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    {
+      AgentDetailsSection(title: "Agent prompt") {
+        Text(prompt).textSelection(.enabled)
+      }
     }
     AgentDetailsSection(title: "Access granted") {
       if let access = profile?.grantedAccess {
@@ -38,7 +40,9 @@ struct AgentOverview: View {
           }
         }
       } else {
-        Text("The connected service hasn’t supplied a granted-access list. Pending requests appear in Activity.")
+        Text(
+          "The connected service hasn’t supplied a granted-access list. Pending requests appear in Activity."
+        )
       }
     }
   }
@@ -50,9 +54,12 @@ struct AgentArtifacts: View {
   var body: some View {
     let artifacts = ConversationArtifact.collect(from: conversation?.messages ?? [])
     if conversation == nil {
-      AgentDetailsSection(title: "Artifacts unavailable", text: "Conversation history hasn’t loaded yet.")
+      AgentDetailsSection(
+        title: "Artifacts unavailable", text: "Conversation history hasn’t loaded yet.")
     } else if artifacts.isEmpty {
-      AgentDetailsSection(title: "No artifacts yet", text: "Images and files supplied with this conversation will appear here.")
+      AgentDetailsSection(
+        title: "No artifacts yet",
+        text: "Images and files will appear here.")
     } else {
       LazyVStack(alignment: .leading, spacing: NessaSpacing.md) {
         ForEach(artifacts) { artifact in
@@ -65,8 +72,6 @@ struct AgentArtifacts: View {
         }
       }
     }
-    Text("The live service currently supplies image references. Other files and generated attachments appear only when supplied by the service.")
-      .font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
   }
 }
 

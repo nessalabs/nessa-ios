@@ -72,18 +72,18 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory {
   public func agents() async throws -> [AgentProfile] {
     try requireConnection()
     let result: GatewayAgentListDTO = try await request("agents.list", params: Empty())
-    return result.agents.map { AgentProfile(id: $0.agent, displayName: $0.agent.capitalized) }
+    return result.agents.map(\.profile)
   }
   public func read(_ id: String) async throws -> NessaConversationView {
     try requireConnection()
     return try await request("conversation.read", params: ConversationID(conversationId: id))
   }
-  public func create(agent: String? = nil) async throws -> String {
+  public func create(agent: String? = nil, model: String? = nil) async throws -> String {
     try requireConnection()
     let id = UUID().uuidString.lowercased()
     let _: Created = try await request(
       "conversation.create",
-      params: Create(conversationId: id, requestId: UUID().uuidString, agent: agent))
+      params: Create(conversationId: id, requestId: UUID().uuidString, agent: agent, model: model))
     return id
   }
   public func delete(_ conversationID: String) async throws {
@@ -95,8 +95,9 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory {
       "conversation.delete",
       params: Delete(conversationId: conversationID, requestId: UUID().uuidString))
   }
+  @discardableResult
   public func send(_ text: String, attachments: [DraftAttachment], conversationID: String)
-    async throws
+    async throws -> String
   {
     try requireConnection()
     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty,
@@ -116,12 +117,14 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory {
     guard images.reduce(0, { $0 + $1.size }) <= 10 * 1024 * 1024 else {
       throw NessaGatewayError.rejected("Uploaded images must total at most 10 MB.")
     }
+    let executionID = UUID().uuidString.lowercased()
     let _: Ignored = try await request(
       "conversation.send",
       params: Send(
         conversationId: conversationID,
-        requestId: UUID().uuidString, executionId: UUID().uuidString, text: text,
+        requestId: UUID().uuidString, executionId: executionID, text: text,
         attachments: images, files: []))
+    return executionID
   }
   private func upload(_ attachment: DraftAttachment, conversationID: String) async throws
     -> NessaImageAttachment
@@ -271,8 +274,8 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory {
         } else {
           let error = frame["error"] as? [String: Any]
           waiter.resume(
-            throwing: NessaGatewayError.rejected(
-              error?["message"] as? String ?? "The gateway refused the request."))
+            throwing: GatewayFailureDTO.failure(
+              code: error?["code"] as? String, message: error?["message"] as? String))
         }
       }
     } catch { failPending(error) }
@@ -322,6 +325,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory {
     let conversationId: String
     let requestId: String
     let agent: String?
+    let model: String?
   }
   private struct Created: Decodable { let conversationId: String }
   private struct Send: Encodable {

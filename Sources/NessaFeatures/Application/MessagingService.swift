@@ -20,19 +20,23 @@ public struct MessagingService: Sendable {
   public func read(_ id: String) async throws -> NessaConversationView {
     try await repository.read(id)
   }
-  public func create(agent: String?) async throws -> String {
-    try await repository.create(agent: agent)
+  public func create(agent: String?, model: String? = nil) async throws -> String {
+    try await repository.create(agent: agent, model: model)
   }
-  public func send(_ text: String, attachments: [DraftAttachment] = [], conversationID: String)
-    async throws
-  {
+  @discardableResult
+  public func send(
+    _ text: String, attachments: [DraftAttachment] = [], reply: MessageReply? = nil,
+    conversationID: String
+  ) async throws -> String {
     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
     else { throw NessaGatewayError.rejected("Write a message first.") }
-    guard text.utf8.count <= 8192 else {
+    let contextualText = reply?.contextualizing(text) ?? text
+    guard contextualText.utf8.count <= 8192 else {
       throw NessaGatewayError.rejected("Messages must be at most 8,192 UTF-8 bytes.")
     }
     try repository.attachmentPolicy.validate(attachments)
-    try await repository.send(text, attachments: attachments, conversationID: conversationID)
+    return try await repository.send(
+      contextualText, attachments: attachments, conversationID: conversationID)
   }
   public func delete(_ id: String) async throws { try await repository.delete(id) }
   public func answer(

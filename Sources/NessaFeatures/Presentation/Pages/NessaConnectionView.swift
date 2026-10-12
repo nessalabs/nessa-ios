@@ -18,7 +18,7 @@ struct NessaConnectionView: View {
           Text("Nessa gateway")
         } footer: {
           Text(
-            "Use the gateway’s /session endpoint and a credential authorized for your conversations. On iPhone, use your Mac’s reachable address rather than localhost. Credentials stay in this device’s Keychain."
+            "Enter your gateway URL and credential to connect."
           )
         }
         Section {

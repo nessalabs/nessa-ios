@@ -12,10 +12,15 @@ public actor MockRepository: MessagingRepository, AgentDirectory {
   private var summaries: [NessaConversation]
   private var threads: [String: NessaConversationView]
   private let profiles: [AgentProfile]
-  public init(agents: [AgentProfile] = [AgentProfile(
-    id: "nessa", displayName: "Nessa",
-    prompt: "Development fixture: Help with everyday planning and ideas. Be thoughtful, clear, and ask before taking actions that need permission.",
-    grantedAccess: ["This conversation (development fixture)"])]) {
+  public init(
+    agents: [AgentProfile] = [
+      AgentProfile(
+        id: "nessa", displayName: "Nessa",
+        prompt:
+          "Development fixture: Help with everyday planning and ideas. Be thoughtful, clear, and ask before taking actions that need permission.",
+        grantedAccess: ["This conversation (development fixture)"])
+    ]
+  ) {
     self.profiles = agents
     let titles = [
       "Nessa", "Weekend plans", "A little inspiration", "Things to remember", "Dinner ideas",
@@ -44,9 +49,11 @@ public actor MockRepository: MessagingRepository, AgentDirectory {
           ])
       }
       messages[0].attachments = [fixtureImage]
-      messages[0].files = [NessaFileAttachment(
-        name: "Ideas.txt", mimeType: "text/plain",
-        data: Data("A few ideas to explore together.\nDevelopment fixture.".utf8))]
+      messages[0].files = [
+        NessaFileAttachment(
+          name: "Ideas.txt", mimeType: "text/plain",
+          data: Data("A few ideas to explore together.\nDevelopment fixture.".utf8))
+      ]
       threads[id] = NessaConversationView(
         conversationId: id, messages: messages, permissions: [], truncated: false,
         interactionViewError: nil, runtime: NessaRuntime(agent: "nessa"))
@@ -83,19 +90,22 @@ public actor MockRepository: MessagingRepository, AgentDirectory {
     }
     return view
   }
-  public func create(agent: String?) throws -> String {
+  public func create(agent: String?, model: String? = nil) throws -> String {
     try requireConnection()
     let id = UUID().uuidString.lowercased()
     threads[id] = NessaConversationView(
       conversationId: id, messages: [], permissions: [], truncated: false,
-      interactionViewError: nil, runtime: NessaRuntime(agent: agent ?? "nessa"))
+      interactionViewError: nil, runtime: NessaRuntime(agent: agent ?? "nessa", model: model))
     summaries.insert(
       NessaConversation(
         conversationId: id, title: "Nessa", preview: "New conversation",
         updatedAtMs: Date().timeIntervalSince1970 * 1000, running: false), at: 0)
     return id
   }
-  public func send(_ text: String, attachments: [DraftAttachment], conversationID: String) throws {
+  @discardableResult
+  public func send(_ text: String, attachments: [DraftAttachment], conversationID: String) throws
+    -> String
+  {
     let current = try read(conversationID)
     var turn = NessaTurn(
       executionId: UUID().uuidString,
@@ -154,6 +164,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory {
           running: messages.contains { $0.status == "running" })
       }
     }
+    return executionID
   }
   public func delete(_ conversationID: String) throws {
     _ = try read(conversationID)

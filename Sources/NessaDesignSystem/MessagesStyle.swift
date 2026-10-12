@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Measurements in points, taken from the 440-point-wide Messages references.
 public enum MessagesStyle {
+  public static let confirmationHeight: CGFloat = 300
   public static let pinAction = Color(hex: 0xFF9F0A)
   public static let archiveAction = Color(hex: 0x5856D6)
   public static let tapbackPinkLight = Color(hex: 0xFFB3DB)
@@ -67,6 +68,11 @@ public enum MessagesStyle {
   public static let tapbackMoreDot: CGFloat = 3
   public static let followDistance: CGFloat = 100
   public static let typingDotSize: CGFloat = 8
+  public static let typingWaveAmplitude: CGFloat = 3.5
+  public static let typingWavePeriod: TimeInterval = 1.3
+  public static let typingWavePhase: Double = .pi / 2
+  public static let typingDotMinimumOpacity: Double = 0.55
+  public static let typingDotMinimumScale: CGFloat = 0.88
   public static let photoDraftWidth: CGFloat = 96
   public static let photoDraftHeight: CGFloat = 76
   public static let photoDraftRadius: CGFloat = 12
@@ -110,11 +116,40 @@ public enum MessagesStyle {
   public static let rowAvatar: CGFloat = 45
   public static let headerAvatar: CGFloat = 44
   public static let controlHeight: CGFloat = 44
+  public static let jumpToLatestSize: CGFloat = 36
+  public static let jumpToLatestIcon = Font.system(size: 16, weight: .semibold)
+  public static let jumpToLatestAnimation = Animation.easeInOut(duration: 0.3)
   public static let composerHeight: CGFloat = 46
+  public static let composerRadius: CGFloat = 23
+  public static let replyBackgroundBlur: CGFloat = 14
+  public static let replyPreviewOpacity: Double = 0.55
+  public static let replyPreviewRadius: CGFloat = 18
+  public static let replyConnectorWidth: CGFloat = 44
+  public static let replyConnectorHeight: CGFloat = 28
+  public static let replyConnectorStroke: CGFloat = 2
   public static let rowHeight: CGFloat = 84
   public static let bubbleRadius: CGFloat = 25
-  public static let bubbleInset: CGFloat = 14
+  public static let bubbleInset: CGFloat = 12
+  public static let bubbleHorizontalInset: CGFloat = 16
   public static let bubbleSpacing: CGFloat = 8
+  public static let bubbleEntranceDistance: CGFloat = 8
+  public static let bubbleEntranceScale: CGFloat = 0.98
+  public static let bubbleEntranceAnimation = Animation.spring(duration: 0.32, bounce: 0.04)
+  public static let messageFollowAnimation = Animation.easeOut(duration: 0.20)
+  public static var messageInsertion: AnyTransition {
+    .asymmetric(
+      insertion: .opacity.combined(with: .offset(y: bubbleEntranceDistance)),
+      removal: .opacity)
+  }
+  public static func bubbleInsertion(outgoing: Bool) -> AnyTransition {
+    .asymmetric(
+      insertion: .opacity
+        .combined(with: .offset(y: bubbleEntranceDistance))
+        .combined(
+          with: .scale(
+            scale: bubbleEntranceScale, anchor: outgoing ? .bottomTrailing : .bottomLeading)),
+      removal: .opacity)
+  }
   public static let groupSpacing: CGFloat = 28
   public static let pinGap: CGFloat = 18
   public static let pinRowGap: CGFloat = 18
@@ -129,6 +164,18 @@ public struct MessagesGlass: ViewModifier {
     } else {
       content.background(.ultraThinMaterial, in: Capsule())
         .overlay(Capsule().stroke(.white.opacity(0.12), lineWidth: 0.5))
+    }
+  }
+}
+
+public struct MessagesComposerSurface: ViewModifier {
+  public func body(content: Content) -> some View {
+    let shape = RoundedRectangle(cornerRadius: MessagesStyle.composerRadius, style: .continuous)
+    if #available(iOS 26.0, macOS 26.0, *) {
+      content.glassEffect(.regular, in: shape)
+    } else {
+      content.background(.ultraThinMaterial, in: shape)
+        .overlay(shape.stroke(.white.opacity(0.12), lineWidth: 0.5))
     }
   }
 }
@@ -191,37 +238,5 @@ extension View {
   }
 
   public func messagesGlass() -> some View { modifier(MessagesGlass()) }
-}
-
-public struct MessagesBubbleShape: Shape {
-  public let outgoing: Bool
-  public init(outgoing: Bool) { self.outgoing = outgoing }
-  public func path(in rect: CGRect) -> Path {
-    let inset: CGFloat = 6
-    let radius = min(MessagesStyle.bubbleRadius, (rect.height - 3) / 2)
-    let right = rect.width - inset
-    let bottom = rect.height - 3
-    var path = Path()
-    path.move(to: CGPoint(x: inset + radius, y: 0))
-    path.addLine(to: CGPoint(x: right - radius, y: 0))
-    path.addQuadCurve(to: CGPoint(x: right, y: radius), control: CGPoint(x: right, y: 0))
-    path.addLine(to: CGPoint(x: right, y: bottom - radius))
-    path.addQuadCurve(
-      to: CGPoint(x: right - radius, y: bottom), control: CGPoint(x: right, y: bottom))
-    path.addLine(to: CGPoint(x: inset + radius, y: bottom))
-    path.addCurve(
-      to: CGPoint(x: 0, y: rect.height), control1: CGPoint(x: 18, y: bottom + 1),
-      control2: CGPoint(x: 10, y: rect.height + 1))
-    path.addQuadCurve(
-      to: CGPoint(x: inset + 1, y: bottom - 10), control: CGPoint(x: 8, y: bottom - 1))
-    path.addQuadCurve(
-      to: CGPoint(x: inset, y: bottom - radius), control: CGPoint(x: inset, y: bottom - 16))
-    path.addLine(to: CGPoint(x: inset, y: radius))
-    path.addQuadCurve(to: CGPoint(x: inset + radius, y: 0), control: CGPoint(x: inset, y: 0))
-    path.closeSubpath()
-    if outgoing {
-      path = path.applying(CGAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: rect.width, ty: 0))
-    }
-    return path
-  }
+  public func messagesComposerSurface() -> some View { modifier(MessagesComposerSurface()) }
 }

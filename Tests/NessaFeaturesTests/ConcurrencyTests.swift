@@ -6,6 +6,7 @@ import Testing
 
 private actor DelayedRepository: MessagingRepository {
   private var reads: [CheckedContinuation<NessaConversationView, Error>?] = []
+  var readCount: Int { reads.count }
   private var readWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
   private var lists: [CheckedContinuation<NessaConversationList, Error>?] = []
   private var listWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
@@ -24,13 +25,16 @@ private actor DelayedRepository: MessagingRepository {
 
   func connect(address: String, credential: String, instance: String) {}
   func disconnect() {}
-  func create(agent: String?) -> String { "created" }
-  func send(_ text: String, attachments: [DraftAttachment], conversationID: String) async throws {
+  func create(agent: String?, model: String?) -> String { "created" }
+  func send(_ text: String, attachments: [DraftAttachment], conversationID: String) async throws
+    -> String
+  {
     try await withCheckedThrowingContinuation { continuation in
       sends.append(continuation)
       sendWaiter?.resume()
       sendWaiter = nil
     }
+    return "sent"
   }
   func delete(_ conversationID: String) {}
   func answer(_ permission: NessaPermission, option: NessaPermission.Option, conversationID: String)
@@ -158,7 +162,11 @@ func staleSendCompletionCannotMutateReplacementSession() async {
     service: MessagingService(repository: repository),
     credentials: InMemoryCredentialStore(), preferences: InMemoryChatPreferences())
   await model.connect(address: "mock://first", credential: "", instance: "test")
-  let send = Task { await model.send("hello", to: "first-thread") }
+  let send = Task {
+    await model.send(
+      "hello",
+      reply: MessageReply(id: "original", author: "Agent", text: "Original"), to: "first-thread")
+  }
   await repository.waitForSend()
   await model.connect(address: "mock://second", credential: "", instance: "test")
   await repository.finishSend(.success(()))
@@ -167,6 +175,22 @@ func staleSendCompletionCannotMutateReplacementSession() async {
   #expect(model.error == nil)
   #expect(model.connected)
   #expect(!model.sending)
+  #expect(model.replyTargets.isEmpty)
+}
+
+@Test @MainActor
+func creationNavigatesAfterAcknowledgementWithoutWaitingForAnEmptyRead() async {
+  let repository = DelayedRepository()
+  let model = MessagesViewModel(
+    service: MessagingService(repository: repository),
+    credentials: InMemoryCredentialStore(), preferences: InMemoryChatPreferences())
+  await model.connect(address: "mock://creation", credential: "", instance: "test")
+  let id = await model.create(agent: "agent")
+  #expect(id == "created")
+  #expect(await repository.readCount == 0)
+  #expect(model.views["created"]?.messages.isEmpty == true)
+  #expect(model.agentID(for: "created") == "agent")
+  #expect(!model.busy)
 }
 
 @Test @MainActor

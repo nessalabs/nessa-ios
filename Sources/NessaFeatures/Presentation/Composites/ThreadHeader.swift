@@ -5,15 +5,17 @@ struct ThreadHeader: View {
   let name: String
   let onBack: () -> Void
   let onDetails: () -> Void
+  var isReplyThread = false
   var body: some View {
-    ZStack(alignment: .topLeading) {
+    ZStack(alignment: isReplyThread ? .topTrailing : .topLeading) {
       HStack {
+        if isReplyThread { Spacer() }
         Button(action: onBack) {
-          Image(systemName: "chevron.left").font(MessagesStyle.icon)
+          Image(systemName: isReplyThread ? "xmark" : "chevron.left").font(MessagesStyle.icon)
             .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
             .messagesGlass()
-        }.accessibilityLabel("Back to Messages")
-        Spacer()
+        }.accessibilityLabel(isReplyThread ? "Close replies" : "Back to Messages")
+        if !isReplyThread { Spacer() }
       }.padding(.horizontal, MessagesStyle.horizontal).zIndex(1)
       Button(action: onDetails) {
         VStack(spacing: NessaSpacing.xxs) {

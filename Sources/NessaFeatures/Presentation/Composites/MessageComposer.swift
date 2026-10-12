@@ -22,34 +22,17 @@ struct MessageComposer: View {
     @State private var photoSelection: [PhotosPickerItem] = []
   #endif
   let recipient: String
+  @ObservedObject var dictation: DictationViewModel
   let sending: Bool
   let connected: Bool
   let attachmentPolicy: AttachmentPolicy
+  var placeholder: String? = nil
+  var autoFocus = false
   let onSend: () -> Void
+  @FocusState private var focused: Bool
+  @Environment(\.scenePhase) private var scenePhase
   var body: some View {
     VStack(spacing: NessaSpacing.xs) {
-      if let reply {
-        HStack(spacing: NessaSpacing.sm) {
-          Rectangle().fill(MessagesStyle.outgoing).frame(width: NessaSpacing.xs)
-          VStack(alignment: .leading, spacing: NessaSpacing.xs) {
-            Text("Replying to " + reply.author).font(MessagesStyle.caption).foregroundStyle(
-              MessagesStyle.secondary)
-            Text(reply.text).font(MessagesStyle.preview).lineLimit(2)
-          }
-          Spacer()
-          Button {
-            self.reply = nil
-          } label: {
-            Image(systemName: "xmark.circle.fill").font(MessagesStyle.icon)
-          }
-          .accessibilityLabel("Cancel reply")
-        }.frame(maxHeight: MessagesStyle.photoDraftHeight).padding(NessaSpacing.sm)
-          .background(
-            MessagesStyle.control,
-            in: RoundedRectangle(cornerRadius: MessagesStyle.photoDraftRadius)
-          )
-          .padding(.horizontal, MessagesStyle.horizontal)
-      }
       if !attachments.isEmpty { DraftAttachmentsTray(attachments: $attachments, sending: sending) }
       HStack(alignment: .bottom, spacing: NessaSpacing.sm) {
         Menu {
@@ -65,39 +48,49 @@ struct MessageComposer: View {
             Button("Photos", systemImage: "photo.on.rectangle") { photosPresented = true }
           #endif
           Button("Add Files", systemImage: "doc") { filesPresented = true }
-          Button("Clear draft") {
-            cancelPreparation()
-            reply = nil
-            draft = ""
-            attachments = []
-          }.disabled(draft.isEmpty && attachments.isEmpty && !preparing && reply == nil)
         } label: {
           Image(systemName: "plus").font(MessagesStyle.icon)
             .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
             .messagesGlass()
-        }.disabled(sending).accessibilityLabel("Message actions")
-        HStack(spacing: NessaSpacing.xs) {
-          TextField("Message \(recipient)", text: $draft, axis: .vertical)
+        }.disabled(sending || dictation.active || preparing).accessibilityLabel("Message actions")
+        HStack(alignment: .bottom, spacing: NessaSpacing.xs) {
+          TextField(placeholder ?? "Message \(recipient)", text: $draft, axis: .vertical)
+            .focused($focused)
+            .disabled(dictation.active)
             .font(MessagesStyle.body).lineLimit(1...6)
             .padding(.vertical, NessaSpacing.sm)
-          if preparing {
-            ProgressView().accessibilityLabel("Preparing photos")
-          } else if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && attachments.isEmpty
-          {
-            Image(systemName: "waveform").font(MessagesStyle.icon).foregroundStyle(
-              MessagesStyle.secondary
-            )
-            .accessibilityHidden(true)
-          } else {
-            Button(action: onSend) {
-              Image(systemName: "arrow.up").font(MessagesStyle.title)
-                .frame(width: MessagesStyle.sendButton, height: MessagesStyle.sendButton)
-                .background(MessagesStyle.outgoing, in: Circle())
-            }.disabled(sending || preparing || !connected).accessibilityLabel("Send message")
+          Group {
+            if preparing || dictation.state == .finishing {
+              ProgressView().accessibilityLabel(
+                preparing ? "Preparing photos" : "Finishing dictation")
+            } else if dictation.active
+              || (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && attachments.isEmpty)
+            {
+              Button {
+                dictation.toggle()
+              } label: {
+                Image(systemName: dictation.active ? "stop.circle.fill" : "waveform")
+                  .font(MessagesStyle.icon)
+                  .foregroundStyle(
+                    dictation.active ? MessagesStyle.danger : MessagesStyle.secondary
+                  )
+                  .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
+                  .contentShape(Rectangle())
+              }
+              .disabled(sending || dictation.state == .finishing)
+              .accessibilityLabel(dictation.active ? "Stop dictation" : "Dictate message")
+            } else {
+              Button(action: onSend) {
+                Image(systemName: "arrow.up").font(MessagesStyle.title)
+                  .frame(width: MessagesStyle.sendButton, height: MessagesStyle.sendButton)
+                  .background(MessagesStyle.outgoing, in: Circle())
+              }.disabled(sending || preparing || !connected).accessibilityLabel("Send message")
+            }
           }
+          .frame(height: MessagesStyle.composerHeight)
         }.padding(.horizontal, NessaSpacing.md)
-          .frame(minHeight: MessagesStyle.composerHeight).messagesGlass()
+          .frame(minHeight: MessagesStyle.composerHeight).messagesComposerSurface()
       }.foregroundStyle(MessagesStyle.foreground)
         .padding(.horizontal, MessagesStyle.horizontal)
         .padding(.bottom, MessagesStyle.bottomInset)
@@ -118,7 +111,20 @@ struct MessageComposer: View {
         }
       }
     }
-    .onDisappear { cancelPreparation() }
+    .onDisappear {
+      cancelPreparation()
+      dictation.cancel()
+    }
+    .onChange(of: dictation.transcriptRevision) { _, _ in
+      if !dictation.transcript.isEmpty { draft = dictation.transcript }
+    }
+    .onChange(of: scenePhase) { _, phase in
+      if phase == .background || (phase != .active && dictation.state != .requesting) {
+        dictation.cancel()
+      }
+    }
+    .onAppear { if autoFocus { focused = true } }
+    .onChange(of: reply?.id) { _, _ in if autoFocus { focused = true } }
     .alert(
       "Attachment",
       isPresented: Binding(get: { pickerError != nil }, set: { if !$0 { pickerError = nil } })
@@ -126,6 +132,15 @@ struct MessageComposer: View {
       Button("OK") { pickerError = nil }
     } message: {
       Text(pickerError ?? "")
+    }
+    .alert(
+      "Dictation",
+      isPresented: Binding(
+        get: { dictation.error != nil }, set: { if !$0 { dictation.error = nil } })
+    ) {
+      Button("OK") { dictation.error = nil }
+    } message: {
+      Text(dictation.error ?? "")
     }
     #if os(iOS)
       .photosPicker(

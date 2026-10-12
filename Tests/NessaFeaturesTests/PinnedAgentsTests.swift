@@ -14,11 +14,13 @@ private actor FixtureGateway: MessagingRepository, AgentDirectory {
     try decode(
       "{\"conversationId\":\"\(id)\",\"messages\":[],\"permissions\":[],\"truncated\":false}")
   }
-  func create(agent: String?) -> String {
+  func create(agent: String?, model: String?) -> String {
     creations += 1
     return "thread-\(creations)"
   }
-  func send(_ text: String, attachments: [DraftAttachment], conversationID: String) {}
+  func send(_ text: String, attachments: [DraftAttachment], conversationID: String) -> String {
+    "sent"
+  }
   func answer(_ permission: NessaPermission, option: NessaPermission.Option, conversationID: String)
   {}
   func delete(_ conversationID: String) {}

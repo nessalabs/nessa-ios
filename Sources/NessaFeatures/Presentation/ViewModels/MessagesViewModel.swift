@@ -7,9 +7,20 @@ public final class MessagesViewModel: ObservableObject {
   @Published public private(set) var views: [String: NessaConversationView] = [:]
   @Published public private(set) var reactions: [String: String] = [:]
   private var reactionKey = ""
+  @Published public private(set) var replyTargets: [String: String] = [:]
+  private var replyKey = ""
+  private var replyProjections: [String: (name: String, value: ConversationReplies)] = [:]
   private var listVersion = 0
   private var readVersions: [String: Int] = [:]
   private var deletedIDs: Set<String> = []
+  @Published public private(set) var pendingDeletionIDs: Set<String> = []
+  public var visibleConversations: [NessaConversation] {
+    conversations.filter { !pendingDeletionIDs.contains($0.id) }
+  }
+  public func isDeleting(_ identifier: String) -> Bool {
+    pendingDeletionIDs.contains(identifier)
+      || agentThreads[identifier].map { pendingDeletionIDs.contains($0) } == true
+  }
   @Published public var connected = false
   @Published public var busy = false
   @Published public var sending = false
@@ -53,6 +64,22 @@ public final class MessagesViewModel: ObservableObject {
     preferences.save(reactions, forKey: reactionKey)
   }
   public var attachmentPolicy: AttachmentPolicy { service.attachmentPolicy }
+  public func replies(in conversation: String) -> [String: String] {
+    let prefix = conversation + ":"
+    return Dictionary(
+      uniqueKeysWithValues: replyTargets.compactMap { key, value in
+        key.hasPrefix(prefix) ? (String(key.dropFirst(prefix.count)), value) : nil
+      })
+  }
+  public func replyProjection(in conversation: String) -> ConversationReplies {
+    let name = agentName(for: conversation)
+    if let cached = replyProjections[conversation], cached.name == name { return cached.value }
+    let value = ConversationReplies(
+      turns: views[conversation]?.messages ?? [],
+      targets: replies(in: conversation), agentName: name)
+    replyProjections[conversation] = (name, value)
+    return value
+  }
   public func imageData(for attachment: NessaImageAttachment) async -> Data? {
     try? await service.imageData(for: attachment)
   }
@@ -92,18 +119,24 @@ public final class MessagesViewModel: ObservableObject {
   }
   public func deleteConversations(_ ids: Set<String>) async {
     let expectedGeneration = generation
-    for id in ids.sorted() {
+    let targets = ids.filter { id in conversations.contains(where: { $0.id == id }) }
+    pendingDeletionIDs.formUnion(targets)
+    defer {
+      if generation == expectedGeneration { pendingDeletionIDs.subtract(targets) }
+    }
+    for id in targets.sorted() {
       guard generation == expectedGeneration, !Task.isCancelled else { return }
       await deleteConversation(for: id)
     }
   }
   public func loadPreview(_ agent: String) async {
-    guard let id = conversationID(for: agent), connected else { return }
+    guard let id = conversationID(for: agent), connected, !isDeleting(agent) else { return }
     let currentGeneration = generation
     let version = readVersions[id] ?? 0
     do {
       let result = try await service.read(id)
       guard currentGeneration == generation, !deletedIDs.contains(id),
+        !pendingDeletionIDs.contains(id),
         (readVersions[id] ?? 0) == version
       else { return }
       agentPreviews[agent] = result
@@ -119,27 +152,50 @@ public final class MessagesViewModel: ObservableObject {
   public func deleteConversation(for agent: String) async {
     guard let id = conversationID(for: agent) else { return }
     let currentGeneration = generation
+    pendingDeletionIDs.insert(id)
+    listVersion += 1
+    readVersions[id, default: 0] += 1
+    defer {
+      if generation == currentGeneration { pendingDeletionIDs.remove(id) }
+    }
     do {
       try await service.delete(id)
       guard generation == currentGeneration else { return }
-      deletedIDs.insert(id)
-      listVersion += 1
-      readVersions[id, default: 0] += 1
-      conversationAgents.removeValue(forKey: id)
-      preferences.save(conversationAgents, forKey: identityKey)
-      agentThreads = agentThreads.filter { $0.value != id }
-      preferences.save(agentThreads, forKey: threadKey)
-      agentPreviews.removeValue(forKey: agent)
-      unreadChats.removeAll { $0 == agent }
-      archivedChats.removeAll { $0 == id }
-      preferences.save(archivedChats, forKey: statusKey + ".archived")
-      saveStatus()
-      if isPinned(agent) { togglePin(agent) }
-      conversations.removeAll { $0.id == id }
-      views.removeValue(forKey: id)
-      reactions = reactions.filter { !$0.key.hasPrefix(id + ":") }
-      preferences.save(reactions, forKey: reactionKey)
-    } catch { if generation == currentGeneration { self.error = error.localizedDescription } }
+      removeDeletedConversation(id, identifier: agent)
+    } catch {
+      if generation == currentGeneration {
+        self.error = error.localizedDescription
+        // A failed acknowledgement can follow a committed gateway tombstone.
+        try? await refreshList()
+        if generation == currentGeneration, listComplete,
+          !conversations.contains(where: { $0.id == id })
+        {
+          removeDeletedConversation(id, identifier: agent)
+        }
+      }
+    }
+  }
+  private func removeDeletedConversation(_ id: String, identifier agent: String) {
+    deletedIDs.insert(id)
+    listVersion += 1
+    readVersions[id, default: 0] += 1
+    conversationAgents.removeValue(forKey: id)
+    preferences.save(conversationAgents, forKey: identityKey)
+    agentThreads = agentThreads.filter { $0.value != id }
+    preferences.save(agentThreads, forKey: threadKey)
+    agentPreviews.removeValue(forKey: agent)
+    unreadChats.removeAll { $0 == agent }
+    archivedChats.removeAll { $0 == id }
+    preferences.save(archivedChats, forKey: statusKey + ".archived")
+    saveStatus()
+    if isPinned(agent) { togglePin(agent) }
+    conversations.removeAll { $0.id == id }
+    views.removeValue(forKey: id)
+    reactions = reactions.filter { !$0.key.hasPrefix(id + ":") }
+    preferences.save(reactions, forKey: reactionKey)
+    replyTargets = replyTargets.filter { !$0.key.hasPrefix(id + ":") }
+    preferences.save(replyTargets, forKey: replyKey)
+    replyProjections.removeValue(forKey: id)
   }
   public func openAgent(_ agent: String) async -> String? {
     if let id = agentThreads[agent] {
@@ -177,10 +233,13 @@ public final class MessagesViewModel: ObservableObject {
     mutedChats = []
     archivedChats = []
     reactions = [:]
+    replyTargets = [:]
+    replyProjections = [:]
     agentPreviews = [:]
     conversationAgents = [:]
     agentThreads = [:]
     deletedIDs = []
+    pendingDeletionIDs = []
     views = [:]
     readVersions = [:]
     do {
@@ -193,6 +252,8 @@ public final class MessagesViewModel: ObservableObject {
       agentProfiles = try await service.agents()
       reactionKey = "nessa.reactions." + scope
       reactions = preferences.mapping(forKey: reactionKey) ?? [:]
+      replyKey = "nessa.replies." + scope
+      replyTargets = preferences.mapping(forKey: replyKey) ?? [:]
       statusKey = "nessa.status." + scope
       unreadChats = preferences.strings(forKey: statusKey + ".unread") ?? []
       mutedChats = preferences.strings(forKey: statusKey + ".muted") ?? []
@@ -213,6 +274,7 @@ public final class MessagesViewModel: ObservableObject {
       mutedChats = []
       archivedChats = []
       reactions = [:]
+      replyTargets = [:]
       agentThreads = [:]
       conversationAgents = [:]
       await service.disconnect()
@@ -241,16 +303,21 @@ public final class MessagesViewModel: ObservableObject {
     }
   }
   public func refresh(_ id: String) async {
-    guard !deletedIDs.contains(id) else { return }
+    guard !deletedIDs.contains(id), !pendingDeletionIDs.contains(id) else { return }
     let currentGeneration = generation
     let version = (readVersions[id] ?? 0) + 1
     readVersions[id] = version
     do {
       let result = try await service.read(id)
-      guard currentGeneration == generation, !Task.isCancelled, readVersions[id] == version else {
+      guard currentGeneration == generation, !Task.isCancelled, !pendingDeletionIDs.contains(id),
+        readVersions[id] == version
+      else {
         return
       }
-      if views[id] != result { views[id] = result }
+      if views[id] != result {
+        replyProjections.removeValue(forKey: id)
+        views[id] = result
+      }
       let updatedUnread = unreadChats.filter { $0 != id && $0 != result.runtime?.agent }
       if updatedUnread != unreadChats {
         unreadChats = updatedUnread
@@ -275,34 +342,60 @@ public final class MessagesViewModel: ObservableObject {
     }
   }
   public func create(agent: String? = nil) async -> String? {
-    guard !busy else { return nil }
+    guard connected, !busy else { return nil }
+    let currentGeneration = generation
     busy = true
-    defer { busy = false }
+    defer { if generation == currentGeneration { busy = false } }
     do {
-      let id = try await service.create(agent: agent)
+      let profile = agentProfiles.first { $0.id == agent }
+        ?? (agent == nil && agentProfiles.count == 1 ? agentProfiles.first : nil)
+      let id = try await service.create(agent: agent, model: profile?.phoneModel)
+      guard generation == currentGeneration, !Task.isCancelled else { return nil }
+      listVersion += 1
+      replyProjections.removeValue(forKey: id)
+      views[id] = NessaConversationView(
+        conversationId: id, messages: [], permissions: [],
+        truncated: false, interactionViewError: nil,
+        runtime: agent.map { NessaRuntime(agent: $0) })
+      conversations.insert(
+        NessaConversation(
+          conversationId: id, title: nil, preview: nil,
+          updatedAtMs: Date().timeIntervalSince1970 * 1000, running: false), at: 0)
       if let agent {
         agentThreads[agent] = id
         unreadChats.removeAll { $0 == agent }
         saveStatus()
         preferences.save(agentThreads, forKey: threadKey)
       }
-      await refresh(id)
-      do { try await refreshList() } catch { self.error = error.localizedDescription }
+      Task { [weak self] in
+        guard let self, self.generation == currentGeneration else { return }
+        do { try await self.refreshList() } catch {
+          if self.generation == currentGeneration { self.error = error.localizedDescription }
+        }
+      }
       return id
     } catch {
-      self.error = error.localizedDescription
+      if generation == currentGeneration { self.error = error.localizedDescription }
       return nil
     }
   }
-  public func send(_ text: String, attachments: [DraftAttachment] = [], to id: String) async -> Bool
-  {
+  public func send(
+    _ text: String, attachments: [DraftAttachment] = [], reply: MessageReply? = nil,
+    to id: String
+  ) async -> Bool {
     guard !sending else { return false }
     let currentGeneration = generation
     sending = true
     defer { if generation == currentGeneration { sending = false } }
     do {
-      try await service.send(text, attachments: attachments, conversationID: id)
+      let executionID = try await service.send(
+        text, attachments: attachments, reply: reply, conversationID: id)
       guard generation == currentGeneration else { return true }
+      if let reply, !deletedIDs.contains(id), !pendingDeletionIDs.contains(id) {
+        replyProjections.removeValue(forKey: id)
+        replyTargets[id + ":" + executionID] = reply.id
+        preferences.save(replyTargets, forKey: replyKey)
+      }
       await refresh(id)
       guard generation == currentGeneration else { return true }
       do { try await refreshList() } catch {

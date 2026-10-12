@@ -81,7 +81,10 @@ public struct NessaPermission: Decodable, Identifiable, Sendable, Equatable {
   }
 }
 
-public struct NessaRuntime: Decodable, Sendable, Equatable { public let agent: String }
+public struct NessaRuntime: Decodable, Sendable, Equatable {
+  public let agent: String
+  public var model: String? = nil
+}
 
 public struct MessageFragment: Identifiable, Sendable, Equatable {
   public let id: String

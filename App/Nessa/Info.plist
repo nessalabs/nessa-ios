@@ -31,6 +31,10 @@
 	<string>Connect to your Nessa gateway on your local network.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Take a photo to attach to a message to Nessa.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Use your microphone to dictate a message.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Transcribe your speech into message text.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 </dict>

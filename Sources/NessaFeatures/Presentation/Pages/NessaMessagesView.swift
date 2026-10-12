@@ -21,7 +21,9 @@ public struct NessaMessagesView: View {
         onCompose: { Task { if let id = await store.create() { path.append(id) } } }
       )
       .navigationDestination(for: String.self) { id in
-        NessaThreadView(store: store, conversationID: id)
+        NessaThreadView(
+          store: store, conversationID: id,
+          dictation: dependencies.makeDictationViewModel())
       }
       .sheet(isPresented: $settings) {
         if dependencies.mode == .development {
@@ -45,6 +47,12 @@ public struct NessaMessagesView: View {
           return
         }
         if instance.isEmpty { instance = UUID().uuidString.lowercased() }
+        if let connection = dependencies.launchConnection {
+          await store.connect(
+            address: connection.address, credential: connection.credential, instance: instance)
+          if store.connected { address = connection.address }
+          return
+        }
         let credential = store.savedCredential()
         if !credential.isEmpty {
           await store.connect(address: address, credential: credential, instance: instance)
