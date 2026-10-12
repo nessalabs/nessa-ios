@@ -63,3 +63,35 @@ public protocol AuthenticatedGatewaySessionProviding: Sendable {
   func authenticatedSession(for lease: GatewayConnectionLease) async throws
     -> AuthenticatedGatewaySession
 }
+
+// Published opaque identities/grants preserve UTF-8, like their Rust owners.
+private func gatewayTextEqual(_ lhs: String, _ rhs: String) -> Bool {
+  lhs.utf8.elementsEqual(rhs.utf8)
+}
+extension GatewaySessionSnapshot.Identity {
+  public static func == (lhs: Self, rhs: Self) -> Bool {
+    gatewayTextEqual(lhs.gatewayID, rhs.gatewayID)
+      && gatewayTextEqual(lhs.principalID, rhs.principalID)
+      && gatewayTextEqual(lhs.organizationID, rhs.organizationID)
+      && gatewayTextEqual(lhs.membershipID, rhs.membershipID)
+      && gatewayTextEqual(lhs.credentialID, rhs.credentialID)
+      && gatewayTextEqual(lhs.audienceID, rhs.audienceID)
+  }
+}
+extension GatewaySessionSnapshot.Resource {
+  public static func == (lhs: Self, rhs: Self) -> Bool {
+    gatewayTextEqual(lhs.organizationID, rhs.organizationID) && gatewayTextEqual(lhs.id, rhs.id)
+  }
+}
+extension GatewaySessionSnapshot.Grant {
+  public static func == (lhs: Self, rhs: Self) -> Bool {
+    gatewayTextEqual(lhs.action, rhs.action) && lhs.resource == rhs.resource
+  }
+}
+extension GatewaySessionSnapshot {
+  public static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.identity == rhs.identity && lhs.expiresAt == rhs.expiresAt && lhs.grants == rhs.grants
+      && lhs.methods.count == rhs.methods.count
+      && zip(lhs.methods, rhs.methods).allSatisfy { gatewayTextEqual($0.0, $0.1) }
+  }
+}

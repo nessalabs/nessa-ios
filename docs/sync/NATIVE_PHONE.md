@@ -315,3 +315,50 @@ open/status/cursor/NoCredential/closed/reopen check; both existing chats survive
 The generic Release device build links successfully. Device execution remains
 unverified. This remains input for the persisted profile/account coordinator;
 production chat history still uses the previous product-view repository path.
+
+## Persisted profile preparation
+
+The next slice adds immutable `PhoneProfile` records and one `PhoneProfiles`
+publication containing selected identity and retained records. UUIDs name profiles;
+registry revisions name saves, and neither is a socket lease. Endpoint/instance
+selectors and the original product identity are public correlation only.
+UUID-derived relative native directories and immutable Keychain references do not
+encode a sandbox container path. Prepared means storage and credential preparation,
+not native enrollment, approval or current read authority.
+
+`PhoneProfilePreparation` saves preparing metadata before insert-or-verify of its
+per-profile Keychain item, then saves prepared metadata. It does not overwrite
+existing secrets or use the legacy product-v1 slot. Resume keeps the same profile
+and first confirms a successful metadata publication; it adds no second lifecycle
+admission owner. The future setup coordinator still owns socket/account matching,
+operation tokens, explicit approval and retirement recovery.
+
+`PhoneProfileStore` reuses existing private atomic files and holds one lock across
+exact expected-byte comparison, publication and failed-write readback. A write
+failure retains visible published/not-published/uncertain evidence and independent
+reconciliation failure; none becomes durable success or permits setup to advance.
+Keychain missing, corrupt, locked, conflicting and platform failure remain distinct.
+Authenticated identity/grant/method equality now preserves exact UTF-8 bytes.
+
+The production composition and chat history are not switched by these ports.
+The optional debug native-package probe exercises a separate disposable profile,
+Keychain item and native directory only when explicit probe inputs are provided.
+
+153 full app tests and 15 independently run profile tests pass, including real
+private-file contention/publication faults, disposable host Keychain, exact account
+identity and actual native relocation/reopen. Eleven deliberate reversals fail;
+the restored suite passes. Review caught directory preparation following an
+existing NativeProfiles symlink before native validation. Creation now holds
+root-relative no-follow directory descriptors, using the profile's owned relative
+components; parent/leaf symlinks refuse before outside effects. Reverting to the
+unsafe creator fails the real regression and creates an outside UUID directory.
+A fresh second implementation review reports zero findings.
+
+Corrected normal signed simulator and generic Release device builds pass. The
+actual corrected simulator profile/native probe succeeds, preserves the same
+selected profile/records and immutable Keychain reference across installation and
+restart, and confirms a new metadata revision. Both existing chats remain visible;
+app and embedded signatures verify. The pinned gateway82d1438 CI run38319390190
+passes every required check on macOS, Linux and Windows. These are preparation
+and native-boundary results, not production enrollment/repository or physical
+phone execution evidence.
