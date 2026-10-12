@@ -67,3 +67,9 @@ The final loopback run uses disk intent, attempt and resolution writes for twent
 | Model completion | 9.77 s | 15.17 s | 16.10 s |
 
 All twenty messages completed, pending storage was empty, immediate resubscription passed, and the disposable chat was deleted. These are twenty native-client observations on one local test gateway, not production or UI-render latency guarantees. The model was slower than the earlier run while acknowledgment/publication remained around 50 ms. The final scripted run passes seventeen fault cases; live generated image submission still returns the correct shapes and matching cached bytes.
+
+## Retained enrollment library verification
+
+[Gateway PR #785](https://github.com/nessalabs/nessa-agent/pull/785) is stacked on #783 at `7212d6c199385002686a3622c71225ec9ded18a3`. The public enrollment facade preserves the existing physical worker and purge policy; tests cover exact-intent rejection before cache open, current issued receiver selection, cancellation/admission-scoped effect capture and last-handle ownership. Actual paired-gateway lifecycle tests preserve independent purge/removal facts through uncertain unlink and worker fault, recover the original durable receipt offline, fence the receiver and prevent a later NoPending from inheriting an earlier transient effect.
+
+185 isolated core tests plus five doctests pass. Exact CI package selection passes 216 core, 2,489 server (11 ignored) and 1,197 SDK (15 ignored) tests; affected Clippy, strict docs, architecture, format/diff and device/simulator no-CLI compile checks pass. Five intentional runtime reverts fail, then restored gates pass. Astra medium round two has no actionable findings. Remote CI is running separately. These checks do not establish C/Swift linking or actual native retained sync in the phone; those remain unfinished.
