@@ -1,0 +1,38 @@
+{
+  "architectures": [
+    "arm64"
+  ],
+  "cargoLockSHA256": "e64356e2641971dd68beb4e0c81048a171a0d443d4cf192222ef0b044f58a513",
+  "commit": "69499fe7890f4d2ee6f2d358e3db4a2a9bf76347",
+  "files": {
+    "LICENSE": "588862cc540bd87a30dcb4b1cf44a5eb240b1f46baf35f1623a0cad173db6574",
+    "NessaDeviceClient.xcframework/Info.plist": "3fd2d75938b4b7d15b2b6db11f39a55a79df47b68958e64e224aa2245b432077",
+    "NessaDeviceClient.xcframework/ios-arm64-simulator/nessa_device_clientFFI.framework/Headers/nessa_device_clientFFI.h": "7bf4d6f15c0c0a7e00251283e52b023302160f0e144940192a326031f8ce962d",
+    "NessaDeviceClient.xcframework/ios-arm64-simulator/nessa_device_clientFFI.framework/Info.plist": "5a59b34e709349ebb5b9c1979a2ace04456e692c42e847fa1d30db3f215705d6",
+    "NessaDeviceClient.xcframework/ios-arm64-simulator/nessa_device_clientFFI.framework/Modules/module.modulemap": "4119177e7541d9bf352a0fc3c8135c2f469c4fba3c393f4a8cf2687a4dbe43dd",
+    "NessaDeviceClient.xcframework/ios-arm64-simulator/nessa_device_clientFFI.framework/_CodeSignature/CodeResources": "28f339597328a40279b9870714d6ebae929d130c31ff54f810a231178410542c",
+    "NessaDeviceClient.xcframework/ios-arm64-simulator/nessa_device_clientFFI.framework/nessa_device_clientFFI": "42b3cd1f6ca3873522ffc76766d4ba5398759cb2eb79b81dbb39ad7b2e366668",
+    "NessaDeviceClient.xcframework/ios-arm64/nessa_device_clientFFI.framework/Headers/nessa_device_clientFFI.h": "7bf4d6f15c0c0a7e00251283e52b023302160f0e144940192a326031f8ce962d",
+    "NessaDeviceClient.xcframework/ios-arm64/nessa_device_clientFFI.framework/Info.plist": "d0f3a4002af150528af38a88f90a0a204c0c825389da8d14bbbc92807c49a926",
+    "NessaDeviceClient.xcframework/ios-arm64/nessa_device_clientFFI.framework/Modules/module.modulemap": "4119177e7541d9bf352a0fc3c8135c2f469c4fba3c393f4a8cf2687a4dbe43dd",
+    "NessaDeviceClient.xcframework/ios-arm64/nessa_device_clientFFI.framework/_CodeSignature/CodeResources": "c5a1c0b56960ce49249d5f0e40bbe0401aacdf18306ef1554263361ebc4d4c3f",
+    "NessaDeviceClient.xcframework/ios-arm64/nessa_device_clientFFI.framework/nessa_device_clientFFI": "b72a06f4e24f4a54c1f3408258d4d4b133fa9950c4cc55905bc6da8f211555e0",
+    "NessaDeviceClient.xcframework/macos-arm64/nessa_device_clientFFI.framework/Versions/A/Headers/nessa_device_clientFFI.h": "7bf4d6f15c0c0a7e00251283e52b023302160f0e144940192a326031f8ce962d",
+    "NessaDeviceClient.xcframework/macos-arm64/nessa_device_clientFFI.framework/Versions/A/Modules/module.modulemap": "4119177e7541d9bf352a0fc3c8135c2f469c4fba3c393f4a8cf2687a4dbe43dd",
+    "NessaDeviceClient.xcframework/macos-arm64/nessa_device_clientFFI.framework/Versions/A/Resources/Info.plist": "91a358af0b5de357606e9c50c1ad601a71092cd0f4709e5bb2aaeca655a4c432",
+    "NessaDeviceClient.xcframework/macos-arm64/nessa_device_clientFFI.framework/Versions/A/_CodeSignature/CodeResources": "3b43e9287621fd7cfbe765b144a8a7a853c39325c5ccc8be403893f7fbc63454",
+    "NessaDeviceClient.xcframework/macos-arm64/nessa_device_clientFFI.framework/Versions/A/nessa_device_clientFFI": "9e1f04aa84484348e2453d86ba877e305aaa836549a0e6a245f7aefb64902c25",
+    "Package.swift": "6c4df1718cd39670cb30496b36d70e25382948cffa4cc125ae992c4e77675ac9",
+    "Sources/NativeSessionWorker.swift": "e111ace6161691707a6a116ba5a106e59ab264ff30cb31d298f6367e0158fd2c",
+    "Sources/nessa_device_client.swift": "018ab396fb507185c08a88526919adc562372462593bf4bcfae2ba0e6d501c31"
+  },
+  "module": "nessa_device_clientFFI",
+  "repository": "https://github.com/nessalabs/nessa-agent",
+  "symlinks": {
+    "NessaDeviceClient.xcframework/macos-arm64/nessa_device_clientFFI.framework/Headers": "Versions/Current/Headers",
+    "NessaDeviceClient.xcframework/macos-arm64/nessa_device_clientFFI.framework/Modules": "Versions/Current/Modules",
+    "NessaDeviceClient.xcframework/macos-arm64/nessa_device_clientFFI.framework/Resources": "Versions/Current/Resources",
+    "NessaDeviceClient.xcframework/macos-arm64/nessa_device_clientFFI.framework/Versions/Current": "A",
+    "NessaDeviceClient.xcframework/macos-arm64/nessa_device_clientFFI.framework/nessa_device_clientFFI": "Versions/Current/nessa_device_clientFFI"
+  }
+}

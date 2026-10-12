@@ -9,9 +9,12 @@ let package = Package(
         .library(name: "NessaFeatures", targets: ["NessaFeatures"]),
         .executable(name: "PhoneSyncVerification", targets: ["PhoneSyncVerification"])
     ],
+    dependencies: [.package(path: "Vendor/NessaNative")],
     targets: [
         .target(name: "NessaDesignSystem"),
-        .target(name: "NessaFeatures", dependencies: ["NessaDesignSystem"]),
+        .target(name: "NessaFeatures", dependencies: [
+            "NessaDesignSystem", .product(name: "NessaNative", package: "NessaNative")
+        ]),
         .testTarget(name: "NessaFeaturesTests", dependencies: ["NessaFeatures"]),
         .executableTarget(name: "PhoneSyncVerification", dependencies: ["NessaFeatures"],
             path: "verification/sync/NativeVerification")

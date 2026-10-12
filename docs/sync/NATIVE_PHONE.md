@@ -1,6 +1,8 @@
 # Native receiver in the phone (proposed integration)
 
-The gateway bridge exists locally and is under independent review. Its library
+The gateway bridge is published in
+[#789](https://github.com/nessalabs/nessa-agent/pull/789). The native API at
+`69499fe7890f4d2ee6f2d358e3db4a2a9bf76347` passed its final independent review. Its library
 and Swift worker have run against paired records, offline reopen, restart and
 revocation; a release library also runs in a disposable simulator app. These
 checks do not mean Nessa's production repository uses the receiver yet.
@@ -164,3 +166,42 @@ must durably suppress derived snapshots/preferences and fence late writers, not
 merely clear view-model arrays. Artifact transfer remains unavailable until its
 existing crate-private owner is exported. Durable deletion keeps exact
 request/target/profile evidence and does not infer removal from list absence.
+
+## Distribution implementation evidence
+
+`Vendor/NessaNative` packages the reviewed native API above as three arm64 dynamic
+framework slices, about 18 MB total, with matching generated declarations and
+worker. `SOURCE.json` records the revision, Cargo lock digest, distributed bytes
+and symlinks. The update tool calls the gateway's existing compilation/generation
+owner, refuses an unmatched/dirty source or an existing output, and publishes only
+after its source is still frozen. Publication reserves the destination exclusively
+after compilation, preserving a competing producer's output. The checker requires
+the complete file/symlink inventory and rejects entries outside the package root;
+the vendored package root must itself be a directory, not an external symlink.
+It validates recorded content, not a cryptographic source-trust policy. Seven real
+filesystem regressions pass, and removing either the inventory or exclusive
+publication protection makes those regressions fail.
+
+The app's relative package dependency builds without gateway-worktree paths.
+All 123 app tests pass; the new actual-library test opens a private scope,
+receives native NoCredential, receives the worker's post-close refusal, and
+reopens the same scope after physical drain. Removing close or making the probe
+a no-op fails it; changed distributed header bytes fail the provenance check.
+Nessa's simulator and device builds link the framework. The normally signed
+simulator app passes the same explicit disposable-scope runtime probe and restores
+its existing connection and both saved chats. Nested signatures verify.
+
+Two verification mistakes were repaired rather than treated as successful runs:
+the first probe expected a native closed error instead of the worker's earlier
+typed refusal; the first unsigned simulator launch lacked the normal simulated
+application entitlement and therefore could not read the existing Keychain item.
+Normal project signing restores that access. Simulator reinstall also changed the
+data-container path, so a previously absolute disposable path was correctly
+refused. The runtime check supplies a new current-container path after install.
+Production profile identity must persist a relative directory and resolve the
+current sandbox root on each launch, not retain a container UUID as identity.
+
+This completes packaging/runtime evidence only. The application-owned factory and
+lossless status/read mapping, production enrollment/profile coordination, retained
+repository, artifacts, durable deletion and performance/failure experiments remain
+open. The debug probe does not pair, contact a gateway or replace product history.
