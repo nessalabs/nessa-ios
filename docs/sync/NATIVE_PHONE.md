@@ -204,11 +204,68 @@ refused. The runtime check supplies a new current-container path after install.
 Production profile identity must persist a relative directory and resolve the
 current sandbox root on each launch, not retain a container UUID as identity.
 
-This completes packaging/runtime evidence only. The application-owned factory and
-lossless status/read mapping, production enrollment/profile coordination, retained
-repository, artifacts, durable deletion and performance/failure experiments remain
-open. The debug probe uses a disposable loopback endpoint for unreachable status;
+This completes packaging/runtime evidence only. Application factory/result mapping
+is described below. Production enrollment/profile coordination, retained repository,
+artifacts, durable deletion and performance/failure experiments remain open.
+The debug probe uses a disposable loopback endpoint for unreachable status;
 it does not pair or replace product history.
+
+## Application native session boundary
+
+`RetainedSessionFactory`/`RetainedSession` expose immutable application values,
+without foreign handles. Live composition injects `NativeRetainedSessionFactory`;
+development has no native factory by default. The persisted profile coordinator
+must supply the explicit trusted root, existing relative directory and numeric
+socket address before production opening. This prerequisite does not mean the
+chat repository consumes native history yet.
+
+All 17 passive native publications and 18 enums have complete field mappings.
+The application preserves exact UInt64 values, all six scope fields, optional
+status/selection/read/recheck/withdrawal/purge/private-publication evidence and
+original/retried public intents. Native constructors validate restored catalogue
+keys. Worker capture covers successful getters, view serialization and decoding
+before releasing physical admission. Immutable thrown error getters are mapped
+off UI without touching the private owner. Cancellation, worker busy/closed,
+native session/view failures and unknown bridge failure remain distinct; cancelled
+callers retain a physically captured native outcome. Close awaits actual drain.
+
+The conversation publication retains complete native-produced UTF-8 bytes alongside
+today's limited display projection. Those bytes preserve pending interactions,
+questions, tools, capabilities, lifecycle, completeness, title, lease, artifacts,
+unknown fields and exact numeric tokens. Serialization/decoding failure preserves
+transcript state/scope/progress independently, and retains complete bytes if they
+were produced. There is no partial-data fallback or second saved checkpoint.
+
+The paired experiment corrected two assumptions: catalogue and transcript have
+different physical stream scopes, and the display revision is
+`epoch:counter[:suffix]`, not a UUID alone. The application supplies a UUID epoch,
+correlates its canonical prefix, and preserves the owner's complete revision text
+separately from physical progress.
+
+137 app tests pass. Off-UI NoHandle fixtures compare every nested mapped field and
+enum, including UInt64-max values and independent error/purge evidence. Actual
+library tests open/status/NoCredential/close/reopen from a MainActor caller;
+cancellation tests cover dispatch relay, preserving admitted outcomes and cancelled
+close, and cancellation after actual native construction before publication.
+Opaque native text equality compares UTF-8 bytes rather than Swift canonical
+Unicode equivalence, including scope/cursor/receipt/purge/withdrawal identities
+and root target correlation. Actual regressions detect reverting this equality
+and removing post-construction cancellation cleanup. The ordinary-import
+verification executable also compiles substitute ports.
+The existing real paired gateway fixture invokes the production app factory through
+five stages: first read, offline reopen, gateway restart, terminal revocation/purge
+recovery, and partial-prefix refusal/recheck. All five pass. These are application
+boundary experiments, not production enrollment UI or physical-device results.
+
+Independent implementation review passes after the Unicode equality and admitted
+opener cancellation findings were corrected. Eleven focused boundary tests pass
+independently. The corrected source also passes the complete 137-test suite,
+all five real paired stages and architecture/design-system checks. Normal signed
+simulator and generic Release device builds pass; the latest signed simulator app
+and embedded framework signatures verify, and both existing chats survive its
+installation/relaunch. Device execution remains unverified. The pinned gateway
+revision's CI run `38311321648` passes all required checks on macOS, Linux and
+Windows. This slice adds no product UI or second storage/progress owner.
 
 ## Authenticated connection identity
 

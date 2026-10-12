@@ -7,6 +7,7 @@ import Foundation
   public let service: MessagingService
   public let credentials: any NessaCredentialStoring
   public let preferences: any ChatPreferences
+  public let retainedSessions: (any RetainedSessionFactory)?
   private let snapshots: PhoneSnapshotSession
   private let recovery: ConnectionRecovery
   private let speechFactory: @MainActor () -> any SpeechTranscribing
@@ -16,13 +17,15 @@ import Foundation
     credentials: any NessaCredentialStoring, preferences: any ChatPreferences,
     launchConnection: (address: String, credential: String)? = nil,
     speechFactory: (@MainActor () -> any SpeechTranscribing)? = nil,
-    snapshots: PhoneSnapshotSession? = nil, recovery: ConnectionRecovery? = nil
+    snapshots: PhoneSnapshotSession? = nil, recovery: ConnectionRecovery? = nil,
+    retainedSessions: (any RetainedSessionFactory)? = nil
   ) {
     self.mode = mode
     self.service = MessagingService(
       repository: repository, directory: directory ?? (repository as? any AgentDirectory))
     self.credentials = credentials
     self.preferences = preferences
+    self.retainedSessions = retainedSessions
     self.snapshots =
       snapshots
       ?? PhoneSnapshotSession(
@@ -38,7 +41,7 @@ import Foundation
   public static func live() -> Self {
     Self(
       mode: .live, repository: liveRepository(), credentials: NessaCredentialStore(),
-      preferences: UserDefaultsChatPreferences())
+      preferences: UserDefaultsChatPreferences(), retainedSessions: NativeRetainedSessionFactory())
   }
   public static func development(repository: any MessagingRepository = MockRepository()) -> Self {
     Self(
@@ -61,7 +64,7 @@ import Foundation
         return Self(
           mode: .live, repository: liveRepository(),
           credentials: NessaCredentialStore(), preferences: UserDefaultsChatPreferences(),
-          launchConnection: launchConnection)
+          launchConnection: launchConnection, retainedSessions: NativeRetainedSessionFactory())
       }
       return .development()
     #else

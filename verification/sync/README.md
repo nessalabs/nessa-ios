@@ -49,3 +49,20 @@ To check exact command identities and durable receipts against the isolated real
 This uses the application journal and production typed socket port. It creates a disposable chat, repeats the same creation ID, submits one frozen message, recreates the disk journal before observing the submission confirmation, looks up its receipt, retries the same request/execution IDs, verifies one turn and resolves the record durably. It then deletes its test chat. Product composition now also injects the journal; the scripted product cases and image runner cover the view-model create/send path.
 
 Product fault cases recreate presentation, transport and disk journal after lost ACKs, test Check versus explicit Retry, first-attempt model/photo refusals, a later refusal after earlier uncertainty, and corrupted journal binding.
+
+To exercise the application-owned retained session against the existing disposable
+paired native gateway fixture, first build `PhoneSyncVerification` here, then run
+this from the gateway checkout matching `Vendor/NessaNative/SOURCE.json`:
+
+```sh
+NESSA_NATIVE_SWIFT_CHECK=/absolute/path/to/nessa-ios/.build/debug/PhoneSyncVerification \
+  cargo test -p nessa-server generated_swift_runs_paired_native_lifecycle -- --ignored --nocapture
+```
+
+The fixture supplies its own private directory, paired identities and endpoint.
+It invokes the production application factory for first read, offline reopen,
+gateway restart, revocation/purge receipt recovery and partial-prefix refusal.
+The executable accepts those seven fixture arguments; do not point it at a user's
+private native directory. Full view bytes and exact progress stay separate from
+the display projection. This checks the application boundary; production profile
+enrollment and actual phone history composition still need integration.

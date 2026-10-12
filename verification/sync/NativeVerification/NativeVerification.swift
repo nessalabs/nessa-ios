@@ -129,6 +129,12 @@ private func connectionOwnership(_ endpoint: String) async throws {
 @main struct NativeVerification {
   static func main() async {
     do {
+      if CommandLine.arguments.count == 8,
+        ["first", "offline", "resumed", "terminal", "epoch"].contains(CommandLine.arguments[1])
+      {
+        try await RetainedVerification.run(Array(CommandLine.arguments.dropFirst()))
+        return
+      }
       if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "--identity-fixture" {
         try await IdentityVerification.run(
           endpoint: CommandLine.arguments[2], markers: CommandLine.arguments[3])
