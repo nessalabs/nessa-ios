@@ -17,7 +17,7 @@ swift build --product PhoneSyncVerification
 .build/debug/PhoneSyncVerification --live ws://127.0.0.1:18743/session /absolute/path/to/test-panel.token
 ```
 
-The live check creates one disposable Codex/Terra conversation, follows the inbox and conversation, sends five tool-free timing probes, measures authentication, provider session creation, send acknowledgment, first visible view and completed model reply separately, verifies immediate resubscription, and deletes the conversation. It fails if delivery fails; it does not print the credential. Use a non-production test namespace. These are native-client transport measurements, not render-frame or physical-device timing.
+The live check injects a temporary disk journal, creates one disposable Codex/Terra conversation, follows the inbox and conversation, sends twenty tool-free timing probes, measures authentication, provider session creation, send acknowledgment, first visible view and completed model reply separately, reports nearest-rank p50/p95/max, verifies immediate resubscription and an empty pending journal, and deletes the conversation. It fails if delivery fails; it does not print the credential. Use a non-production test namespace. These are native-client transport measurements, not render-frame or physical-device timing.
 
 See [the sync plan](../../docs/sync/PLAN.md) for the remaining command-recovery and retained-core gates. Replacement views and their cursors do not establish physical-record retained progress.
 
@@ -35,4 +35,6 @@ To check exact command identities and durable receipts against the isolated real
 .build/debug/PhoneSyncVerification --command-live ws://127.0.0.1:18743/session /absolute/path/to/test-panel.token
 ```
 
-This uses the new application journal and production typed socket port. It creates a disposable chat, repeats the same creation ID, submits one frozen message, recreates the disk journal before observing the submission confirmation, looks up its receipt, retries the same request/execution IDs, verifies one turn and resolves the record durably. It then deletes its test chat. Legacy product composer/create callers are not yet journal-backed; this runner does not claim otherwise.
+This uses the application journal and production typed socket port. It creates a disposable chat, repeats the same creation ID, submits one frozen message, recreates the disk journal before observing the submission confirmation, looks up its receipt, retries the same request/execution IDs, verifies one turn and resolves the record durably. It then deletes its test chat. Product composition now also injects the journal; the scripted product cases and image runner cover the view-model create/send path.
+
+Product fault cases recreate presentation, transport and disk journal after lost ACKs, test Check versus explicit Retry, first-attempt model/photo refusals, a later refusal after earlier uncertainty, and corrupted journal binding.

@@ -26,6 +26,7 @@ struct MessageComposer: View {
   let sending: Bool
   let connected: Bool
   let attachmentPolicy: AttachmentPolicy
+  var submissionAllowed = true
   var placeholder: String? = nil
   var autoFocus = false
   let onSend: () -> Void
@@ -85,7 +86,8 @@ struct MessageComposer: View {
                 Image(systemName: "arrow.up").font(MessagesStyle.title)
                   .frame(width: MessagesStyle.sendButton, height: MessagesStyle.sendButton)
                   .background(MessagesStyle.outgoing, in: Circle())
-              }.disabled(sending || preparing || !connected).accessibilityLabel("Send message")
+              }.disabled(sending || preparing || !connected || !submissionAllowed)
+                .accessibilityLabel("Send message")
             }
           }
           .frame(height: MessagesStyle.composerHeight)

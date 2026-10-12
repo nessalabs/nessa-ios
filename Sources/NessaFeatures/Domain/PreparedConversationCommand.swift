@@ -20,15 +20,17 @@ public enum PreparedConversationCommand: Codable, Sendable, Equatable {
     public let executionID: String
     public let text: String
     public let images: [NessaImageAttachment]
+    public let replyTo: String?
     public init(
       requestID: String, conversationID: String, executionID: String, text: String,
-      images: [NessaImageAttachment] = []
+      images: [NessaImageAttachment] = [], replyTo: String? = nil
     ) {
       self.requestID = requestID
       self.conversationID = conversationID
       self.executionID = executionID
       self.text = text
       self.images = images
+      self.replyTo = replyTo
     }
   }
   case create(Creation)
@@ -60,6 +62,8 @@ public enum PreparedConversationCommand: Codable, Sendable, Equatable {
       else { throw ConversationCommandError.invalid }
     case .submit(let value):
       guard uuid(value.executionID), value.text.utf8.count <= 8192,
+        value.replyTo == nil
+          || (value.replyTo?.isEmpty == false && (value.replyTo?.utf8.count ?? 0) <= 1024),
         !value.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
           || !value.images.isEmpty,
         value.images.count <= 8,

@@ -3,7 +3,7 @@ import Foundation
 
 /// Native implementation of Nessa's product v1 req/res protocol. Commands are never replayed.
 public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ConversationFollowing,
-  ConnectionLeasing, PreparedCommandTransport
+  ConnectionLeasing, PreparedCommandTransport, CommandRecoveryProviding
 {
   public nonisolated var attachmentPolicy: AttachmentPolicy { .nessa }
   private var imageCache: AttachmentImageCache?
@@ -30,7 +30,12 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   private var connectionLease: GatewayConnectionLease?
   private var connectionScope: PhoneCacheScope?
 
-  public init() {}
+  private let commands: JournaledGatewayCommands?
+  private var commandBinding: JournaledGatewayCommands.Binding?
+  private var commandBindingError: (any Error)?
+  public init(journal: PhoneCommandJournal? = nil) {
+    commands = journal.map { JournaledGatewayCommands(journal: $0) }
+  }
 
   public func connect(address: String, credential: String, instance: String) async throws {
     _ = try await connectWithLease(address: address, credential: credential, instance: instance)
@@ -46,6 +51,16 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
       try await openConnection(
         address: address, credential: credential, instance: instance, generation: generation)
       guard generation == connectionGeneration else { throw NessaGatewayError.disconnected }
+      if let commands, let scope = connectionScope {
+        do {
+          let binding = try await commands.bind(scope: scope, connection: lease)
+          guard generation == connectionGeneration else { throw NessaGatewayError.disconnected }
+          commandBinding = binding
+        } catch {
+          guard generation == connectionGeneration else { throw NessaGatewayError.disconnected }
+          commandBindingError = error
+        }
+      }
       return lease
     } catch {
       if generation == connectionGeneration { close(error) }
@@ -115,12 +130,47 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     return try await request("conversation.read", params: ConversationID(conversationId: id))
   }
   public func create(agent: String? = nil, model: String? = nil) async throws -> String {
+    try await create(
+      .init(
+        requestID: UUID().uuidString.lowercased(),
+        conversationID: UUID().uuidString.lowercased(), agent: agent, model: model))
+  }
+  public func create(_ intent: PreparedConversationCommand.Creation) async throws -> String {
     try requireConnection()
-    let id = UUID().uuidString.lowercased()
+    if let commands {
+      let binding = try currentCommandBinding()
+      _ = try await commands.execute(.create(intent), binding: binding, transport: self)
+      return intent.conversationID
+    }
     let _: Created = try await request(
       "conversation.create",
-      params: Create(conversationId: id, requestId: UUID().uuidString, agent: agent, model: model))
-    return id
+      params: Create(
+        conversationId: intent.conversationID, requestId: intent.requestID,
+        agent: intent.agent, model: intent.model))
+    return intent.conversationID
+  }
+  public func pendingCommands() async throws -> [PreparedConversationCommand] {
+    try requireConnection()
+    guard let commands else { return [] }
+    let binding = try currentCommandBinding()
+    let result = try await commands.pending(binding)
+    try requireCommandConnection(binding.connection, scope: binding.scope)
+    return result
+  }
+  public func checkCommand(_ requestID: String) async throws -> ResolvedConversationCommand? {
+    guard let commands else { throw NessaGatewayError.incompatibleProtocol }
+    return try await commands.check(requestID, binding: currentCommandBinding(), transport: self)
+  }
+  public func retryCommand(_ requestID: String) async throws -> ResolvedConversationCommand {
+    guard let commands else { throw NessaGatewayError.incompatibleProtocol }
+    return try await commands.retry(requestID, binding: currentCommandBinding(), transport: self)
+  }
+  private func currentCommandBinding() throws -> JournaledGatewayCommands.Binding {
+    try requireConnection()
+    if let commandBindingError { throw commandBindingError }
+    guard let binding = commandBinding else { throw PhoneCommandStoreError.unavailable }
+    try requireCommandConnection(binding.connection, scope: binding.scope)
+    return binding
   }
   public func dispatch(
     _ command: PreparedConversationCommand, connection: GatewayConnectionLease,
@@ -129,26 +179,41 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     try requireCommandConnection(connection, scope: scope)
     try command.validate()
     let acknowledgment: ConversationCommandAcknowledgment
-    switch command {
-    case .create(let value):
-      let result: Created = try await request(
-        "conversation.create",
-        params: Create(
-          conversationId: value.conversationID, requestId: value.requestID,
-          agent: value.agent, model: value.model))
-      acknowledgment = .created(result.conversationId)
-    case .submit(let value):
-      struct Submission: Decodable {
-        enum Disposition: String, Decodable { case queued, injected, settled }
-        let executionId: String
-        let disposition: Disposition
+    do {
+      switch command {
+      case .create(let value):
+        let result: Created = try await request(
+          "conversation.create",
+          params: Create(
+            conversationId: value.conversationID, requestId: value.requestID,
+            agent: value.agent, model: value.model))
+        acknowledgment = .created(result.conversationId)
+      case .submit(let value):
+        struct Submission: Decodable {
+          enum Disposition: String, Decodable { case queued, injected, settled }
+          let executionId: String
+          let disposition: Disposition
+        }
+        let result: Submission = try await request(
+          "conversation.send",
+          params: Send(
+            conversationId: value.conversationID, requestId: value.requestID,
+            executionId: value.executionID, text: value.text, attachments: value.images, files: []))
+        acknowledgment = .submitted(result.executionId)
       }
-      let result: Submission = try await request(
-        "conversation.send",
-        params: Send(
-          conversationId: value.conversationID, requestId: value.requestID,
-          executionId: value.executionID, text: value.text, attachments: value.images, files: []))
-      acknowledgment = .submitted(result.executionId)
+    } catch let error as NessaGatewayError {
+      try requireCommandConnection(connection, scope: scope)
+      // These codes are audited before effects. The journal additionally proves
+      // this is the sole durable dispatch attempt, not a later uncertain retry.
+      switch (command, error) {
+      case (.create, .modelUnavailable):
+        throw ConversationCommandRefusal(command: command, reason: .modelUnavailable)
+      case (.create, .agentNotConfigured):
+        throw ConversationCommandRefusal(command: command, reason: .agentNotConfigured)
+      case (.submit, .imageInputUnsupported):
+        throw ConversationCommandRefusal(command: command, reason: .imagesUnsupported)
+      default: throw error
+      }
     }
     try requireCommandConnection(connection, scope: scope)
     guard acknowledgment.validates(command) else { throw NessaGatewayError.invalidFrame }
@@ -214,6 +279,14 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   public func send(_ text: String, attachments: [DraftAttachment], conversationID: String)
     async throws -> String
   {
+    try await send(
+      text, attachments: attachments, conversationID: conversationID,
+      identity: MessageCommandIdentity(), replyTo: nil)
+  }
+  public func send(
+    _ text: String, attachments: [DraftAttachment], conversationID: String,
+    identity: MessageCommandIdentity, replyTo: String?
+  ) async throws -> String {
     try requireConnection()
     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty,
       text.utf8.count <= 8192
@@ -222,6 +295,20 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     }
     try attachmentPolicy.validate(attachments)
     let generation = connectionGeneration
+    let binding = commands == nil ? nil : try currentCommandBinding()
+    if let binding,
+      let existing = try await commands?.pending(binding).first(where: {
+        if case .submit = $0 {
+          return $0.conversationID == conversationID && $0.requestID != identity.requestID
+        }
+        return false
+      })
+    {
+      throw CommandAdmissionBlocked(requestID: existing.requestID)
+    }
+    guard generation == connectionGeneration, !Task.isCancelled else {
+      throw NessaGatewayError.disconnected
+    }
     var images: [NessaImageAttachment] = []
     for attachment in attachments {
       images.append(try await upload(attachment, conversationID: conversationID))
@@ -232,14 +319,22 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     guard images.reduce(0, { $0 + $1.size }) <= 10 * 1024 * 1024 else {
       throw NessaGatewayError.rejected("Uploaded images must total at most 10 MB.")
     }
-    let executionID = UUID().uuidString.lowercased()
+    if let commands, let binding {
+      let prepared = PreparedConversationCommand.submit(
+        .init(
+          requestID: identity.requestID,
+          conversationID: conversationID, executionID: identity.executionID, text: text,
+          images: images, replyTo: replyTo))
+      _ = try await commands.execute(prepared, binding: binding, transport: self)
+      return identity.executionID
+    }
     let _: Ignored = try await request(
       "conversation.send",
       params: Send(
         conversationId: conversationID,
-        requestId: UUID().uuidString, executionId: executionID, text: text,
+        requestId: identity.requestID, executionId: identity.executionID, text: text,
         attachments: images, files: []))
-    return executionID
+    return identity.executionID
   }
   private func upload(_ attachment: DraftAttachment, conversationID: String) async throws
     -> NessaImageAttachment
@@ -402,6 +497,8 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   private func close(_ error: Error) {
     connectionLease = nil
     connectionScope = nil
+    commandBinding = nil
+    commandBindingError = nil
     connectionGeneration += 1
     let waiters = registrationWaiters.values.flatMap { $0 }
     registrationWaiters.removeAll()

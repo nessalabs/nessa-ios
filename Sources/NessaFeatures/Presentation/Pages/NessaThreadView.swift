@@ -15,9 +15,7 @@ struct NessaThreadView: View {
   @State private var bottomVisible = true
   @State private var position = ScrollPosition(edge: .bottom)
   @State private var scrollOffset: CGFloat = 0
-  @State private var attachments: [DraftAttachment] = []
-  @State private var draft = ""
-  @State private var reply: MessageReply?
+  @StateObject private var composer = ComposerDraftViewModel()
   @State private var details = false
   @State private var hasLoadedHistory = false
   @Environment(\.dismiss) private var dismiss
@@ -58,7 +56,7 @@ struct NessaThreadView: View {
                   message: message, conversationID: conversationID,
                   store: store, parent: replies.parent(of: message),
                   replyCount: replies.count(for: message.id),
-                  onReply: { reply = $0 }, onOpenThread: { reply = $0 })
+                  onReply: { composer.reply = $0 }, onOpenThread: { composer.reply = $0 })
               }
               if turn.status == "running" {
                 TypingIndicator()
@@ -105,8 +103,12 @@ struct NessaThreadView: View {
           followLatest(animated: animateMessages)
         }
         .messagesBar(edge: .bottom) {
-          if reply == nil {
+          if composer.reply == nil {
             VStack(spacing: NessaSpacing.xs) {
+              if store.pendingLoadError != nil { PendingDeliveryUnavailable(store: store) }
+              ForEach(store.pendingSubmissions(in: conversationID), id: \.requestID) { command in
+                PendingCommandActions(command: command, store: store)
+              }
               if !bottomVisible {
                 HStack {
                   Spacer()
@@ -119,10 +121,12 @@ struct NessaThreadView: View {
                   .transition(.opacity)
               }
               MessageComposer(
-                draft: $draft, reply: $reply, attachments: $attachments, recipient: name,
+                draft: $composer.text, reply: $composer.reply, attachments: $composer.attachments,
+                recipient: name,
                 dictation: dictation,
                 sending: store.sending, connected: store.connected,
-                attachmentPolicy: store.attachmentPolicy, onSend: send)
+                attachmentPolicy: store.attachmentPolicy,
+                submissionAllowed: store.canSubmit(in: conversationID), onSend: send)
             }
           }
         }
@@ -134,16 +138,17 @@ struct NessaThreadView: View {
     }
     .environment(\.messageContext, messageContext)
     .blur(
-      radius: reply != nil
+      radius: composer.reply != nil
         ? MessagesStyle.replyBackgroundBlur
         : (messageContext.selection == nil ? 0 : MessagesStyle.contextBackgroundBlur)
     )
-    .accessibilityHidden(messageContext.selection != nil || reply != nil)
+    .accessibilityHidden(messageContext.selection != nil || composer.reply != nil)
     .overlay {
-      if reply != nil {
+      if composer.reply != nil {
         ReplyThreadView(
           replies: replies, conversationID: conversationID, agentName: name,
-          store: store, selection: $reply, draft: $draft, attachments: $attachments,
+          store: store, selection: $composer.reply, draft: $composer.text,
+          attachments: $composer.attachments,
           dictation: dictation,
           onDetails: { details = true }, onSend: send
         )
@@ -153,30 +158,44 @@ struct NessaThreadView: View {
       }
     }
     .overlay { MessageContextOverlay(controller: messageContext).ignoresSafeArea() }
-    .animation(reduceMotion ? nil : MessagesStyle.messageFollowAnimation, value: reply != nil)
+    .animation(
+      reduceMotion ? nil : MessagesStyle.messageFollowAnimation, value: composer.reply != nil
+    )
     .nessaHideNavigationBar()
     .nessaNativeBackSwipe()
     .sheet(isPresented: $details) {
       AgentDetailsView(name: name, conversationID: conversationID, store: store)
     }
     .task(id: store.connectionRevision) { await store.watchConversation(conversationID) }
-  }
-
-  private func send() {
-    nearBottom = true
-    let text = draft
-    let selected = attachments
-    let selectedReply = reply
-    Task {
-      if await store.send(text, attachments: selected, reply: selectedReply, to: conversationID) {
-        if draft == text { draft = "" }
-        attachments.removeAll { item in selected.contains { $0.id == item.id } }
+    .onChange(of: store.acknowledgedCommands) { _, ids in
+      composer.accept(ids, scope: store.deliveryScopeRevision)
+    }
+    .onChange(of: store.pendingCommands) { _, commands in
+      if store.connected && store.pendingLoadError == nil {
+        composer.retainPending(Set(commands.map(\.requestID)))
       }
     }
   }
 
+  private func send() {
+    nearBottom = true
+    let captured = composer.begin(scope: store.deliveryScopeRevision)
+    Task {
+      let accepted = await store.send(
+        captured.text, attachments: captured.attachments,
+        reply: captured.reply, to: conversationID, identity: captured.identity)
+      if accepted {
+        composer.accept([captured.identity.requestID], scope: store.deliveryScopeRevision)
+      }
+      composer.accept(store.acknowledgedCommands, scope: store.deliveryScopeRevision)
+      let knownQueue = store.connected && store.pendingLoadError == nil
+      let pending = store.pendingCommands.contains { $0.requestID == captured.identity.requestID }
+      composer.finished(captured.identity.requestID, keepPending: !knownQueue || pending)
+    }
+  }
+
   private func followLatest(animated: Bool) {
-    guard nearBottom, reply == nil else { return }
+    guard nearBottom, composer.reply == nil else { return }
     withAnimation(animated ? MessagesStyle.messageFollowAnimation : nil) {
       position.scrollTo(edge: .bottom)
     }

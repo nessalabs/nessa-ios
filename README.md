@@ -49,10 +49,17 @@ Live builds retain a private, bounded cache of the inbox, agent metadata and the
 gateway, instance and credential fingerprint. Reconnecting replaces live feeds;
 offline display does not enable sending or establish retained-sync checkpoints.
 
+Live chat creation and sends save frozen request identities before dispatch. An
+uncertain delivery reappears after restart with Check and Retry actions; reconnect
+does not replay it. Confirmation clears only the original unchanged draft. New
+intents wait for pending delivery to resolve. Known first-attempt model/photo
+refusals retain the draft and release the pending slot; later uncertain refusals
+remain pending until stronger confirmation is available.
+
 ## Remaining product work
 
 General mobile file uploads, audio, push notifications, full offline history, device pairing UI,
-agent questions, full transcript pagination, uncertain-command recovery, and
+agent questions, full transcript pagination, uncertain deletion recovery, and
 shared retained-sync integration are not yet implemented in the new surface. Live gateway credential and network
 setup must be supplied before testing against a real Nessa deployment.
 

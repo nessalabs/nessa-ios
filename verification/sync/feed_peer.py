@@ -11,6 +11,7 @@ B = "00000000-0000-4000-8000-000000000002"
 C = "00000000-0000-4000-8000-000000000003"
 commands = {}
 creation_counts = {}
+refused_once = set()
 
 def frozen(params, operation):
     fields = ["conversationId", "requestId", "agent", "model"] if operation == "create" else [
@@ -67,6 +68,13 @@ async def peer(socket):
                 value = frozen(params, operation)
                 key = (mode, params["requestId"])
                 existing = commands.get(key)
+                if mode == "journal-product-refusal-" + operation and mode not in refused_once:
+                    refused_once.add(mode)
+                    await reply(request, code="model_unavailable" if operation == "create" else "image_input_unsupported")
+                    continue
+                if mode.endswith("-later-refusal") and existing is not None:
+                    await reply(request, code="model_unavailable")
+                    continue
                 if existing is not None and existing != value:
                     await reply(request, code="conversation_request_conflict")
                     continue
@@ -75,7 +83,7 @@ async def peer(socket):
                     if operation == "create":
                         count_key = (mode, params["conversationId"])
                         creation_counts[count_key] = creation_counts.get(count_key, 0) + 1
-                    if mode == "journal-lost-" + operation:
+                    if mode == "journal-lost-" + operation or mode.startswith("journal-product-lost-" + operation):
                         await socket.close()
                         return
                 if operation == "create":
@@ -89,8 +97,9 @@ async def peer(socket):
                 if existing is not None and existing != value:
                     await reply(request, code="conversation_request_conflict")
                     continue
-                result = {"found": existing is not None, "requestId": B if mode == "journal-wrong" else params["requestId"]}
-                if existing is not None:
+                found = existing is not None and not mode.endswith(("-unknown", "-later-refusal"))
+                result = {"found": found, "requestId": B if mode == "journal-wrong" else params["requestId"]}
+                if found:
                     result["stage"] = "ready" if params["operation"] == "create" else "settled"
                     if params["operation"] == "submit": result["outcome"] = "dispatched"
                 await reply(request, result)
@@ -101,6 +110,15 @@ async def peer(socket):
                     if instance == mode and value["operation"] == "submit" and value["conversationId"] == target]
                 await reply(request, {"conversationId": target, "messages": messages, "permissions": [], "truncated": False,
                     "runtime": {"agent": "creates-" + str(creation_counts.get((mode, target), 0))}})
+            elif mode.startswith("journal") and method == "conversation.list":
+                await reply(request, {"conversations": [], "complete": True})
+            elif mode.startswith("journal") and method == "agents.list":
+                await reply(request, {"agents": [{"agent": "fixture", "defaultModel": "text", "models": [
+                    {"modelId": "text", "displayName": "Text", "imageInput": False}]}]})
+            elif mode.startswith("journal") and method == "attachment.begin":
+                # Simulate an already-stored, content-addressed image without an HTTP upload.
+                await reply(request, {"state": "stored", "digest": params["digest"],
+                    "mimeType": params["mimeType"], "size": params["size"]})
             elif method == "conversation.subscribeList":
                 live["inbox"] = None
                 await reply(request, {"subscriptionId": "inbox"})

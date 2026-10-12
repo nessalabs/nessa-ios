@@ -3,10 +3,29 @@ import Foundation
 public struct PhoneCommands: Codable, Sendable, Equatable {
   public var schema = 1
   public var commands: [PreparedConversationCommand]
-  public init(commands: [PreparedConversationCommand] = []) { self.commands = commands }
+  /// 0: no dispatch; 1: one dispatch; 2: multiple or conservatively unknown.
+  public var attempts: [String: Int]
+  public init(commands: [PreparedConversationCommand] = [], attempts: [String: Int]? = nil) {
+    self.commands = commands
+    self.attempts =
+      attempts
+      ?? Dictionary(commands.map { ($0.requestID, 1) }, uniquingKeysWith: { first, _ in first })
+  }
+  private enum CodingKeys: String, CodingKey { case schema, commands, attempts }
+  public init(from decoder: any Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schema = try container.decode(Int.self, forKey: .schema)
+    commands = try container.decode([PreparedConversationCommand].self, forKey: .commands)
+    // Historical records may already have reached the gateway.
+    attempts =
+      try container.decodeIfPresent([String: Int].self, forKey: .attempts)
+      ?? Dictionary(commands.map { ($0.requestID, 1) }, uniquingKeysWith: { first, _ in first })
+  }
   public func validate() throws {
     guard schema == 1, commands.count <= 32,
-      Set(commands.map(\.requestID)).count == commands.count
+      Set(commands.map(\.requestID)).count == commands.count,
+      Set(attempts.keys) == Set(commands.map(\.requestID)),
+      attempts.values.allSatisfy({ (0...2).contains($0) })
     else { throw PhoneCommandStoreError.corrupt }
     do { for command in commands { try command.validate() } } catch {
       throw PhoneCommandStoreError.corrupt
@@ -71,6 +90,18 @@ public actor PhoneCommandJournal {
     return values.commands
   }
   public func record(_ command: PreparedConversationCommand, lease expected: Lease) async throws {
+    try await record(command, lease: expected, productIntent: false)
+  }
+  /// Admission and reservation share the same serialized journal transaction.
+  public func recordProductIntent(_ command: PreparedConversationCommand, lease expected: Lease)
+    async throws
+  {
+    try await record(command, lease: expected, productIntent: true)
+  }
+  private func record(
+    _ command: PreparedConversationCommand, lease expected: Lease,
+    productIntent: Bool
+  ) async throws {
     await settle()
     try requireLoaded(expected)
     try Task.checkCancellation()
@@ -79,9 +110,50 @@ public actor PhoneCommandJournal {
       guard existing == command else { throw ConversationCommandError.conflict }
       return
     }
+    if productIntent,
+      let existing = values.commands.first(where: { pending in
+        switch (command, pending) {
+        case (.create, .create): true
+        case (.submit, .submit): command.conversationID == pending.conversationID
+        default: false
+        }
+      })
+    {
+      throw CommandAdmissionBlocked(requestID: existing.requestID)
+    }
     guard values.commands.count < 32 else { throw PhoneCommandStoreError.quota }
     var next = values
     next.commands.append(command)
+    next.attempts[command.requestID] = productIntent ? 0 : 1
+    try await commit(next, lease: expected)
+  }
+  /// A crash after this save is uncertain, even if the process never reached dispatch.
+  public func beginAttempt(_ command: PreparedConversationCommand, lease expected: Lease)
+    async throws -> Bool
+  {
+    await settle()
+    try requireLoaded(expected)
+    try Task.checkCancellation()
+    guard values.commands.contains(command), let count = values.attempts[command.requestID] else {
+      throw ConversationCommandError.conflict
+    }
+    var next = values
+    next.attempts[command.requestID] = min(2, count + 1)
+    try await commit(next, lease: expected)
+    try Task.checkCancellation()
+    return count == 0
+  }
+  /// A refusal of a later attempt says nothing about an earlier uncertain dispatch.
+  public func reject(_ refusal: ConversationCommandRefusal, lease expected: Lease) async throws {
+    await settle()
+    try requireLoaded(expected)
+    try Task.checkCancellation()
+    guard refusal.valid, values.commands.contains(refusal.command),
+      values.attempts[refusal.command.requestID] == 1
+    else { throw ConversationCommandError.conflict }
+    var next = values
+    next.commands.removeAll { $0.requestID == refusal.command.requestID }
+    next.attempts.removeValue(forKey: refusal.command.requestID)
     try await commit(next, lease: expected)
   }
   public func resolve(
@@ -96,6 +168,7 @@ public actor PhoneCommandJournal {
     else { throw ConversationCommandError.conflict }
     var next = values
     next.commands.removeAll { $0.requestID == command.requestID }
+    next.attempts.removeValue(forKey: command.requestID)
     try await commit(next, lease: expected)
   }
   /// Callers explicitly retry this exact command. Persistence precedes every dispatch.
@@ -106,6 +179,7 @@ public actor PhoneCommandJournal {
     -> ConversationCommandAcknowledgment
   {
     try await record(command, lease: expected)
+    _ = try await beginAttempt(command, lease: expected)
     try requireLoaded(expected)
     try Task.checkCancellation()
     let acknowledgment = try await transport.dispatch(

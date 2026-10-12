@@ -75,6 +75,10 @@ struct ReplyThreadView: View {
       }
       .messagesBar(edge: .bottom) {
         VStack(spacing: NessaSpacing.xs) {
+          if store.pendingLoadError != nil { PendingDeliveryUnavailable(store: store) }
+          ForEach(store.pendingSubmissions(in: conversationID), id: \.requestID) { command in
+            PendingCommandActions(command: command, store: store)
+          }
           if !bottomVisible {
             HStack {
               Spacer()
@@ -88,8 +92,11 @@ struct ReplyThreadView: View {
           }
           MessageComposer(
             draft: $draft, reply: $selection, attachments: $attachments,
-            recipient: agentName, dictation: dictation, sending: store.sending, connected: store.connected,
-            attachmentPolicy: store.attachmentPolicy, placeholder: "Reply", autoFocus: true,
+            recipient: agentName, dictation: dictation, sending: store.sending,
+            connected: store.connected,
+            attachmentPolicy: store.attachmentPolicy,
+            submissionAllowed: store.canSubmit(in: conversationID),
+            placeholder: "Reply", autoFocus: true,
             onSend: {
               nearBottom = true
               onSend()

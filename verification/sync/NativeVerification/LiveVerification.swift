@@ -27,7 +27,10 @@ enum LiveVerification {
   static func run(endpoint: String, credentialFile: String) async throws {
     let credential = try String(contentsOfFile: credentialFile, encoding: .utf8).trimmingCharacters(
       in: .whitespacesAndNewlines)
-    let client = NessaGatewayClient()
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let client = NessaGatewayClient(
+      journal: PhoneCommandJournal(store: PhoneCommandStore(root: root)))
     let clock = ContinuousClock()
     let start = clock.now
     try await client.connect(
@@ -56,7 +59,10 @@ enum LiveVerification {
       }
       guard await samples.initial else { throw NessaGatewayError.timeout }
       print("PASS: initial conversation frame delivered without polling")
-      for index in 1...5 {
+      var acknowledgments: [Double] = []
+      var publications: [Double] = []
+      var completions: [Double] = []
+      for index in 1...20 {
         let sent = clock.now
         let receipt = try await client.send(
           "Sync timing probe \(index). Reply with only OK. Do not use tools.", conversationID: id)
@@ -64,6 +70,9 @@ enum LiveVerification {
         var completed = false
         for _ in 0..<3000 {
           if let (visible, complete) = await samples.result(receipt), let complete {
+            acknowledgments.append(ms(sent.duration(to: acknowledged)))
+            publications.append(ms(sent.duration(to: visible)))
+            completions.append(ms(sent.duration(to: complete)))
             print(
               "SAMPLE \(index): ACK_MS=\(ms(sent.duration(to: acknowledged))) FIRST_VIEW_MS=\(ms(sent.duration(to: visible))) COMPLETE_MS=\(ms(sent.duration(to: complete)))"
             )
@@ -73,6 +82,19 @@ enum LiveVerification {
           try await Task.sleep(for: .milliseconds(10))
         }
         guard completed else { throw NessaGatewayError.timeout }
+      }
+      for (name, values) in [
+        ("ACK", acknowledgments), ("FIRST_VIEW", publications), ("MODEL_COMPLETE", completions),
+      ] {
+        let ordered = values.sorted()
+        let p50 = ordered[Int(ceil(Double(ordered.count) * 0.5)) - 1]
+        let p95 = ordered[Int(ceil(Double(ordered.count) * 0.95)) - 1]
+        print(
+          "SUMMARY \(name): COUNT=\(ordered.count) P50_MS=\(p50) P95_MS=\(p95) MAX_MS=\(ordered.last!)"
+        )
+      }
+      guard try await client.pendingCommands().isEmpty else {
+        throw NessaGatewayError.rejected("Timing probes left pending commands")
       }
       viewsTask.cancel()
       await viewsTask.value

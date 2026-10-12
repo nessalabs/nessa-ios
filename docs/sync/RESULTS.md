@@ -26,6 +26,8 @@ All runs received initial views without polling, delivered inbox events, immedia
 
 The native `--image` runner selects the advertised image-capable model using the app's new-chat path, uploads a generated PNG, sends it, verifies its history reference and matching cached bytes, receives a completed response and deletes the disposable chat. Current response correctly identified the bright blue background, red-orange circle on the left and yellow square on the right. The actual simulator Photos picker path was also exercised with a pre-existing sample waterfall JPEG; the model identified the waterfall and the app renders it after restart.
 
+The October 12 rerun now injects a temporary disk-backed command journal and submits through `MessagesViewModel.send` with an explicit execution identity. Creation and photo submission left no pending records; the matching history turn retained the exact cached bytes, and the live model again identified all three colors/shapes. The final reviewed product integration passes 119 tests, architecture/design checks and the iOS simulator build. The isolated gateway includes the image-admission patch from open PR #779.
+
 Dictation tests cover partial replacement, stop/final result, stale callback fencing, permission failure/retry, incomplete result preservation, repeated identical transcripts and mock injection. The live adapter uses Apple Speech and AVAudioEngine; dictation fills a draft and Send submits text. No microphone recognition quality claim is made from simulator/unit tests.
 
 ## Durable display and recovery
@@ -40,7 +42,7 @@ Dictation tests cover partial replacement, stop/final result, stale callback fen
 
 ## Remaining gates
 
-Uncertain command identity/receipt recovery, shared retained receiver/checkpoints/native enrollment, remote artifact recovery, larger latency sampling and network/revocation experiments remain in PLAN.md. A display snapshot or live subscription cursor is not physical-record progress. Camera/microphone interruptions and physical-device dictation still need device checks.
+Uncertain deletion recovery, terminal reconciliation of earlier uncertain refused commands, shared retained receiver/checkpoints/native enrollment, remote artifact recovery and broader network/revocation experiments remain in PLAN.md. A display snapshot or live subscription cursor is not physical-record progress. Camera/microphone interruptions and physical-device dictation still need device checks.
 
 ## Command foundation verification
 
@@ -48,4 +50,20 @@ Uncertain command identity/receipt recovery, shared retained receiver/checkpoint
 
 The scripted production socket runner adds lost create and submit ACKs: the peer accepts the command and closes the socket without its response; recreated disk state recovers its receipt, and exact retries yield one creation/turn. Foreign acknowledgment/receipt identities and dispatch across authenticated scope changes are refused. Removing CAS caused stale-write runtime failures; removing scope validation caused the native cross-scope assertion to fail. Both safeguards were restored.
 
-The real gateway exact-command experiment passes: creation retry, one accepted submit, journal recreation before observing confirmation, receipt lookup, same-ID submission retry, exactly one turn, durable resolution and test-chat cleanup. This verifies native primitives and persistence, not current composer integration; legacy create/send still need to switch to these identities and pending-delivery behavior. The shared retained core also remains incomplete.
+The real gateway exact-command experiment passes: creation retry, one accepted submit, journal recreation before observing confirmation, receipt lookup, same-ID submission retry, exactly one turn, durable resolution and test-chat cleanup. This foundation experiment verifies native primitives and persistence; the subsequent product integration is recorded below. The shared retained core remains incomplete.
+
+## Product command integration verification
+
+The final create/send slice passes 119 tests, architecture/design checks and an iOS simulator build. Astra medium passed after fixes for a permanent first-attempt refusal dead end and an older dispatch entry point bypassing attempt persistence. Intentional reverts of attempt accounting and captured draft revision checks fail runtime regressions; restored source passes. Controlled tests hold Check/Retry across account/connection replacement, preserve replacement action locks, restore frozen reply context, refuse substituted payloads, keep failed pending hydration visible, and separate known acceptance from failed durable resolution.
+
+The scripted peer cases pass through production composition boundaries: recreated view model/socket/disk journal recover lost create/send ACKs, Check makes no new effect, an absent receipt requires explicit exact-ID Retry, and rejected first creation/photo intents release their slot across disk recreation. A later typed refusal after an earlier uncertain attempt preserves the original identity. A corrupt journal leaves authenticated reads available while both presentation and repository writes fail closed. The final installed live simulator starts, opens the existing image chat, renders its cached photo/model reply and exposes Dictate message.
+
+The final loopback run uses disk intent, attempt and resolution writes for twenty sequential messages. Authentication took 19 ms and provider-backed chat creation 644 ms. Nearest-rank samples:
+
+| Measurement | p50 | p95 | Maximum |
+| --- | ---: | ---: | ---: |
+| Durable send acknowledgment | 40.8 ms | 49.8 ms | 50.7 ms |
+| First native transcript publication | 42.7 ms | 50.7 ms | 53.7 ms |
+| Model completion | 9.77 s | 15.17 s | 16.10 s |
+
+All twenty messages completed, pending storage was empty, immediate resubscription passed, and the disposable chat was deleted. These are twenty native-client observations on one local test gateway, not production or UI-render latency guarantees. The model was slower than the earlier run while acknowledgment/publication remained around 50 ms. The final scripted run passes seventeen fault cases; live generated image submission still returns the correct shapes and matching cached bytes.

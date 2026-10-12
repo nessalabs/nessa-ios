@@ -16,6 +16,10 @@ struct MessagesInboxView: View {
   var body: some View {
     List {
       Group {
+        if store.pendingLoadError != nil { PendingDeliveryUnavailable(store: store) }
+        ForEach(store.pendingCreations, id: \.requestID) { command in
+          PendingCommandActions(command: command, store: store, onCreated: onOpen)
+        }
         if !editing && !showingArchived
           && store.pinnedChats.contains(where: { !store.isDeleting($0) }) && search.isEmpty
         {
@@ -28,6 +32,7 @@ struct MessagesInboxView: View {
           VStack(spacing: NessaSpacing.sm) {
             Text("Your chats, one message away.").font(MessagesStyle.title)
             Button("New message", action: onCompose).font(MessagesStyle.body)
+              .disabled(store.pendingLoadError != nil || !store.pendingCreations.isEmpty)
           }.padding(.vertical, NessaSpacing.xl)
         } else if showingArchived && filtered.isEmpty {
           Text("No archived chats.").font(MessagesStyle.body)
@@ -142,8 +147,11 @@ struct MessagesInboxView: View {
               }
               .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
               .messagesGlass()
-            }.disabled(!store.connected || store.busy)
-              .accessibilityLabel(store.busy ? "Creating chat" : "New message")
+            }.disabled(
+              !store.connected || store.busy || store.pendingLoadError != nil
+                || !store.pendingCreations.isEmpty
+            )
+            .accessibilityLabel(store.busy ? "Creating chat" : "New message")
           }.padding(.horizontal, MessagesStyle.horizontal).padding(
             .bottom, MessagesStyle.bottomInset)
         }

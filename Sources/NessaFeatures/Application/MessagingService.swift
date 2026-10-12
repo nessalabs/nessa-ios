@@ -81,12 +81,33 @@ public struct MessagingService: Sendable {
     try await repository.read(id)
   }
   public func create(agent: String?, model: String? = nil) async throws -> String {
-    try await repository.create(agent: agent, model: model)
+    try await create(
+      .init(
+        requestID: UUID().uuidString.lowercased(),
+        conversationID: UUID().uuidString.lowercased(), agent: agent, model: model))
+  }
+  public func create(_ intent: PreparedConversationCommand.Creation) async throws -> String {
+    if let commands = repository as? any CommandRecoveryProviding {
+      return try await commands.create(intent)
+    }
+    return try await repository.create(agent: intent.agent, model: intent.model)
+  }
+  public func pendingCommands() async throws -> [PreparedConversationCommand] {
+    try await (repository as? any CommandRecoveryProviding)?.pendingCommands() ?? []
+  }
+  public func checkCommand(_ requestID: String) async throws -> ResolvedConversationCommand? {
+    try await (repository as? any CommandRecoveryProviding)?.checkCommand(requestID)
+  }
+  public func retryCommand(_ requestID: String) async throws -> ResolvedConversationCommand {
+    guard let commands = repository as? any CommandRecoveryProviding else {
+      throw NessaGatewayError.incompatibleProtocol
+    }
+    return try await commands.retryCommand(requestID)
   }
   @discardableResult
   public func send(
     _ text: String, attachments: [DraftAttachment] = [], reply: MessageReply? = nil,
-    conversationID: String
+    conversationID: String, identity: MessageCommandIdentity = MessageCommandIdentity()
   ) async throws -> String {
     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
     else { throw NessaGatewayError.rejected("Write a message first.") }
@@ -95,6 +116,11 @@ public struct MessagingService: Sendable {
       throw NessaGatewayError.rejected("Messages must be at most 8,192 UTF-8 bytes.")
     }
     try repository.attachmentPolicy.validate(attachments)
+    if let commands = repository as? any CommandRecoveryProviding {
+      return try await commands.send(
+        contextualText, attachments: attachments,
+        conversationID: conversationID, identity: identity, replyTo: reply?.id)
+    }
     return try await repository.send(
       contextualText, attachments: attachments, conversationID: conversationID)
   }

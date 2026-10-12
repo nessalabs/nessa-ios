@@ -71,6 +71,7 @@ public struct NessaMessagesView: View {
         store.resumeConnection()
       }
     }
+    .onChange(of: store.deliveryScopeRevision) { _, _ in path = [] }
     .preferredColorScheme(.dark)
     .tint(MessagesStyle.foreground)
   }

@@ -37,7 +37,7 @@ import Foundation
   }
   public static func live() -> Self {
     Self(
-      mode: .live, repository: NessaGatewayClient(), credentials: NessaCredentialStore(),
+      mode: .live, repository: liveRepository(), credentials: NessaCredentialStore(),
       preferences: UserDefaultsChatPreferences())
   }
   public static func development(repository: any MessagingRepository = MockRepository()) -> Self {
@@ -59,7 +59,7 @@ import Foundation
           launchConnection = nil
         }
         return Self(
-          mode: .live, repository: NessaGatewayClient(),
+          mode: .live, repository: liveRepository(),
           credentials: NessaCredentialStore(), preferences: UserDefaultsChatPreferences(),
           launchConnection: launchConnection)
       }
@@ -72,6 +72,9 @@ import Foundation
     MessagesViewModel(
       service: service, credentials: credentials, preferences: preferences,
       snapshots: snapshots, recovery: recovery)
+  }
+  private static func liveRepository() -> NessaGatewayClient {
+    NessaGatewayClient(journal: PhoneCommandJournal(store: PhoneCommandStore()))
   }
   public func makeDictationViewModel() -> DictationViewModel {
     DictationViewModel(transcriber: speechFactory())

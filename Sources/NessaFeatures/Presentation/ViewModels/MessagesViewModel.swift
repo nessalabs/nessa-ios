@@ -46,6 +46,23 @@ public final class MessagesViewModel: ObservableObject {
   private var generation = 0
   @Published public private(set) var connectionRevision = 0
   @Published public private(set) var reconnecting = false
+  @Published public private(set) var deliveryScopeRevision = 0
+  @Published public private(set) var pendingCommands: [PreparedConversationCommand] = []
+  @Published public private(set) var pendingLoadError: String?
+  @Published public private(set) var acknowledgedCommands: Set<String> = []
+  private var acknowledgmentOrder: [String] = []
+  @Published public private(set) var checkingCommands: Set<String> = []
+  private var commandActions: [String: UUID] = [:]
+  private var pendingVersion = 0
+  public var pendingCreations: [PreparedConversationCommand] {
+    pendingCommands.filter { if case .create = $0 { true } else { false } }
+  }
+  public func pendingSubmissions(in id: String) -> [PreparedConversationCommand] {
+    pendingCommands.filter { if case .submit = $0 { $0.conversationID == id } else { false } }
+  }
+  public func canSubmit(in id: String) -> Bool {
+    connected && pendingLoadError == nil && pendingSubmissions(in: id).isEmpty
+  }
   private let snapshots: PhoneSnapshotSession?
   private var snapshotLease: PhoneSnapshotSession.Lease?
   private let recovery: ConnectionRecovery?
@@ -250,6 +267,11 @@ public final class MessagesViewModel: ObservableObject {
     recoveryTask = nil
     reconnecting = false
     let next = Profile(address: address, credential: credential, instance: instance)
+    if profile != next {
+      deliveryScopeRevision += 1
+      acknowledgedCommands = []
+      acknowledgmentOrder = []
+    }
     profile = next
     generation += 1
     connectionRevision += 1
@@ -264,6 +286,10 @@ public final class MessagesViewModel: ObservableObject {
     busy = true
     connected = false
     sending = false
+    pendingCommands = []
+    pendingLoadError = nil
+    commandActions = [:]
+    checkingCommands = []
     error = nil
     snapshotLease = nil
     conversations = []
@@ -360,6 +386,19 @@ public final class MessagesViewModel: ObservableObject {
       agentProfiles = agents
       try await refreshList()
       guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
+      do {
+        let pending = try await service.pendingCommands()
+        guard generation == expected, foreground, !Task.isCancelled else {
+          throw CancellationError()
+        }
+        pendingCommands = pending
+        pendingLoadError = nil
+      } catch {
+        guard generation == expected, foreground, !Task.isCancelled else {
+          throw CancellationError()
+        }
+        pendingLoadError = error.localizedDescription
+      }
       let lease = snapshotLease
       if let lease { await snapshots?.recordAgents(agents, lease: lease) }
       guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
@@ -383,6 +422,8 @@ public final class MessagesViewModel: ObservableObject {
     connected = false
     busy = false
     sending = false
+    commandActions = [:]
+    checkingCommands = []
     unlistedCreations = [:]
     let service = service
     let retirement = Task { await service.disconnect() }
@@ -425,6 +466,8 @@ public final class MessagesViewModel: ObservableObject {
         connected = false
         busy = false
         sending = false
+        commandActions = [:]
+        checkingCommands = []
         if manualAttempt == expected { manualAttempt = nil }
         unlistedCreations = [:]
         generation += 1
@@ -546,15 +589,28 @@ public final class MessagesViewModel: ObservableObject {
     await cache(accepted)
   }
   public func create(agent: String? = nil) async -> String? {
-    guard connected, !busy else { return nil }
+    guard connected, !busy, pendingLoadError == nil, pendingCreations.isEmpty else { return nil }
     let currentGeneration = generation
+    let originalProfile = profile
     busy = true
     defer { if generation == currentGeneration { busy = false } }
     do {
       let profile =
         agentProfiles.first { $0.id == agent }
         ?? (agent == nil && agentProfiles.count == 1 ? agentProfiles.first : nil)
-      let id = try await service.create(agent: agent, model: profile?.phoneModel)
+      let intent = PreparedConversationCommand.Creation(
+        requestID: UUID().uuidString.lowercased(),
+        conversationID: UUID().uuidString.lowercased(), agent: agent, model: profile?.phoneModel)
+      let id: String
+      do { id = try await service.create(intent) } catch {
+        if let failure = error as? CommandDeliveryFailure, let accepted = failure.acknowledgment,
+          self.profile == originalProfile, failure.command == .create(intent),
+          accepted.validates(failure.command)
+        {
+          recordAcknowledgment(failure.command.requestID)
+        }
+        throw error
+      }
       guard generation == currentGeneration, !Task.isCancelled else { return nil }
       listVersion += 1
       replyProjections.removeValue(forKey: id)
@@ -584,20 +640,23 @@ public final class MessagesViewModel: ObservableObject {
       return id
     } catch {
       if generation == currentGeneration { self.error = error.localizedDescription }
+      if generation == currentGeneration { await refreshPendingCommands() }
       return nil
     }
   }
   public func send(
     _ text: String, attachments: [DraftAttachment] = [], reply: MessageReply? = nil,
-    to id: String
+    to id: String, identity: MessageCommandIdentity = MessageCommandIdentity()
   ) async -> Bool {
-    guard connected, !sending else { return false }
+    guard canSubmit(in: id), !sending else { return false }
     let currentGeneration = generation
+    let currentProfile = profile
     sending = true
     defer { if generation == currentGeneration { sending = false } }
     do {
       let executionID = try await service.send(
-        text, attachments: attachments, reply: reply, conversationID: id)
+        text, attachments: attachments, reply: reply, conversationID: id, identity: identity)
+      if profile == currentProfile { recordAcknowledgment(identity.requestID) }
       guard generation == currentGeneration else { return true }
       if let reply, !deletedIDs.contains(id), !pendingDeletionIDs.contains(id) {
         replyProjections.removeValue(forKey: id)
@@ -611,9 +670,105 @@ public final class MessagesViewModel: ObservableObject {
       }
       return true
     } catch {
+      let known = (error as? CommandDeliveryFailure).flatMap {
+        failure -> PreparedConversationCommand? in
+        guard case .submit(let value) = failure.command,
+          value.requestID == identity.requestID, value.executionID == identity.executionID,
+          value.conversationID == id, failure.acknowledgment?.validates(failure.command) == true
+        else { return nil }
+        return failure.command
+      }
+      if let known, profile == currentProfile { recordAcknowledgment(known.requestID) }
+      if let known, profile == currentProfile { rememberReply(known) }
       if generation == currentGeneration { self.error = error.localizedDescription }
-      return false
+      if profile == currentProfile { await refreshPendingCommands() }
+      return known != nil
     }
+  }
+  public func refreshPendingCommands() async {
+    guard connected else { return }
+    let expected = generation
+    pendingVersion += 1
+    let version = pendingVersion
+    do {
+      let pending = try await service.pendingCommands()
+      guard generation == expected, pendingVersion == version, !Task.isCancelled else { return }
+      pendingCommands = pending
+      pendingLoadError = nil
+    } catch {
+      guard generation == expected, pendingVersion == version, !Task.isCancelled else { return }
+      pendingLoadError = error.localizedDescription
+    }
+  }
+  public func reconnectDeliveryState() async {
+    guard let profile else { return }
+    await connect(
+      address: profile.address, credential: profile.credential, instance: profile.instance)
+  }
+  /// Receipt checks never dispatch. Retry is explicitly requested for the frozen intent.
+  public func recoverCommand(_ requestID: String, retry: Bool) async -> String? {
+    guard connected, pendingLoadError == nil, !checkingCommands.contains(requestID) else {
+      return nil
+    }
+    guard let originalCommand = pendingCommands.first(where: { $0.requestID == requestID }) else {
+      return nil
+    }
+    let expected = generation
+    let originalProfile = profile
+    let token = UUID()
+    commandActions[requestID] = token
+    checkingCommands.insert(requestID)
+    defer {
+      if commandActions[requestID] == token {
+        commandActions.removeValue(forKey: requestID)
+        checkingCommands.remove(requestID)
+      }
+    }
+    do {
+      let result: ResolvedConversationCommand?
+      if retry {
+        result = try await service.retryCommand(requestID)
+      } else {
+        result = try await service.checkCommand(requestID)
+      }
+      guard let result else { return nil }
+      guard result.command == originalCommand, result.acknowledgment.validates(result.command)
+      else { throw NessaGatewayError.invalidFrame }
+      if profile == originalProfile { recordAcknowledgment(requestID) }
+      guard generation == expected, !Task.isCancelled else { return nil }
+      if case .submit(let value) = result.command {
+        rememberReply(result.command)
+        await refresh(value.conversationID)
+      }
+      try await refreshList()
+      await refreshPendingCommands()
+      guard generation == expected, !Task.isCancelled else { return nil }
+      if case .create(let value) = result.command { return value.conversationID }
+    } catch {
+      if let failure = error as? CommandDeliveryFailure, let accepted = failure.acknowledgment,
+        profile == originalProfile, failure.command == originalCommand,
+        accepted.validates(failure.command)
+      {
+        recordAcknowledgment(requestID)
+        rememberReply(failure.command)
+      }
+      if generation == expected { self.error = error.localizedDescription }
+      if profile == originalProfile { await refreshPendingCommands() }
+    }
+    return nil
+  }
+  private func recordAcknowledgment(_ requestID: String) {
+    guard acknowledgedCommands.insert(requestID).inserted else { return }
+    acknowledgmentOrder.append(requestID)
+    while acknowledgmentOrder.count > 256 {
+      acknowledgedCommands.remove(acknowledgmentOrder.removeFirst())
+    }
+  }
+  private func rememberReply(_ command: PreparedConversationCommand) {
+    guard case .submit(let value) = command, let parent = value.replyTo else { return }
+    replyTargets[value.conversationID + ":" + value.executionID] = parent
+    preferences.save(replyTargets, forKey: replyKey)
+    replyProjections.removeValue(forKey: value.conversationID)
   }
   public func answer(_ permission: NessaPermission, option: NessaPermission.Option, in id: String)
     async

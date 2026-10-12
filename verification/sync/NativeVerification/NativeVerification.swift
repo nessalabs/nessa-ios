@@ -143,6 +143,7 @@ private func connectionOwnership(_ endpoint: String) async throws {
       try await missingPublication(endpoint)
       try await connectionOwnership(endpoint)
       try await CommandVerification.fixtures(endpoint)
+      try await ProductCommandVerification.fixtures(endpoint)
       try await lostRegistration(endpoint)
     } catch {
       say("FAIL: \(error)")

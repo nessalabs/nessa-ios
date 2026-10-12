@@ -5,6 +5,7 @@ public enum NessaGatewayError: LocalizedError {
   case unknownSubscription
   case conversationNotFound
   case imageInputUnsupported
+  case modelUnavailable, agentNotConfigured
   case rejected(String)
   public var errorDescription: String? {
     switch self {
@@ -19,6 +20,8 @@ public enum NessaGatewayError: LocalizedError {
     case .conversationNotFound: "This chat is no longer available."
     case .imageInputUnsupported:
       "This chat’s model cannot receive photos. Start a new chat with an image-capable model."
+    case .modelUnavailable: "This model is no longer available. Choose another model."
+    case .agentNotConfigured: "This agent is no longer available on the gateway."
     case .rejected(let message): message
     }
   }

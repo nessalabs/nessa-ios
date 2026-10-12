@@ -10,7 +10,10 @@ enum ImageVerification {
   @MainActor static func run(endpoint: String, credentialFile: String) async throws {
     let credential = try String(contentsOfFile: credentialFile, encoding: .utf8)
       .trimmingCharacters(in: .whitespacesAndNewlines)
-    let client = NessaGatewayClient()
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let journal = PhoneCommandJournal(store: PhoneCommandStore(root: root))
+    let client = NessaGatewayClient(journal: journal)
     let service = MessagingService(repository: client, directory: client)
     let model = MessagesViewModel(
       service: service, credentials: InMemoryCredentialStore(),
@@ -23,6 +26,9 @@ enum ImageVerification {
         throw NessaGatewayError.rejected(model.error ?? "Create failed")
       }
       createdID = id
+      guard try await service.pendingCommands().isEmpty, model.pendingCommands.isEmpty else {
+        throw NessaGatewayError.rejected("Creation did not resolve its pending command")
+      }
       let runtime = try await service.read(id).runtime
       guard let profile = model.agentProfiles.first(where: { $0.id == runtime?.agent }),
         profile.models.contains(where: { $0.id == runtime?.model && $0.supportsImages })
@@ -30,14 +36,22 @@ enum ImageVerification {
       print("PASS: new phone chat selected an advertised image-capable model")
       let photo = DraftAttachment(
         name: "Synthetic-pattern.png", mimeType: "image/png", data: try pattern())
-      let receipt = try await service.send(
-        "Describe the colors and shapes in this image briefly. Do not use tools.",
-        attachments: [photo], conversationID: id)
-      print("PASS: photo upload and send accepted")
+      let identity = MessageCommandIdentity()
+      guard
+        await model.send(
+          "Describe the colors and shapes in this image briefly. Do not use tools.",
+          attachments: [photo], to: id, identity: identity)
+      else {
+        throw NessaGatewayError.rejected(model.error ?? "Photo send failed")
+      }
+      guard try await service.pendingCommands().isEmpty, model.pendingCommands.isEmpty else {
+        throw NessaGatewayError.rejected("Photo send did not resolve its pending command")
+      }
+      print("PASS: app photo submission, upload and durable command resolution")
       var completed = false
       for _ in 0..<120 {
         let view = try await service.read(id)
-        if let turn = view.messages.first(where: { $0.id == receipt }),
+        if let turn = view.messages.first(where: { $0.id == identity.executionID }),
           turn.status != "queued", turn.status != "running"
         {
           guard turn.status == "completed", !turn.bubbles.isEmpty,
@@ -63,9 +77,10 @@ enum ImageVerification {
   }
 
   private static func pattern() throws -> Data {
-    guard let context = CGContext(
-      data: nil, width: 256, height: 256, bitsPerComponent: 8, bytesPerRow: 0,
-      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+    guard
+      let context = CGContext(
+        data: nil, width: 256, height: 256, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
     else { throw NessaGatewayError.invalidFrame }
     context.setFillColor(CGColor(red: 0, green: 0.25, blue: 1, alpha: 1))
     context.fill(CGRect(x: 0, y: 0, width: 256, height: 256))
@@ -75,7 +90,8 @@ enum ImageVerification {
     context.fill(CGRect(x: 150, y: 90, width: 80, height: 80))
     let bytes = NSMutableData()
     guard let image = context.makeImage(),
-      let destination = CGImageDestinationCreateWithData(bytes, UTType.png.identifier as CFString, 1, nil)
+      let destination = CGImageDestinationCreateWithData(
+        bytes, UTType.png.identifier as CFString, 1, nil)
     else { throw NessaGatewayError.invalidFrame }
     CGImageDestinationAddImage(destination, image, nil)
     guard CGImageDestinationFinalize(destination) else { throw NessaGatewayError.invalidFrame }
