@@ -8,10 +8,10 @@ The app, Swift packages, scheme, and source modules are Nessa-only.
 ## Current behavior
 
 Search and open conversations, start a conversation on the gateway's default
-agent, send text, refresh streamed output every two seconds while a thread is
-visible, and answer pending permission reviews with the exact offered options.
+agent, send text, receive live inbox and thread updates, and answer pending
+permission reviews with the exact offered options.
 Credentials are stored in this device's Keychain. The interface matches the supplied dark Messages references with glass controls,
-circular pinned-chat avatars, blue outgoing bubbles, gray incoming bubbles, and tails.
+circular pinned-chat avatars, blue outgoing bubbles, and gray incoming bubbles.
 Debug builds use the injected MockRepository by default; Release builds use the real gateway.
 The inherited screens, Nostr transport, and crypto dependencies have been removed.
 
@@ -30,6 +30,10 @@ published endpoint when its port is configured differently.
 xcodebuild -project App/Nessa.xcodeproj -scheme Nessa \
   -destination 'generic/platform=iOS Simulator' CODE_SIGN_IDENTITY=- build
 ```
+
+Live-feed fault and image-input experiments are reproducible through
+[the native verification runner](verification/sync/README.md). See the
+[sync plan](docs/sync/PLAN.md) for the durable-cache and retained-core work that remains.
 
 For the native wire-client integration test, install Python `aiohttp` in a
 virtual environment and run `scripts/nessa-gateway-fixture.py`. In another terminal:

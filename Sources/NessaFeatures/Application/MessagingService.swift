@@ -16,6 +16,54 @@ public struct MessagingService: Sendable {
   public func connect(address: String, credential: String, instance: String) async throws {
     try await repository.connect(address: address, credential: credential, instance: instance)
   }
+  public func follow(_ id: String?, after: ConversationCursor? = nil) async throws
+    -> AsyncThrowingStream<ConversationUpdate, Error>?
+  {
+    guard let source = repository as? any ConversationFollowing else { return nil }
+    return try await source.follow(id, after: after)
+  }
+  /// Follow live replacements; only lag/source closure are retryable on this connection.
+  public func watch(
+    _ id: String?, after: ConversationCursor? = nil,
+    apply: @Sendable (ConversationUpdate) async throws -> Void
+  ) async throws {
+    var cursor = after
+    while !Task.isCancelled {
+      do {
+        guard let stream = try await follow(id, after: cursor) else {
+          // Custom repositories without a feed can still provide bounded snapshots.
+          if let id {
+            let view = try await read(id)
+            try await apply(
+              .view(try ConversationCursor(incarnation: "snapshot", position: "0"), view))
+          } else {
+            try await apply(.list(try await list()))
+          }
+          try await Task.sleep(for: .seconds(2))
+          continue
+        }
+        for try await update in stream {
+          try Task.checkCancellation()
+          switch update {
+          case .list:
+            guard id == nil else { throw NessaGatewayError.invalidFrame }
+          case .view(let next, let view):
+            guard view.conversationId == id else { throw NessaGatewayError.invalidFrame }
+            if let old = cursor, old.incarnation == next.incarnation, next.offset < old.offset {
+              continue
+            }
+            cursor = next
+          }
+          try await apply(update)
+        }
+        return
+      } catch let ended as ConversationFeedEnded
+        where ended.reason == .lagging || ended.reason == .sourceClosed
+      {
+        try await Task.sleep(for: .milliseconds(200))
+      }
+    }
+  }
   public func list() async throws -> NessaConversationList { try await repository.list() }
   public func read(_ id: String) async throws -> NessaConversationView {
     try await repository.read(id)

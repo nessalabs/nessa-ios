@@ -59,6 +59,9 @@ public struct NessaMessagesView: View {
         }
       }
     }
+    .task(id: store.connected) {
+      if store.connected { await store.watchInbox() }
+    }
     .preferredColorScheme(.dark)
     .tint(MessagesStyle.foreground)
   }

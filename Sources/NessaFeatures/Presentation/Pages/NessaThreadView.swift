@@ -159,12 +159,7 @@ struct NessaThreadView: View {
     .sheet(isPresented: $details) {
       AgentDetailsView(name: name, conversationID: conversationID, store: store)
     }
-    .task(id: conversationID) {
-      while !Task.isCancelled && store.connected {
-        await store.refresh(conversationID)
-        do { try await Task.sleep(for: .seconds(2)) } catch { break }
-      }
-    }
+    .task(id: conversationID) { await store.watchConversation(conversationID) }
   }
 
   private func send() {

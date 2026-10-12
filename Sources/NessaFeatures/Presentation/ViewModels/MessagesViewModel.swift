@@ -12,6 +12,7 @@ public final class MessagesViewModel: ObservableObject {
   private var replyProjections: [String: (name: String, value: ConversationReplies)] = [:]
   private var listVersion = 0
   private var readVersions: [String: Int] = [:]
+  private var viewCursors: [String: ConversationCursor] = [:]
   private var deletedIDs: Set<String> = []
   @Published public private(set) var pendingDeletionIDs: Set<String> = []
   public var visibleConversations: [NessaConversation] {
@@ -242,6 +243,7 @@ public final class MessagesViewModel: ObservableObject {
     pendingDeletionIDs = []
     views = [:]
     readVersions = [:]
+    viewCursors = [:]
     do {
       try await service.connect(address: address, credential: credential, instance: instance)
       let scope = address + ":" + instance
@@ -314,25 +316,7 @@ public final class MessagesViewModel: ObservableObject {
       else {
         return
       }
-      if views[id] != result {
-        replyProjections.removeValue(forKey: id)
-        views[id] = result
-      }
-      let updatedUnread = unreadChats.filter { $0 != id && $0 != result.runtime?.agent }
-      if updatedUnread != unreadChats {
-        unreadChats = updatedUnread
-        saveStatus()
-      }
-      if let agent = result.runtime?.agent {
-        if conversationAgents[id] != agent {
-          conversationAgents[id] = agent
-          preferences.save(conversationAgents, forKey: identityKey)
-        }
-        if agentThreads[agent] != id {
-          agentThreads[agent] = id
-          preferences.save(agentThreads, forKey: threadKey)
-        }
-      }
+      apply(result, to: id)
     } catch {
       guard currentGeneration == generation, !Task.isCancelled, readVersions[id] == version else {
         return
@@ -341,13 +325,70 @@ public final class MessagesViewModel: ObservableObject {
       self.error = error.localizedDescription
     }
   }
+  private func apply(_ result: NessaConversationView, to id: String) {
+    if views[id] != result {
+      replyProjections.removeValue(forKey: id)
+      views[id] = result
+    }
+    let updatedUnread = unreadChats.filter { $0 != id && $0 != result.runtime?.agent }
+    if updatedUnread != unreadChats {
+      unreadChats = updatedUnread
+      saveStatus()
+    }
+    if let agent = result.runtime?.agent {
+      if conversationAgents[id] != agent {
+        conversationAgents[id] = agent
+        preferences.save(conversationAgents, forKey: identityKey)
+      }
+      if agentThreads[agent] != id {
+        agentThreads[agent] = id
+        preferences.save(agentThreads, forKey: threadKey)
+      }
+    }
+  }
+  public func watchInbox() async { await watch(nil) }
+  public func watchConversation(_ id: String) async { await watch(id) }
+  private func watch(_ id: String?) async {
+    let expectedGeneration = generation
+    guard connected else { return }
+    do {
+      try await service.watch(id, after: id.flatMap { viewCursors[$0] }) { [weak self] update in
+        try await self?.receive(update, in: id, generation: expectedGeneration)
+      }
+    } catch is CancellationError {
+      return
+    } catch {
+      guard generation == expectedGeneration, !Task.isCancelled else { return }
+      if case NessaGatewayError.disconnected = error { connected = false }
+      self.error = error.localizedDescription
+    }
+  }
+  private func receive(_ update: ConversationUpdate, in id: String?, generation expected: Int)
+    throws
+  {
+    guard generation == expected, !Task.isCancelled else { throw CancellationError() }
+    switch update {
+    case .list(let list):
+      listVersion += 1
+      conversations = list.conversations.filter { !deletedIDs.contains($0.id) }
+      listComplete = list.complete
+    case .view(let cursor, let view):
+      guard !deletedIDs.contains(view.conversationId),
+        !pendingDeletionIDs.contains(view.conversationId)
+      else { return }
+      viewCursors[view.conversationId] = cursor
+      readVersions[view.conversationId, default: 0] += 1
+      apply(view, to: view.conversationId)
+    }
+  }
   public func create(agent: String? = nil) async -> String? {
     guard connected, !busy else { return nil }
     let currentGeneration = generation
     busy = true
     defer { if generation == currentGeneration { busy = false } }
     do {
-      let profile = agentProfiles.first { $0.id == agent }
+      let profile =
+        agentProfiles.first { $0.id == agent }
         ?? (agent == nil && agentProfiles.count == 1 ? agentProfiles.first : nil)
       let id = try await service.create(agent: agent, model: profile?.phoneModel)
       guard generation == currentGeneration, !Task.isCancelled else { return nil }

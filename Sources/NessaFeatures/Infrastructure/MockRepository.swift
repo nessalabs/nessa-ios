@@ -1,7 +1,49 @@
 import Foundation
 
 /// In-memory development adapter. It never opens a socket or stores credentials.
-public actor MockRepository: MessagingRepository, AgentDirectory {
+public actor MockRepository: MessagingRepository, AgentDirectory, ConversationFollowing {
+  private var feeds:
+    [UUID: (String?, AsyncThrowingStream<ConversationUpdate, Error>.Continuation)] = [:]
+  private var revisions: [String: Int] = [:]
+  private let incarnation = UUID().uuidString
+  public func follow(_ id: String?, after: ConversationCursor?) throws
+    -> AsyncThrowingStream<ConversationUpdate, Error>
+  {
+    try requireConnection()
+    if let id { _ = try read(id) }
+    let token = UUID()
+    let (stream, continuation) = AsyncThrowingStream<ConversationUpdate, Error>.makeStream(
+      bufferingPolicy: .bufferingNewest(1))
+    continuation.onTermination = { [weak self] _ in Task { await self?.removeFeed(token) } }
+    feeds[token] = (id, continuation)
+    publish(to: token)
+    return stream
+  }
+  private func removeFeed(_ token: UUID) { feeds.removeValue(forKey: token) }
+  private func publish(to token: UUID) {
+    guard let (id, continuation) = feeds[token] else { return }
+    if let id {
+      guard let view = threads[id] else {
+        continuation.finish(
+          throwing: ConversationFeedEnded(reason: .refused, code: "conversation_not_found"))
+        feeds.removeValue(forKey: token)
+        return
+      }
+      if let cursor = try? ConversationCursor(
+        incarnation: incarnation, position: String(revisions[id] ?? 0))
+      {
+        continuation.yield(.view(cursor, view))
+      }
+    } else {
+      continuation.yield(.list(NessaConversationList(conversations: summaries, complete: true)))
+    }
+  }
+  private func changed(_ id: String) {
+    revisions[id, default: 0] += 1
+    for token in Array(feeds.keys) where feeds[token]?.0 == nil || feeds[token]?.0 == id {
+      publish(to: token)
+    }
+  }
   private var connected = false
   private var generation = 0
   private var images: [String: Data] = [:]
@@ -72,6 +114,11 @@ public actor MockRepository: MessagingRepository, AgentDirectory {
     connected = true
   }
   public func disconnect() {
+    let continuations = feeds.values.map { $0.1 }
+    feeds.removeAll()
+    for continuation in continuations {
+      continuation.finish(throwing: NessaGatewayError.disconnected)
+    }
     generation += 1
     connected = false
   }
@@ -100,6 +147,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory {
       NessaConversation(
         conversationId: id, title: "Nessa", preview: "New conversation",
         updatedAtMs: Date().timeIntervalSince1970 * 1000, running: false), at: 0)
+    changed(id)
     return id
   }
   @discardableResult
@@ -131,6 +179,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory {
         conversationId: conversationID, title: title,
         preview: text.isEmpty ? "Photo" : text,
         updatedAtMs: Date().timeIntervalSince1970 * 1000, running: true), at: 0)
+    changed(conversationID)
     let expectedGeneration = generation
     let executionID = turn.id
     Task {
@@ -163,6 +212,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory {
           preview: "I’m here. Tell me a little more about that.", updatedAtMs: summary.updatedAtMs,
           running: messages.contains { $0.status == "running" })
       }
+      changed(conversationID)
     }
     return executionID
   }
@@ -170,6 +220,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory {
     _ = try read(conversationID)
     threads.removeValue(forKey: conversationID)
     summaries.removeAll { $0.id == conversationID }
+    changed(conversationID)
   }
   public func answer(
     _ permission: NessaPermission, option: NessaPermission.Option, conversationID: String

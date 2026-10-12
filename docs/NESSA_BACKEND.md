@@ -157,8 +157,9 @@ failure refreshes the authoritative list, preserves a confirmed deletion, or
 restores a still-present chat and shows the error. Stale reads and list snapshots
 cannot expose pending rows. This is a pending-command projection, not an
 implementation of the sync-engine receiver protocol. Direct replication/offline
-sync remains unwired in the phone; the live adapter still uses product requests
-and polling.
+sync remains unwired in the phone. The live adapter now follows bounded product
+replacement-view/list subscriptions; durable retained progress is a separate
+integration described in [the sync plan](sync/PLAN.md).
 
 The agent prompt section now appears only for a nonempty prompt supplied by the
 selected agent's profile. The current gateway `AgentOption` contract exposes
