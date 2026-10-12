@@ -2,7 +2,7 @@
 
 The gateway bridge is published in
 [#789](https://github.com/nessalabs/nessa-agent/pull/789). The native API at
-`9f155528064076460ee3c82a61f1a168852ff4a6` passed independent review of its passive
+`82d143804a8b923840fa3f9608dc4b01453dcbae` passed independent review of its passive
 correlation/cursor and admitted capture extension, following the reviewed bridge
 at `69499fe7890f4d2ee6f2d358e3db4a2a9bf76347`. Its library
 and Swift worker have run against paired records, offline reopen, restart and
@@ -56,7 +56,7 @@ the original authenticated principal/membership. Owner status includes exact
 invitation/consent/generation/class, claimed key, credential and receiver. The
 native API exports phase/credential/receiver/disclosed scope and exact public
 invitation/attempt/consent/generation/expiry/class correlation. Claimed-key
-correlation still needs export through its admitted local owner. Do not reconstruct these selectors in
+correlation is exported through its admitted local owner. Do not reconstruct these selectors in
 Swift or treat a manually supplied code as proof of a product-owner relationship.
 
 Only the existing gateway policy decides whether a credential may manage pairing
@@ -292,3 +292,26 @@ matching exposes the replacement identity and fails the regression; discarding
 the captured publication also fails. The restored cases pass. This supplies the
 authenticated product input for enrollment correlation, not the native profile
 binding or retained repository by itself.
+
+## Local enrollment correlation in the application
+
+The package at 82d1438 and `RetainedSession.localEnrollment()` publish immutable
+saved public intent, device key and pinned gateway SPKI bytes, plus the optional
+issued credential/receiver pair. Swift preserves these bytes as Data and compares
+opaque issued selectors by UTF-8. It adds no secret extraction, private record,
+key conversion, path policy or read authority. Success capture stays inside the
+existing native worker admission; storage/closed/cancellation failures use the
+same typed mapping, with nil reserved for an absent local record.
+
+The complete 138-test application suite and seven distribution regressions pass.
+All new passive fields and pending/issued alternatives are checked independently
+off UI. Deliberately reversing key bytes or using canonical String equality fails
+the corresponding regression; restored source passes. Actual application paired
+first/offline/restarted/terminal/epoch stages pass with key and credential compared
+to authenticated gateway owner evidence. Revocation removes local enrollment and
+reopening preserves that absence alongside the historical purge receipt.
+The normally signed simulator app passes local-empty capture and the existing
+open/status/cursor/NoCredential/closed/reopen check; both existing chats survive.
+The generic Release device build links successfully. Device execution remains
+unverified. This remains input for the persisted profile/account coordinator;
+production chat history still uses the previous product-view repository path.

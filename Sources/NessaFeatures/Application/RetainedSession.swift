@@ -76,6 +76,8 @@ public struct RetainedTranscript: Equatable, Sendable {
 }
 
 public protocol RetainedSession: Sendable {
+  /// Historical local correlation; current gateway evidence must establish authority.
+  func localEnrollment() async throws -> RetainedLocalEnrollment?
   func enroll(code: String) async throws -> RetainedEnrollmentReceipt
   func retry(code: String) async throws -> RetainedRetry
   func status() async throws -> RetainedStatus

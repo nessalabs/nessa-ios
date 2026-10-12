@@ -1121,6 +1121,11 @@ public protocol NativeDeviceSessionProtocol: AnyObject, Sendable {
     func enroll(code: String) throws  -> NativeEnrollmentReceipt
     
     /**
+     * Capture current local public correlation under the same physical admission.
+     */
+    func localEnrollment() throws  -> NativeLocalEnrollment?
+    
+    /**
      * Historical receipt recovery can select the prior receiver after key removal.
      */
     func purgeReceipt(receiver: String) throws  -> NativePurge?
@@ -1258,6 +1263,18 @@ open func enroll(code: String)throws  -> NativeEnrollmentReceipt  {
     uniffi_nessa_device_client_fn_method_nativedevicesession_enroll(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(code),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Capture current local public correlation under the same physical admission.
+     */
+open func localEnrollment()throws  -> NativeLocalEnrollment?  {
+    return try  FfiConverterOptionTypeNativeLocalEnrollment.lift(try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativedevicesession_local_enrollment(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -2074,6 +2091,332 @@ public func FfiConverterTypeNativeEntryKey_lift(_ handle: UInt64) throws -> Nati
 #endif
 public func FfiConverterTypeNativeEntryKey_lower(_ value: NativeEntryKey) -> UInt64 {
     return FfiConverterTypeNativeEntryKey.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Locally saved public correlation, to be checked against authenticated owner status.
+ */
+public protocol NativeLocalEnrollmentProtocol: AnyObject, Sendable {
+    
+    /**
+     * Public DeviceKey bytes in the existing pairing owner's representation.
+     */
+    func deviceKey()  -> Data
+    
+    /**
+     * Saved gateway SPKI authenticated by enrollment.
+     */
+    func gatewayPin()  -> Data
+    
+    /**
+     * Issued selectors together, absent while the private record is pending.
+     */
+    func issued()  -> NativeLocalIssuedEnrollment?
+    
+    /**
+     * Saved invitation/attempt/consent metadata, not an approval claim.
+     */
+    func publicIntent()  -> NativePublicIntent
+    
+}
+/**
+ * Locally saved public correlation, to be checked against authenticated owner status.
+ */
+open class NativeLocalEnrollment: NativeLocalEnrollmentProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativelocalenrollment(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativelocalenrollment(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Public DeviceKey bytes in the existing pairing owner's representation.
+     */
+open func deviceKey() -> Data  {
+    return try!  FfiConverterData.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativelocalenrollment_device_key(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Saved gateway SPKI authenticated by enrollment.
+     */
+open func gatewayPin() -> Data  {
+    return try!  FfiConverterData.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativelocalenrollment_gateway_pin(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Issued selectors together, absent while the private record is pending.
+     */
+open func issued() -> NativeLocalIssuedEnrollment?  {
+    return try!  FfiConverterOptionTypeNativeLocalIssuedEnrollment.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativelocalenrollment_issued(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Saved invitation/attempt/consent metadata, not an approval claim.
+     */
+open func publicIntent() -> NativePublicIntent  {
+    return try!  FfiConverterTypeNativePublicIntent_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativelocalenrollment_public_intent(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeLocalEnrollment: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeLocalEnrollment
+
+    public static func lift(_ handle: UInt64) throws -> NativeLocalEnrollment {
+        return NativeLocalEnrollment(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeLocalEnrollment) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeLocalEnrollment {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeLocalEnrollment, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeLocalEnrollment_lift(_ handle: UInt64) throws -> NativeLocalEnrollment {
+    return try FfiConverterTypeNativeLocalEnrollment.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeLocalEnrollment_lower(_ value: NativeLocalEnrollment) -> UInt64 {
+    return FfiConverterTypeNativeLocalEnrollment.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Locally saved issued selectors. This historical pair is not read authority.
+ */
+public protocol NativeLocalIssuedEnrollmentProtocol: AnyObject, Sendable {
+    
+    /**
+     * Original saved issued credential identity.
+     */
+    func credential()  -> String
+    
+    /**
+     * Original saved receiver associated with that credential.
+     */
+    func receiver()  -> String
+    
+}
+/**
+ * Locally saved issued selectors. This historical pair is not read authority.
+ */
+open class NativeLocalIssuedEnrollment: NativeLocalIssuedEnrollmentProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativelocalissuedenrollment(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativelocalissuedenrollment(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Original saved issued credential identity.
+     */
+open func credential() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativelocalissuedenrollment_credential(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original saved receiver associated with that credential.
+     */
+open func receiver() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativelocalissuedenrollment_receiver(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeLocalIssuedEnrollment: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeLocalIssuedEnrollment
+
+    public static func lift(_ handle: UInt64) throws -> NativeLocalIssuedEnrollment {
+        return NativeLocalIssuedEnrollment(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeLocalIssuedEnrollment) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeLocalIssuedEnrollment {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeLocalIssuedEnrollment, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeLocalIssuedEnrollment_lift(_ handle: UInt64) throws -> NativeLocalIssuedEnrollment {
+    return try FfiConverterTypeNativeLocalIssuedEnrollment.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeLocalIssuedEnrollment_lower(_ value: NativeLocalIssuedEnrollment) -> UInt64 {
+    return FfiConverterTypeNativeLocalIssuedEnrollment.lower(value)
 }
 
 
@@ -7107,6 +7450,54 @@ fileprivate struct FfiConverterOptionTypeNativeEntryKey: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeNativeLocalEnrollment: FfiConverterRustBuffer {
+    typealias SwiftType = NativeLocalEnrollment?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeLocalEnrollment.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeLocalEnrollment.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativeLocalIssuedEnrollment: FfiConverterRustBuffer {
+    typealias SwiftType = NativeLocalIssuedEnrollment?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeLocalIssuedEnrollment.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeLocalIssuedEnrollment.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeNativePrivateStateFailure: FfiConverterRustBuffer {
     typealias SwiftType = NativePrivateStateFailure?
 
@@ -7676,6 +8067,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_enroll() != 10563) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_local_enrollment() != 22862) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_purge_receipt() != 16920) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -7734,6 +8128,24 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativeentrykey_id() != 47163) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativelocalenrollment_device_key() != 55450) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativelocalenrollment_gateway_pin() != 482) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativelocalenrollment_issued() != 24267) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativelocalenrollment_public_intent() != 24202) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativelocalissuedenrollment_credential() != 24948) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativelocalissuedenrollment_receiver() != 20606) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativepublicintent_attempt() != 60912) {

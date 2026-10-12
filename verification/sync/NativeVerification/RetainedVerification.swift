@@ -41,8 +41,11 @@ enum RetainedVerification {
           } catch RetainedSessionError.session(let failure) {
             try require(failure.kind == .noCredential, "wrong terminal read refusal")
           }
+          try require(try await session.localEnrollment() == nil, "terminal kept local record")
           try await session.close()
           let reopened = try await factory.open(location)
+          try require(
+            try await reopened.localEnrollment() == nil, "reopen restored ended enrollment")
           let persisted = try await reopened.purgeReceipt(receiver: receiver)
           try require(persisted == recovered, "restart lost historical purge receipt")
           try await reopened.close()
@@ -80,6 +83,19 @@ enum RetainedVerification {
           }
         }
       }
+      guard let local = try await session.localEnrollment(), let issued = local.issued else {
+        throw Failure.assertion("missing local issued correlation")
+      }
+      let expected = ProcessInfo.processInfo.environment["NESSA_NATIVE_EXPECTED_DEVICE_KEY"] ?? ""
+      let actual = local.deviceKey.map { String(format: "%02x", $0) }.joined()
+      try require(expected.count == 64 && actual == expected, "local key differs from claimed key")
+      try require(
+        issued.credential.utf8.elementsEqual(
+          (ProcessInfo.processInfo.environment["NESSA_NATIVE_EXPECTED_CREDENTIAL_ID"] ?? "").utf8)
+          && issued.receiver.utf8.elementsEqual(receiver.utf8), "foreign local issued selectors")
+      try require(
+        local.gatewayPin.count == 44 && local.publicIntent.consentClass == .deviceRead,
+        "lost native pin or consent class")
       guard let page = try await session.cataloguePage(after: nil, maximum: 16) else {
         throw Failure.assertion("missing retained catalogue")
       }
@@ -135,6 +151,7 @@ enum RetainedVerification {
         throw Failure.assertion("closed session admitted status")
       } catch RetainedSessionError.closed {}
       let reopened = try await factory.open(location)
+      try require(try await reopened.localEnrollment() == local, "reopen changed local correlation")
       let saved = try await reopened.transcript(conversation: conversation, revision: revision)
       try require(
         saved.scope == transcript.scope && saved.downloaded == transcript.downloaded
@@ -160,6 +177,15 @@ private struct RetainedFactorySubstitute: RetainedSessionFactory {
   }
 }
 private struct RetainedSessionSubstitute: RetainedSession {
+  func localEnrollment() async throws -> RetainedLocalEnrollment? {
+    .init(
+      publicIntent: .init(
+        attempt: Data(repeating: 1, count: 16), consent: Data(repeating: 2, count: 16),
+        consentClass: .deviceRead, expiryMs: UInt64.max, generation: UInt64.max,
+        invitation: Data(repeating: 3, count: 16)),
+      deviceKey: Data(repeating: 4, count: 32), gatewayPin: Data(repeating: 5, count: 44),
+      issued: .init(credential: "credential", receiver: "receiver"))
+  }
   func enroll(code: String) async throws -> RetainedEnrollmentReceipt {
     throw RetainedSessionError.cancelled
   }

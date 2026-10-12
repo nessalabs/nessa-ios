@@ -303,6 +303,36 @@ public struct RetainedPublicIntent: Equatable, Sendable {
   }
 }
 
+/// Public facts from the existing private enrollment record. Not current read authority.
+public struct RetainedLocalEnrollment: Equatable, Sendable {
+  public let publicIntent: RetainedPublicIntent
+  public let deviceKey: Data
+  public let gatewayPin: Data
+  public let issued: RetainedLocalIssuedEnrollment?
+  public init(
+    publicIntent: RetainedPublicIntent, deviceKey: Data, gatewayPin: Data,
+    issued: RetainedLocalIssuedEnrollment?
+  ) {
+    self.publicIntent = publicIntent
+    self.deviceKey = deviceKey
+    self.gatewayPin = gatewayPin
+    self.issued = issued
+  }
+}
+
+public struct RetainedLocalIssuedEnrollment: Equatable, Sendable {
+  public let credential: String
+  public let receiver: String
+  public init(credential: String, receiver: String) {
+    self.credential = credential
+    self.receiver = receiver
+  }
+  public static func == (lhs: Self, rhs: Self) -> Bool {
+    RetainedTextEquality.equal(lhs.credential, rhs.credential)
+      && RetainedTextEquality.equal(lhs.receiver, rhs.receiver)
+  }
+}
+
 public struct RetainedPublicationFailure: Equatable, Sendable {
   public let cleanup: RetainedStorageFailure?
   public let effect: RetainedPublicationEffect

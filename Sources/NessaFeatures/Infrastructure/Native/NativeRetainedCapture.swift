@@ -274,6 +274,18 @@ enum NativeRetainedCapture {
     )
   }
 
+  static func capture(_ value: any NativeLocalEnrollmentProtocol) -> RetainedLocalEnrollment {
+    RetainedLocalEnrollment(
+      publicIntent: capture(value.publicIntent()), deviceKey: value.deviceKey(),
+      gatewayPin: value.gatewayPin(), issued: value.issued().map { capture($0) })
+  }
+
+  static func capture(_ value: any NativeLocalIssuedEnrollmentProtocol)
+    -> RetainedLocalIssuedEnrollment
+  {
+    RetainedLocalIssuedEnrollment(credential: value.credential(), receiver: value.receiver())
+  }
+
   static func capture(_ value: any NativePublicationFailureProtocol) -> RetainedPublicationFailure {
     RetainedPublicationFailure(
       cleanup: value.cleanup().map { capture($0) },

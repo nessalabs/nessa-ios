@@ -755,3 +755,51 @@ final class FixtureNativeWireFailure: NativeWireFailure, @unchecked Sendable {
     return stored_kind
   }
 }
+
+final class FixtureNativeLocalIssuedEnrollment: NativeLocalIssuedEnrollment, @unchecked Sendable {
+  let stored_credential: String
+  let stored_receiver: String
+  init(credential: String = "  credential  ", receiver: String = "receiver") {
+    stored_credential = credential
+    stored_receiver = receiver
+    super.init(noHandle: .init())
+  }
+  required init(unsafeFromHandle handle: UInt64) { fatalError("fixture cannot be lowered") }
+  override func credential() -> String {
+    precondition(!Thread.isMainThread)
+    return stored_credential
+  }
+  override func receiver() -> String {
+    precondition(!Thread.isMainThread)
+    return stored_receiver
+  }
+}
+
+final class FixtureNativeLocalEnrollment: NativeLocalEnrollmentProtocol, @unchecked Sendable {
+  let stored_deviceKey: Data
+  let stored_gatewayPin: Data
+  let stored_issued: NativeLocalIssuedEnrollment?
+  let stored_publicIntent: NativePublicIntent
+  init(issued: NativeLocalIssuedEnrollment? = nil) {
+    stored_deviceKey = Data((0..<32).map(UInt8.init))
+    stored_gatewayPin = Data((32..<76).map(UInt8.init))
+    stored_issued = issued
+    stored_publicIntent = FixtureNativePublicIntent()
+  }
+  func deviceKey() -> Data {
+    precondition(!Thread.isMainThread)
+    return stored_deviceKey
+  }
+  func gatewayPin() -> Data {
+    precondition(!Thread.isMainThread)
+    return stored_gatewayPin
+  }
+  func issued() -> NativeLocalIssuedEnrollment? {
+    precondition(!Thread.isMainThread)
+    return stored_issued
+  }
+  func publicIntent() -> NativePublicIntent {
+    precondition(!Thread.isMainThread)
+    return stored_publicIntent
+  }
+}

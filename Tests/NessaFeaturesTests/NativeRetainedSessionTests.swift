@@ -95,6 +95,7 @@ private let completeJSON = """
     root: root.path, directory: "session", address: "127.0.0.1:9")
   let factory: any RetainedSessionFactory = NativeRetainedSessionFactory()
   let session = try await factory.open(location)
+  #expect(try await session.localEnrollment() == nil)
   let status = try await session.status()
   #expect(!status.completionCaptured && status.failure?.kind == .io && !status.purgeAttempted)
   #expect(status.receipt == nil && status.purge == nil && status.purgeFailure == nil)
@@ -114,7 +115,9 @@ private let completeJSON = """
   close.cancel()
   try await close.value
   await #expect(throws: RetainedSessionError.closed) { try await session.status() }
+  await #expect(throws: RetainedSessionError.closed) { try await session.localEnrollment() }
   let reopened = try await factory.open(location)
+  #expect(try await reopened.localEnrollment() == nil)
   try await reopened.close()
   let files = try FileManager.default.contentsOfDirectory(
     atPath: root.appendingPathComponent("session").path)

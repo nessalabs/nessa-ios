@@ -31,6 +31,11 @@ private final class NativeRetainedSession: RetainedSession {
   private let worker: NativeSessionWorker
   init(worker: NativeSessionWorker) { self.worker = worker }
 
+  func localEnrollment() async throws -> RetainedLocalEnrollment? {
+    try await NativeRetainedExecutor.run { [worker] in
+      try await worker.localEnrollment(capture: { $0.map { NativeRetainedCapture.capture($0) } })
+    }
+  }
   func enroll(code: String) async throws -> RetainedEnrollmentReceipt {
     try await NativeRetainedExecutor.run { [worker] in
       try await worker.enroll(code: code, capture: { NativeRetainedCapture.capture($0) })

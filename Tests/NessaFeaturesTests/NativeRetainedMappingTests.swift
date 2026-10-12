@@ -82,6 +82,26 @@ private func fields(_ value: Any, path: String = "") -> [String: String] {
   }.value
 }
 
+@Test func retainedLocalEnrollmentPreservesAllPublicFactsAndOptionalIssuedPair() async {
+  await Task.detached {
+    let issued = FixtureNativeLocalIssuedEnrollment()
+    #expect(fields(NativeRetainedCapture.capture(issued)) == fields(issued))
+    for local in [
+      FixtureNativeLocalEnrollment(),
+      FixtureNativeLocalEnrollment(issued: FixtureNativeLocalIssuedEnrollment()),
+    ] {
+      #expect(fields(NativeRetainedCapture.capture(local)) == fields(local))
+    }
+    let composed = "é"
+    let decomposed = "e\u{301}"
+    #expect(composed == decomposed)
+    let value = RetainedLocalIssuedEnrollment(credential: composed, receiver: composed)
+    #expect(value != .init(credential: decomposed, receiver: composed))
+    #expect(value != .init(credential: composed, receiver: decomposed))
+    #expect(value == .init(credential: composed, receiver: composed))
+  }.value
+}
+
 @Test func retainedBoundaryPreservesEveryPinnedEnumVariant() {
   for value: NativeAttemptFailure in [
     .invalidProof, .connectionClosed, .handshakeDeadline, .verifierUnavailable,

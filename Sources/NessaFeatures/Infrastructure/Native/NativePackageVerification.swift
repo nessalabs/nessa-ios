@@ -13,6 +13,10 @@
         let worker = try await NativeSessionWorker.open(
           root: root, directory: directory, address: address)
         do {
+          let absent = try await worker.localEnrollment(capture: { value in
+            !Thread.isMainThread && value == nil
+          })
+          guard absent else { throw Failure.expectedCapturedStatusAndCursor }
           let captured = try await worker.status(capture: { status in
             let cursor = try NativeEntryKey(creation: UInt64.max, id: "  saved-id  ")
             do {
