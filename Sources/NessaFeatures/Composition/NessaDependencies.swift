@@ -9,6 +9,8 @@ import Foundation
   public let preferences: any ChatPreferences
   public let retainedSessions: (any RetainedSessionFactory)?
   public let phoneSync: (any PhoneSyncRunning)?
+  public let conversationSharing: PhoneConversationSharing?
+  public let conversationDeletion: PhoneConversationDeletion?
   private let snapshots: PhoneSnapshotSession
   private let recovery: ConnectionRecovery
   private let speechFactory: @MainActor () -> any SpeechTranscribing
@@ -20,7 +22,9 @@ import Foundation
     speechFactory: (@MainActor () -> any SpeechTranscribing)? = nil,
     snapshots: PhoneSnapshotSession? = nil, recovery: ConnectionRecovery? = nil,
     retainedSessions: (any RetainedSessionFactory)? = nil,
-    phoneSync: (any PhoneSyncRunning)? = nil
+    phoneSync: (any PhoneSyncRunning)? = nil,
+    shareIntents: (any PhoneConversationShareIntentStoring)? = nil,
+    deletionIntents: (any PhoneDeletionIntentStoring)? = nil
   ) {
     self.mode = mode
     self.service = MessagingService(
@@ -54,6 +58,23 @@ import Foundation
         })
     } else {
       self.phoneSync = nil
+    }
+    if let sync = self.phoneSync, repository is any GatewayConversationSharingProviding {
+      let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Nessa/PhoneProfiles", isDirectory: true)
+      self.conversationSharing = PhoneConversationSharing(
+        product: self.service, sync: sync,
+        store: shareIntents ?? PhoneConversationShareIntentStore(root: root))
+    } else {
+      self.conversationSharing = nil
+    }
+    if mode == .live, repository is any GatewayConversationDeleting {
+      let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Nessa/PhoneProfiles", isDirectory: true)
+      self.conversationDeletion = PhoneConversationDeletion(
+        product: self.service, store: deletionIntents ?? PhoneDeletionIntentStore(root: root))
+    } else {
+      self.conversationDeletion = nil
     }
     self.recovery = recovery ?? ConnectionRecovery(waiting: SystemRecoveryWait())
     self.launchConnection = launchConnection
@@ -99,7 +120,8 @@ import Foundation
   public func makeMessagesViewModel() -> MessagesViewModel {
     MessagesViewModel(
       service: service, credentials: credentials, preferences: preferences,
-      snapshots: snapshots, recovery: recovery, phoneSync: phoneSync)
+      snapshots: snapshots, recovery: recovery, phoneSync: phoneSync,
+      conversationSharing: conversationSharing)
   }
   private static func liveRepository() -> NessaGatewayClient {
     NessaGatewayClient(journal: PhoneCommandJournal(store: PhoneCommandStore()))

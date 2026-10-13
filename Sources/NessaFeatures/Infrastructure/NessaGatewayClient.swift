@@ -137,7 +137,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
         "pairing.pending", params: Empty(), schema: nil, on: lease)
     return .init(source: source, value: value.values)
   }
-  private func pairing<P: Encodable, R: Decodable>(
+  func pairing<P: Encodable, R: Decodable>(
     _ method: String, params: P, schema: String?, on lease: GatewayConnectionLease
   ) async throws -> (AuthenticatedGatewaySession, R) {
     let source = try authenticatedSession(for: lease)

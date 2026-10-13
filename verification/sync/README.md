@@ -102,3 +102,20 @@ real gateway's pairing capability without creating or approving an invitation:
 
 A typed capability/configuration refusal is reported as observed evidence. This
 read-only check does not broaden grants or substitute a different credential.
+
+
+Read-only diagnostics for an explicitly selected isolated gateway and native
+profile:
+
+```sh
+.build/debug/PhoneSyncVerification --owner-list ws://127.0.0.1:19743/session /absolute/path/to/test-panel.token original-instance
+.build/debug/PhoneSyncVerification --pairing-inspect ws://127.0.0.1:19743/session /absolute/path/to/test-panel.token
+.build/debug/PhoneSyncVerification --retained-inspect /absolute/sandbox/root NativeProfiles/profile-uuid 127.0.0.1:19744 conversation-uuid
+```
+
+These print public identities and retained observations, never the product token
+or native private key. The native inspection reads cached state without refresh;
+background and physically close the app's native owner first. Never open the
+same private directory concurrently. An empty owner list does not prove no
+sessions exist: the product list excludes chats without a summary. Native
+`notLoaded` is recorded as such, not converted to an empty readable transcript.

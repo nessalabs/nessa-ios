@@ -5,6 +5,8 @@ indirect enum GatewayWireRule: Sendable {
   case object([String: GatewayWireRule], required: Set<String>)
   case reference(String)
   case string(minimum: Int, maximum: Int?, allowed: Set<String>?)
+  case constrainedText(
+    minimum: Int, maximum: Int?, bytes: Int?, allowed: Set<String>?, pattern: String?)
   case integer(minimum: UInt64, maximum: UInt64?)
   case array(minimum: Int, maximum: Int?, item: GatewayWireRule)
   case nullable(GatewayWireRule)
@@ -31,6 +33,20 @@ indirect enum GatewayWireRule: Sendable {
       guard length >= minimum, maximum.map({ length <= $0 }) ?? true,
         allowed.map({ $0.contains(value) }) ?? true
       else { throw NessaGatewayError.invalidFrame }
+    case .constrainedText(let minimum, let maximum, let bytes, let allowed, let pattern):
+      let value = try decoder.singleValueContainer().decode(String.self)
+      let length = value.unicodeScalars.count
+      guard length >= minimum, maximum.map({ length <= $0 }) ?? true,
+        bytes.map({ value.utf8.count <= $0 }) ?? true,
+        allowed.map({ $0.contains(value) }) ?? true
+      else { throw NessaGatewayError.invalidFrame }
+      if let pattern {
+        let regex = try NSRegularExpression(pattern: pattern)
+        let range = NSRange(value.startIndex..<value.endIndex, in: value)
+        guard regex.firstMatch(in: value, range: range)?.range == range else {
+          throw NessaGatewayError.invalidFrame
+        }
+      }
     case .integer(let minimum, let maximum):
       let value = try decoder.singleValueContainer().decode(UInt64.self)
       guard value >= minimum, maximum.map({ value <= $0 }) ?? true else {

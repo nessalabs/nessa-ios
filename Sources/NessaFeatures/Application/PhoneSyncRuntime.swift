@@ -33,12 +33,25 @@ public struct PhoneSyncRuntimeFailure: Error, Sendable {
   }
 }
 public protocol PhoneSyncRunning: PhoneProfileCoordinating {
+  func passiveStartup() async throws -> PhoneSyncStartup?
+  func passiveDisplay(conversations: [String], revision: UUID) async throws -> PhoneRetainedDisplay
   func startup() async throws -> PhoneSyncStartup?
   func savedProfiles() async throws -> PhoneProfiles?
   func display(on lease: GatewayConnectionLease?, conversations: [String], revision: UUID)
     async throws -> PhoneRetainedDisplay
   /// Temporary physical drain. Only actual success permits a new child on foreground.
   func suspend() async throws
+}
+
+extension PhoneSyncRunning {
+  public func passiveStartup() async throws -> PhoneSyncStartup? {
+    throw PhoneSyncRuntimeRefusal.unavailable
+  }
+  public func passiveDisplay(conversations: [String], revision: UUID) async throws
+    -> PhoneRetainedDisplay
+  {
+    throw PhoneSyncRuntimeRefusal.unavailable
+  }
 }
 
 /// Application lifetime owns the child; Rust remains the owner of retained state and permission.
@@ -65,6 +78,56 @@ public actor PhoneSyncRuntime: PhoneSyncRunning {
   deinit {
     if let child { Task.detached { try await child.close() } }
   }
+  public func passiveStartup() async throws -> PhoneSyncStartup? {
+    try await perform { runtime, token, child in
+      guard let snapshot = try await child.passiveRestore() else {
+        guard try await runtime.profiles.load() == nil else {
+          throw PhoneSyncRuntimeRefusal.changed
+        }
+        try runtime.check(token)
+        runtime.selected = nil
+        return nil
+      }
+      runtime.observed = snapshot
+      runtime.selected = snapshot
+      try runtime.check(token)
+      let connection: PhoneProductConnection?
+      if snapshot.profile.phase == .prepared && !snapshot.profile.hasRetirementEvidence {
+        let credential = try await runtime.credentials.load(
+          reference: snapshot.profile.credentialReference)
+        try runtime.check(token)
+        connection = .init(
+          address: snapshot.profile.productAddress, credential: credential,
+          instance: snapshot.profile.instance)
+      } else {
+        connection = nil
+      }
+      guard try await runtime.profiles.load() == snapshot.registry else {
+        throw PhoneSyncRuntimeRefusal.changed
+      }
+      try runtime.check(token)
+      return .init(snapshot: snapshot, connection: connection)
+    }
+  }
+
+  public func passiveDisplay(conversations: [String], revision: UUID) async throws
+    -> PhoneRetainedDisplay
+  {
+    try await perform { runtime, token, child in
+      guard let selected = runtime.selected,
+        try await runtime.profiles.load() == selected.registry
+      else { throw PhoneSyncRuntimeRefusal.changed }
+      let result = try await child.passiveDisplay(conversations: conversations, revision: revision)
+      runtime.observed = result.snapshot
+      guard result.snapshot.registry == selected.registry, result.snapshot.source == nil,
+        result.snapshot.nativeRefresh == nil,
+        try await runtime.profiles.load() == selected.registry
+      else { throw PhoneSyncRuntimeRefusal.changed }
+      try runtime.check(token)
+      return result
+    }
+  }
+
   public func startup() async throws -> PhoneSyncStartup? {
     try await perform { runtime, token, child in
       guard let snapshot = try await child.restore() else {

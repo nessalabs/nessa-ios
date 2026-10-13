@@ -1,7 +1,9 @@
 import Foundation
 
 /// Application use cases. Repository selection is supplied by the composition root.
-public struct MessagingService: Sendable {
+public struct MessagingService: Sendable, GatewayConversationSharingProviding,
+  GatewayConversationDeleting
+{
   private let repository: any MessagingRepository
   private let directory: (any AgentDirectory)?
   public init(repository: any MessagingRepository, directory: (any AgentDirectory)? = nil) {
@@ -28,6 +30,45 @@ public struct MessagingService: Sendable {
       throw NessaGatewayError.incompatibleProtocol
     }
     return try await pairing.pendingPairings(on: lease)
+  }
+  private func sharingPort() throws -> any GatewayConversationSharingProviding {
+    guard let port = repository as? any GatewayConversationSharingProviding else {
+      throw NessaGatewayError.incompatibleProtocol
+    }
+    return port
+  }
+  public func ownerConversationChoices(on lease: GatewayConnectionLease) async throws
+    -> PhoneConversationShareReceipt<NessaConversationList>
+  {
+    try await sharingPort().ownerConversationChoices(on: lease)
+  }
+  public func conversationShares(_ id: String, on lease: GatewayConnectionLease) async throws
+    -> PhoneConversationShareReceipt<[PhoneConversationShare]>
+  {
+    try await sharingPort().conversationShares(id, on: lease)
+  }
+  public func setConversationRead(
+    _ intent: PhoneConversationShareIntent, on lease: GatewayConnectionLease
+  )
+    async throws -> PhoneConversationShareReceipt<PhoneConversationShareAcknowledgment>
+  {
+    try await sharingPort().setConversationRead(intent, on: lease)
+  }
+  private func deletionPort() throws -> any GatewayConversationDeleting {
+    guard let port = repository as? any GatewayConversationDeleting else {
+      throw NessaGatewayError.incompatibleProtocol
+    }
+    return port
+  }
+  public func deleteConversation(_ intent: PhoneDeletionIntent, on lease: GatewayConnectionLease)
+    async throws -> PhoneDeletionReceipt<PhoneDeletionAcknowledgment>
+  {
+    try await deletionPort().deleteConversation(intent, on: lease)
+  }
+  public func observeDeletion(_ id: String, on lease: GatewayConnectionLease) async throws
+    -> PhoneDeletionReceipt<PhoneDeletionObservation>
+  {
+    try await deletionPort().observeDeletion(id, on: lease)
   }
   @discardableResult
   public func connect(address: String, credential: String, instance: String) async throws

@@ -96,6 +96,7 @@ struct ReplyThreadView: View {
             connected: store.connected,
             attachmentPolicy: store.attachmentPolicy,
             submissionAllowed: store.canSubmit(in: conversationID),
+            submissionUnavailableReason: store.submissionUnavailableReason(in: conversationID),
             placeholder: "Reply", autoFocus: true,
             onSend: {
               nearBottom = true

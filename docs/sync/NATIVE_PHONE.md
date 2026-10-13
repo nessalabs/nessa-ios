@@ -509,3 +509,76 @@ evidence, not physical-device execution.
 Explicit pairing controls and a configured native-enabled gateway run are still
 required. Backlog/catch-up behavior, actual paired latency, artifacts, uncertain
 deletion and physical-device failures remain part of the original goal.
+
+
+## Reviewed setup and sharing foundation
+
+The public setup facade uses the same view-model-owned settlement and physical
+drain fences as normal chat. A dismissed
+sheet or canceled observer does not abandon an admitted operation. Captured
+account, profile and product lease are checked across suspension; actual failure
+snapshots and typed causes remain available for recovery. The verification sheet displayed the
+exact approval key, consent, receiver, terminal cause and cleanup still owed in
+the original verification UI. Normal Settings no longer expose that control plane.
+
+Pairing activation and conversation sharing are distinct. The gateway currently
+syncs no conversations by default. The original leased owner picker showed only the
+product's returned metadata; it is never merged into native retained history.
+Empty owner chats without a summary are omitted by that list. The original
+verification UI provided an explicit action for its captured created identity;
+the user subsequently requested removal of that action and the settings picker.
+Local creation does not fabricate a native empty transcript or enable Send.
+
+Application sharing actions correlate fresh owner status, exact issued device
+credential/receiver and local enrollment. A bounded protected intent captures
+one original request/profile/owner credential namespace/device/conversation
+before dispatch. Lost replies expose Check current sharing and Retry original
+request; neither reconnect nor a current grants query invents a delivery receipt.
+An exact old share retry cannot regrant after a later unshare. Observed existing
+access skips mutation. A new Read action has no compare-and-set guarantee and
+can replace a concurrent role change; it is not an owner-wide phone authorization.
+
+The intended first-party phone capability grants read/write access to current and
+future owned chats once. Gateway issue #811 tracks its separate consent and
+receiver authority. Existing paired-device grants remain unchanged; hiding a UI
+control cannot implement that capability.
+
+Only the existing native command-ready contract and a positively admitted
+selected transcript allow Send. Positive partial native progress remains usable
+under that contract; incomplete traversal alone is not a refusal. Full source
+review, deterministic ordering tests and platform builds pass. Actual activation
+is verified in an isolated simulator; post-share normal-app experiments remain
+pending. Physical-device, artifacts and deletion recovery are separate gates.
+
+## Matching gateway package
+
+Current package provenance and generated product schema pin gateway
+`b4d9e9083956459fab38bd71b677a910561758b8`. The ready method limit is 67; an
+expanded handshake beyond that published bound is refused. The former 65-method
+package refused this gateway before its first retained read. Matching-package
+paired lifecycle and Note-bearing snapshot reload checks pass. These are native
+decoding/lifecycle checks, not evidence that the app renders notes or that
+owner-wide first-party phone authorization exists.
+
+## Persistent local disconnect
+
+Normal Settings show connection status and Disconnect, or saved Connect.
+Disconnect persists local automatic-off before retiring the captured physical
+owners. It retains the credential and cache and does not remotely revoke the
+device. Foreground and cold startup honor that preference; only explicit Connect
+re-enables network recovery.
+
+Passive startup/display use protected local enrollment, historical purge receipt,
+and retained catalogue/transcript cache ports. They perform no status, refresh,
+or dial and cannot enable commands. A purge receipt remains recoverable when
+local enrollment was unlinked. Adopting a changed or retired protected profile
+clears the previous display owner before loading its successor, including failure
+metadata paths. Catalogue and transcript streams retain their own stream,
+incarnation, schema and generation; only common receiver/origin/access epoch are
+correlated across them.
+
+Independent review, 300 tests, seven semantic reversals, and platform builds pass.
+The isolated simulator verifies connected settings, local disconnect across a
+cold restart, and explicit saved reconnect. These checks do not implement the
+owner-wide read/write authorization or demonstrate a first native Send on a new
+empty chat. That gateway/application change is tracked separately in #811.

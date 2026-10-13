@@ -27,13 +27,20 @@ struct MessageComposer: View {
   let connected: Bool
   let attachmentPolicy: AttachmentPolicy
   var submissionAllowed = true
+  var submissionUnavailableReason: String? = nil
   var placeholder: String? = nil
   var autoFocus = false
   let onSend: () -> Void
   @FocusState private var focused: Bool
   @Environment(\.scenePhase) private var scenePhase
+  private var sendAvailable: Bool { !sending && !preparing && connected && submissionAllowed }
   var body: some View {
     VStack(spacing: NessaSpacing.xs) {
+      if let submissionUnavailableReason {
+        Text(submissionUnavailableReason).font(MessagesStyle.caption)
+          .foregroundStyle(MessagesStyle.secondary)
+          .padding(.horizontal, MessagesStyle.horizontal)
+      }
       if !attachments.isEmpty { DraftAttachmentsTray(attachments: $attachments, sending: sending) }
       HStack(alignment: .bottom, spacing: NessaSpacing.sm) {
         Menu {
@@ -85,9 +92,11 @@ struct MessageComposer: View {
               Button(action: onSend) {
                 Image(systemName: "arrow.up").font(MessagesStyle.title)
                   .frame(width: MessagesStyle.sendButton, height: MessagesStyle.sendButton)
-                  .background(MessagesStyle.outgoing, in: Circle())
-              }.disabled(sending || preparing || !connected || !submissionAllowed)
+                  .background(
+                    sendAvailable ? MessagesStyle.outgoing : MessagesStyle.control, in: Circle())
+              }.disabled(!sendAvailable)
                 .accessibilityLabel("Send message")
+                .accessibilityHint(submissionUnavailableReason ?? "")
             }
           }
           .frame(height: MessagesStyle.composerHeight)

@@ -34,6 +34,14 @@ public struct PhoneRetainedHistoryFailure: Error, Sendable {
     self.underlying = underlying
   }
 }
+/// Read-only scoped cache queries; implementations own correlation and physical admission.
+public protocol PhoneScopedRetentionReading: Sendable {
+  func cataloguePage(after: RetainedEntryKey?, maximum: UInt32) async throws
+    -> PhoneScopedRetention<RetainedCataloguePage?>
+  func transcript(conversation: String, revision: UUID) async throws
+    -> PhoneScopedRetention<RetainedTranscript>
+}
+
 public protocol PhoneRetainedHistoryReading: Sendable {
   func catalogue(for snapshot: PhoneProfileSnapshot) async throws -> PhoneRetainedCatalogue
   func transcript(_ conversation: String, for snapshot: PhoneProfileSnapshot, revision: UUID)
@@ -43,11 +51,12 @@ public protocol PhoneRetainedHistoryReading: Sendable {
 
 /// Bounded UI projections retain their complete native observations; never a second checkpoint.
 public struct PhoneRetainedHistory: PhoneRetainedHistoryReading {
-  private let session: any PhoneProfileCoordinating
+  private let session: any PhoneScopedRetentionReading
   private let pageSize: UInt32
   private let maximumPages: Int
-  public init(session: any PhoneProfileCoordinating, pageSize: UInt32 = 50, maximumPages: Int = 200)
-  {
+  public init(
+    session: any PhoneScopedRetentionReading, pageSize: UInt32 = 50, maximumPages: Int = 200
+  ) {
     precondition(pageSize > 0 && maximumPages > 0)
     self.session = session
     self.pageSize = pageSize

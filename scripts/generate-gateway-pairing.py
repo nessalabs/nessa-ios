@@ -6,7 +6,7 @@ import json
 import pathlib
 import subprocess
 
-PIN = '763574af653194f91076579fac9132cddf1ca527'
+PIN = 'b4d9e9083956459fab38bd71b677a910561758b8'
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOURCES = ['protocol/product/v1.json', 'protocol/product/pairing-values.generated.json',
            'protocol/schemas/v1/frames.json', 'protocol/schemas/v1/common.json']
@@ -31,8 +31,8 @@ def rule(schema):
     if keys == {'const'} and isinstance(schema['const'], str):
         return rule(dict(schema, type='string'))
     if isinstance(kind, list):
-        assert kind == ['integer', 'null'], schema
-        return '.nullable(' + rule(dict(schema, type='integer')) + ')'
+        assert kind in (['integer', 'null'], ['string', 'null']), schema
+        return '.nullable(' + rule(dict(schema, type=kind[0])) + ')'
     if kind == 'object':
         assert keys <= {'type', 'additionalProperties', 'properties', 'required'}, schema
         assert schema['additionalProperties'] is False
@@ -42,9 +42,12 @@ def rule(schema):
         required = ', '.join(literal(k) for k in sorted(schema.get('required', [])))
         return '.object([' + fields + '], required: [' + required + '])'
     if kind == 'string':
-        assert keys <= {'type', 'minLength', 'maxLength', 'enum', 'const'}, schema
+        assert keys <= {'type', 'minLength', 'maxLength', 'enum', 'const', 'x-utf8MaxBytes', 'pattern'}, schema
         allowed = schema.get('enum', [schema['const']] if 'const' in schema else None)
         values = '[' + ', '.join(map(literal, allowed)) + ']' if allowed is not None else 'nil'
+        if 'pattern' in schema or 'x-utf8MaxBytes' in schema:
+            pattern = literal(schema['pattern']) if 'pattern' in schema else 'nil'
+            return f'.constrainedText(minimum: {schema.get("minLength", 0)}, maximum: {schema.get("maxLength", "nil")}, bytes: {schema.get("x-utf8MaxBytes", "nil")}, allowed: {values}, pattern: {pattern})'
         return f'.string(minimum: {schema.get("minLength", 0)}, maximum: {schema.get("maxLength", "nil")}, allowed: {values})'
     if kind == 'integer':
         assert keys <= {'type', 'minimum', 'maximum', 'const'}, schema
@@ -68,6 +71,23 @@ def generate(checkout):
     schemas = {p: json.loads(v) for p,v in data.items()}
     defs = schemas[SOURCES[0]]['$defs']
     selected = {k:v for k,v in defs.items() if k.startswith('Pairing') or k in ('ProductSessionReady','ProductGrant','ProductResource')}
+    roots = ['ConversationDeleteParams', 'ConversationReadParams', 'ConversationShareParams', 'ConversationSharesParams', 'ConversationSharesResult',
+             'ConversationListParams', 'ConversationListResult', 'ConversationMutationResult']
+    def references(value):
+        if isinstance(value, dict):
+            if '$ref' in value:
+                assert value['$ref'].startswith('#/$defs/'), value
+                yield value['$ref'].split('/')[-1]
+            for child in value.values():
+                yield from references(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from references(child)
+    while roots:
+        name = roots.pop()
+        if name not in selected:
+            selected[name] = defs[name]
+            roots.extend(references(defs[name]))
     value_defs = schemas[SOURCES[1]]['$defs']
     for definition in selected.values():
         for prop in definition.get('properties', {}).values():

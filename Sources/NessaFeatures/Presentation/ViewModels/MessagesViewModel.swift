@@ -80,6 +80,15 @@ public final class MessagesViewModel: ObservableObject {
     connected && conversationAuthorityReady && !unavailableNativeIDs.contains(id)
       && pendingLoadError == nil && pendingSubmissions(in: id).isEmpty
   }
+  public func submissionUnavailableReason(in id: String) -> String? {
+    if !connected { return "Connect to send messages." }
+    if phoneSetupBusy { return "Updating connection…" }
+    if unavailableNativeIDs.contains(id) { return "This chat isn’t available on this phone." }
+    if nativeConfigured && !nativeCommandReady {
+      return phoneSyncError ?? "Chat connection is unavailable."
+    }
+    return nil
+  }
   private let snapshots: PhoneSnapshotSession?
   private var snapshotLease: PhoneSnapshotSession.Lease?
   private let recovery: ConnectionRecovery?
@@ -87,13 +96,33 @@ public final class MessagesViewModel: ObservableObject {
   private var retirementTask: Task<Void, Never>?
   private var manualAttempt: Int?
   private var foreground = true
+  @Published public private(set) var automaticConnectionEnabled = true
+  private var originalConnection: Profile?
+  private var deletionDrains: [UUID: Task<Void, Never>] = [:]
+  private static let automaticConnectionKey = "nessa.connection.automatic"
+  private static let savedConnectionKey = "nessa.connection.saved"
   private struct Profile: Equatable, Sendable {
     let address: String
     let credential: String
     let instance: String
+    static func == (lhs: Self, rhs: Self) -> Bool {
+      lhs.address.utf8.elementsEqual(rhs.address.utf8)
+        && lhs.credential.utf8.elementsEqual(rhs.credential.utf8)
+        && lhs.instance.utf8.elementsEqual(rhs.instance.utf8)
+    }
   }
   private var profile: Profile?
   private let phoneSync: (any PhoneSyncRunning)?
+  private let conversationSharing: PhoneConversationSharing?
+  @Published public private(set) var phoneOwnerChoices: NessaConversationList?
+  @Published public private(set) var pendingPhoneShares: [PhoneConversationShareIntent] = []
+  @Published public private(set) var phoneSharingMessage: String?
+  @Published public private(set) var phoneSharingLoadError: String?
+  public private(set) var phoneSharingFailure: (any Error)?
+  public var phoneSharingAvailable: Bool { conversationSharing != nil && nativeReceiverBound }
+  public func needsPhoneSharing(in id: String) -> Bool {
+    phoneSharingAvailable && (unavailableNativeIDs.contains(id) || views[id] == nil)
+  }
   @Published public private(set) var phoneProfile: PhoneProfileSnapshot?
   @Published public private(set) var phoneSyncError: String?
   public private(set) var phoneSyncFailure: (any Error)?
@@ -110,7 +139,19 @@ public final class MessagesViewModel: ObservableObject {
   private var unavailableNativeIDs: Set<String> = []
   private var phoneStartupTask: Task<PhoneSyncStartup?, Error>?
   private var phoneStartupToken: UUID?
-  public var conversationAuthorityReady: Bool { !nativeConfigured || nativeCommandReady }
+  @Published public private(set) var phoneSetupBusy = false
+  @Published public private(set) var phoneInvitations: [GatewayPairingStatus] = []
+  private var phoneSetupTask: Task<Bool, Never>?
+  private var phoneSetupToken: UUID?
+  public var phoneSyncAvailable: Bool { phoneSync != nil }
+  public var currentGatewayAddress: String? { profile?.address }
+  public var currentSurfaceInstance: String? { profile?.instance }
+  public var canLoadLegacyCredential: Bool {
+    !nativeConfigured && !busy && (phoneSync == nil || !nativeNeedsRestore)
+  }
+  public var conversationAuthorityReady: Bool {
+    !phoneSetupBusy && (!nativeConfigured || nativeCommandReady)
+  }
   private var nativeReceiverBound: Bool {
     phoneProfile?.profile.phase != .retired && phoneProfile?.profile.nativeReceiver != nil
   }
@@ -118,19 +159,273 @@ public final class MessagesViewModel: ObservableObject {
   public init(
     service: MessagingService, credentials: any NessaCredentialStoring,
     preferences: any ChatPreferences, snapshots: PhoneSnapshotSession? = nil,
-    recovery: ConnectionRecovery? = nil, phoneSync: (any PhoneSyncRunning)? = nil
+    recovery: ConnectionRecovery? = nil, phoneSync: (any PhoneSyncRunning)? = nil,
+    conversationSharing: PhoneConversationSharing? = nil
   ) {
     self.credentials = credentials
     self.service = service
     self.preferences = preferences
+    let preference = preferences.strings(forKey: Self.automaticConnectionKey)
+    automaticConnectionEnabled = preference == nil || preference == ["enabled"]
     self.snapshots = snapshots
     self.recovery = recovery
     self.phoneSync = phoneSync
+    self.conversationSharing = conversationSharing
   }
   deinit {
     recoveryTask?.cancel()
     for read in previewReads.values { read.task.cancel() }
   }
+  /// The model owns admission and settlement; a dismissed sheet is only an observer.
+  @discardableResult public func performPhoneSetup(_ operation: PhoneSetupOperation) async -> Bool {
+    await performPhoneAction(.setup(operation))
+  }
+  @discardableResult public func performConversationSharing(
+    _ operation: PhoneConversationSharingOperation
+  ) async -> Bool {
+    guard conversationSharing != nil else { return false }
+    return await performPhoneAction(.sharing(operation))
+  }
+  private enum PhoneAction: Sendable {
+    case setup(PhoneSetupOperation)
+    case sharing(PhoneConversationSharingOperation)
+    var requiresProductConnection: Bool {
+      if case .setup(let operation) = self { return operation.requiresProductConnection }
+      return true
+    }
+    var conversationID: String? {
+      guard case .sharing(let operation) = self else { return nil }
+      switch operation {
+      case .share(let id): return id
+      case .check(let intent), .retry(let intent): return intent.conversationID
+      case .choices: return nil
+      }
+    }
+  }
+  private func performPhoneAction(_ operation: PhoneAction) async -> Bool {
+    guard !Task.isCancelled, let phoneSync, foreground, !busy, !sending,
+      phoneSetupTask == nil
+    else { return false }
+    if operation.requiresProductConnection {
+      guard connected, acceptedLease != nil, profile != nil else { return false }
+    }
+    let original = profile
+    let oldSnapshot = phoneProfile
+    let oldOfflineEligible = nativeOfflineEligible
+    let context = PhoneSetupContext(
+      connection: original.map {
+        PhoneProductConnection(
+          address: $0.address, credential: $0.credential, instance: $0.instance)
+      }, lease: acceptedLease, snapshot: oldSnapshot)
+    let token = UUID()
+    generation += 1
+    let expected = generation
+    // Sharing keeps this account and draft scope. Restart its feeds after settlement,
+    // so the visible chat and its sheet remain owned during the operation.
+    if case .setup = operation {
+      connectionRevision += 1
+      deliveryScopeRevision += 1
+    }
+    phoneSetupToken = token
+    phoneSetupBusy = true
+    nativeConfigured = true
+    nativeHistoryReady = false
+    nativeCommandReady = false
+    nativeOfflineEligible = false
+    nativeReadRequested = false
+    nativeReadTargets = []
+    snapshotLease = nil
+    cancelPreviews()
+    conversations = []
+    views = [:]
+    previewViews = [:]
+    viewCursors = [:]
+    readVersions = [:]
+    unlistedCreations = [:]
+    unavailableNativeIDs = []
+    pendingDeletionIDs = []
+    if case .setup = operation {
+      pendingCommands = []
+      pendingLoadError = nil
+      commandActions = [:]
+      checkingCommands = []
+      acknowledgedCommands = []
+      acknowledgmentOrder = []
+    }
+    phoneInvitations = []
+    phoneSharingMessage = nil
+    if case .setup = operation {
+      phoneOwnerChoices = nil
+      pendingPhoneShares = []
+      phoneSharingFailure = nil
+    }
+    let startup = phoneStartupTask
+    let read = nativeReadTask
+    let task = Task { [weak self] in
+      guard let self else { return false }
+      defer {
+        if self.phoneSetupToken == token {
+          self.phoneSetupToken = nil
+          self.phoneSetupTask = nil
+          self.phoneSetupBusy = false
+          if case .sharing = operation, self.generation == expected, self.foreground,
+            self.profile == original, self.acceptedLease == context.lease
+          {
+            self.connectionRevision += 1
+          }
+          if !self.connected { self.startRecovery() }
+        }
+      }
+      _ = try? await startup?.value
+      await read?.value
+      do {
+        let current: @Sendable () async throws -> Void = { [weak self] in
+          guard let self else { throw PhoneSetupRefusal.changed }
+          try await self.checkPhoneSetup(
+            token, generation: expected, original: original, context: context,
+            needsConnection: operation.requiresProductConnection)
+        }
+        let result: PhoneSetupResult
+        let shared: PhoneConversationSharingResult?
+        switch operation {
+        case .setup(let choice):
+          shared = nil
+          result = try await PhoneSetupActions(service: self.service, sync: phoneSync)
+            .perform(choice, context: context, current: current)
+        case .sharing(let choice):
+          guard let sharing = self.conversationSharing else { throw PhoneSetupRefusal.unavailable }
+          let value = try await sharing.perform(choice, context: context, current: current)
+          shared = value
+          result = .init(snapshot: value.snapshot)
+        }
+        try self.checkPhoneSetup(
+          token, generation: expected, original: original, context: context,
+          needsConnection: operation.requiresProductConnection)
+        self.phoneProfile = result.snapshot
+        self.nativeNeedsRestore = false
+        self.phoneInvitations = result.invitations ?? []
+        self.phoneSyncFailure = nil
+        self.phoneSyncError = nil
+        if let shared {
+          if let choices = shared.choices { self.phoneOwnerChoices = choices }
+          if let grants = shared.shares,
+            let credential = shared.snapshot.profile.pairingStatus?.credentialID
+          {
+            self.phoneSharingMessage =
+              grants.contains {
+                $0.credentialId.utf8.elementsEqual(credential.utf8)
+              } ? "Read access enabled." : "Not shared with this phone."
+          }
+          self.phoneSharingFailure = nil
+        }
+        if let selected = result.snapshot?.profile {
+          if case .setup(.prepare) = operation, let original {
+            self.nativeOfflineEligible =
+              selected.productAddress.utf8.elementsEqual(original.address.utf8)
+              && selected.instance.utf8.elementsEqual(original.instance.utf8)
+          } else {
+            self.nativeOfflineEligible =
+              oldOfflineEligible
+              && oldSnapshot?.profile.sameSetup(as: selected) == true
+          }
+        }
+        if self.nativeReceiverBound {
+          await self.loadNativeDisplay(
+            operation.conversationID.map { [$0] } ?? [], admittedSetup: token)
+        }
+        await self.refreshPhoneShareIntents(generation: expected)
+        guard self.generation == expected, self.foreground else { return false }
+        await self.refreshPendingCommands()
+        try self.checkPhoneSetup(
+          token, generation: expected, original: original, context: context,
+          needsConnection: operation.requiresProductConnection)
+        return true
+      } catch {
+        guard self.generation == expected, self.foreground,
+          self.phoneSetupToken == token, self.profile == original
+        else { return false }
+        self.phoneSyncFailure = error
+        if case .sharing = operation {
+          self.phoneSharingFailure = error
+          self.phoneSharingMessage = "Sharing needs attention. Check or retry the original request."
+          await self.refreshPhoneShareIntents(generation: expected)
+          guard self.generation == expected, self.foreground, self.profile == original else {
+            return false
+          }
+        }
+        self.phoneSyncError = "Phone sync needs attention."
+        // Metadata is recovery information, never a substitute for admitted native history.
+        if let registry = try? await phoneSync.savedProfiles(),
+          self.generation == expected, self.foreground, self.profile == original
+        {
+          let captured =
+            (error as? PhoneSetupFailure)?.snapshot
+            ?? (error as? PhoneConversationSharingFailure)?.snapshot
+          var underlying: any Error = error
+          if let setup = underlying as? PhoneSetupFailure { underlying = setup.underlying }
+          if let sharing = underlying as? PhoneConversationSharingFailure {
+            underlying = sharing.underlying
+          }
+          if let runtime = underlying as? PhoneSyncRuntimeFailure {
+            underlying = runtime.underlying
+          }
+          let coordination = underlying as? PhoneProfileCoordinationFailure
+          let selected = registry.profiles.first { $0.id == registry.selected }
+          let same = selected.map { captured?.profile.sameSetup(as: $0) == true } ?? false
+          let failureMatches = coordination?.profileID == registry.selected
+          self.phoneProfile = try? PhoneProfileSnapshot(
+            registry: registry,
+            local: failureMatches ? coordination?.local : (same ? captured?.local : nil),
+            nativeStatus: failureMatches
+              ? coordination?.nativeStatus
+              : (same ? captured?.nativeStatus : nil),
+            source: failureMatches ? coordination?.source : (same ? captured?.source : nil),
+            activationStopped: same ? captured?.activationStopped : nil,
+            nativeRefresh: failureMatches
+              ? coordination?.nativeRefresh
+              : (same ? captured?.nativeRefresh : nil))
+        }
+        return false
+      }
+    }
+    phoneSetupTask = task
+    return await task.value
+  }
+  private func refreshPhoneShareIntents(generation expected: Int) async {
+    guard let conversationSharing, let selected = phoneProfile?.profile, foreground else { return }
+    do {
+      let values = try await conversationSharing.pending(profileID: selected.id)
+      guard generation == expected, foreground,
+        phoneProfile?.profile.sameSetup(as: selected) == true
+      else { return }
+      pendingPhoneShares = values
+      phoneSharingLoadError = nil
+    } catch {
+      guard generation == expected, foreground,
+        phoneProfile?.profile.sameSetup(as: selected) == true
+      else { return }
+      pendingPhoneShares = []
+      phoneSharingLoadError = "Saved sharing requests unavailable."
+      phoneSharingFailure = error
+    }
+  }
+  private func clearPhoneSharing() {
+    phoneOwnerChoices = nil
+    pendingPhoneShares = []
+    phoneSharingMessage = nil
+    phoneSharingLoadError = nil
+    phoneSharingFailure = nil
+  }
+  private func checkPhoneSetup(
+    _ token: UUID, generation expected: Int, original: Profile?, context: PhoneSetupContext,
+    needsConnection: Bool
+  ) throws {
+    guard foreground, generation == expected, phoneSetupToken == token,
+      profile == original, acceptedLease == context.lease,
+      !needsConnection || connected
+    else { throw PhoneSetupRefusal.changed }
+  }
+
   public func reaction(message: String, in conversation: String) -> String? {
     reactions[conversation + ":" + message]
   }
@@ -288,6 +583,13 @@ public final class MessagesViewModel: ObservableObject {
   }
   public func hasConversation(_ agent: String) -> Bool { existingConversationID(for: agent) != nil }
   public func deleteConversation(for agent: String) async {
+    let token = UUID()
+    let task = Task { await self.performDeleteConversation(for: agent) }
+    deletionDrains[token] = task
+    await task.value
+    deletionDrains.removeValue(forKey: token)
+  }
+  private func performDeleteConversation(for agent: String) async {
     guard connected, conversationAuthorityReady, let id = existingConversationID(for: agent) else {
       return
     }
@@ -371,11 +673,265 @@ public final class MessagesViewModel: ObservableObject {
     return agentProfiles.first { $0.id == agentID }?.displayName ?? agentID?.capitalized
       ?? agentProfiles.first?.displayName ?? "Agent"
   }
+  public var hasSavedConnection: Bool {
+    savedReconnectGatewayAddress != nil
+  }
+  public var savedReconnectGatewayAddress: String? {
+    if let originalConnection { return originalConnection.address }
+    if let saved = phoneProfile?.profile { return saved.productAddress }
+    guard let saved = preferences.mapping(forKey: Self.savedConnectionKey),
+      let address = saved["address"], saved["instance"] != nil,
+      !(credentials.load() ?? "").isEmpty
+    else { return nil }
+    return address
+  }
+  private func setAutomaticConnection(_ enabled: Bool) {
+    automaticConnectionEnabled = enabled
+    preferences.save([enabled ? "enabled" : "disabled"], forKey: Self.automaticConnectionKey)
+  }
+  public func reconnectSavedConnection() async {
+    if let originalConnection {
+      await connect(
+        address: originalConnection.address, credential: originalConnection.credential,
+        instance: originalConnection.instance)
+    } else if let saved = phoneProfile?.profile {
+      await connect(
+        address: saved.productAddress, credential: "", instance: saved.instance,
+        restoringSavedProfile: true)
+    } else if let saved = preferences.mapping(forKey: Self.savedConnectionKey),
+      let address = saved["address"], let instance = saved["instance"],
+      let credential = credentials.load(), !credential.isEmpty
+    {
+      await connect(address: address, credential: credential, instance: instance)
+    }
+  }
+  /// Persist local network intent, then retain one physical retirement owner.
+  public func manualDisconnect() async {
+    setAutomaticConnection(false)
+    await retireConnection(background: false)
+  }
+
+  private func restoreDisconnectedHistory() async {
+    await retirementTask?.value
+    guard foreground, !automaticConnectionEnabled else { return }
+    generation += 1
+    let expected = generation
+    busy = true
+    defer { if generation == expected { busy = false } }
+    connected = false
+    acceptedLease = nil
+    nativeCommandReady = false
+    do {
+      if let phoneSync {
+        nativeConfigured = true
+        snapshotLease = nil
+        let startupToken = UUID()
+        let startup = Task { try await phoneSync.passiveStartup() }
+        phoneStartupTask = startup
+        phoneStartupToken = startupToken
+        defer {
+          if phoneStartupToken == startupToken {
+            phoneStartupTask = nil
+            phoneStartupToken = nil
+          }
+        }
+        let restored = try await startup.value
+        guard generation == expected, foreground, !automaticConnectionEnabled else { return }
+        adoptPassiveSnapshot(restored?.snapshot, connection: restored?.connection)
+        nativeConfigured = restored != nil
+        nativeNeedsRestore = false
+        if let connection = restored?.connection {
+          let selected = Profile(
+            address: connection.address, credential: connection.credential,
+            instance: connection.instance)
+          profile = selected
+          originalConnection = selected
+          nativeOfflineEligible = true
+          loadPreferences(selected)
+          await loadPassiveNativeDisplay()
+          return
+        }
+        if nativeConfigured { return }
+      }
+      let selected: Profile?
+      if let originalConnection {
+        selected = originalConnection
+      } else if let saved = preferences.mapping(forKey: Self.savedConnectionKey),
+        let address = saved["address"], let instance = saved["instance"],
+        let credential = credentials.load(), !credential.isEmpty
+      {
+        selected = Profile(address: address, credential: credential, instance: instance)
+      } else {
+        selected = nil
+      }
+      guard let selected else { return }
+      profile = selected
+      originalConnection = selected
+      loadPreferences(selected)
+      try await hydrate(selected, generation: expected)
+    } catch {
+      guard generation == expected, foreground else { return }
+      phoneSyncFailure = error
+      phoneSyncError = "Saved chats unavailable."
+      if let phoneSync, let registry = try? await phoneSync.savedProfiles(), generation == expected,
+        foreground
+      {
+        let saved = try? PhoneProfileSnapshot(
+          registry: registry, local: nil, nativeStatus: nil, source: nil)
+        adoptPassiveSnapshot(saved, connection: nil)
+      }
+    }
+  }
+
+  private func adoptPassiveSnapshot(
+    _ snapshot: PhoneProfileSnapshot?, connection: PhoneProductConnection?
+  ) {
+    let selected = connection.map {
+      Profile(address: $0.address, credential: $0.credential, instance: $0.instance)
+    }
+    let previous = phoneProfile?.profile
+    let next = snapshot?.profile
+    let sameNative =
+      previous.map { old in
+        next.map {
+          old.sameSetup(as: $0) && old.phase == $0.phase
+            && old.hasRetirementEvidence == $0.hasRetirementEvidence
+            && PhonePairingCorrelation.equal(old.nativeReceiver ?? "", $0.nativeReceiver ?? "")
+        } ?? false
+      } ?? (next == nil)
+    let sameIssued =
+      phoneProfile?.local == snapshot?.local
+      && PhonePairingCorrelation.equal(
+        phoneProfile?.local?.issued?.credential ?? "", snapshot?.local?.issued?.credential ?? "")
+      && PhonePairingCorrelation.equal(
+        phoneProfile?.local?.issued?.receiver ?? "", snapshot?.local?.issued?.receiver ?? "")
+    if !sameNative || !sameIssued || (next != nil && profile != selected) {
+      deliveryScopeRevision += 1
+      cancelPreviews()
+      clearPhoneSharing()
+      nativeOfflineEligible = false
+      conversations = []
+      views = [:]
+      previewViews = [:]
+      replyProjections = [:]
+      viewCursors = [:]
+      readVersions = [:]
+      unlistedCreations = [:]
+      unavailableNativeIDs = []
+      deletedIDs = []
+      pendingDeletionIDs = []
+      pendingCommands = []
+      pendingLoadError = nil
+      acknowledgedCommands = []
+      acknowledgmentOrder = []
+      commandActions = [:]
+      checkingCommands = []
+      pinnedChats = []
+      unreadChats = []
+      mutedChats = []
+      archivedChats = []
+      reactions = [:]
+      replyTargets = [:]
+      agentProfiles = []
+      conversationAgents = [:]
+      agentThreads = [:]
+      profile = nil
+      originalConnection = nil
+      snapshotLease = nil
+      nativeHistoryReady = false
+      nativeCommandReady = false
+    }
+    phoneProfile = snapshot
+  }
+
+  private func loadPassiveNativeDisplay(_ targets: Set<String> = []) async {
+    guard !automaticConnectionEnabled, !connected, foreground, let phoneSync, nativeReceiverBound
+    else { return }
+    if nativeNeedsRestore {
+      await restoreDisconnectedHistory()
+      guard !nativeNeedsRestore, nativeConfigured, nativeReceiverBound else { return }
+    }
+    if let current = nativeReadTask { await current.value }
+    guard !automaticConnectionEnabled, !connected, foreground else { return }
+    let expected = generation
+    let token = UUID()
+    let task = Task { [weak self] in
+      guard let self else { return }
+      await self.performPassiveNativeDisplay(phoneSync, targets: targets, expected: expected)
+      if self.nativeReadToken == token {
+        self.nativeReadTask = nil
+        self.nativeReadToken = nil
+      }
+    }
+    nativeReadToken = token
+    nativeReadTask = task
+    await task.value
+  }
+
+  private func performPassiveNativeDisplay(
+    _ phoneSync: any PhoneSyncRunning, targets: Set<String>, expected: Int
+  ) async {
+    do {
+      let result = try await phoneSync.passiveDisplay(
+        conversations: Array(targets.sorted().prefix(20)), revision: UUID())
+      guard generation == expected, foreground, !automaticConnectionEnabled, !connected else {
+        return
+      }
+      phoneProfile = result.snapshot
+      nativeHistoryReady = true
+      nativeCommandReady = false
+      phoneSyncFailure = nil
+      phoneSyncError = nil
+      for id in result.catalogue.pages.flatMap({ $0.entries.filter(\.deleted).map { $0.key.id } }) {
+        await removeDeletedConversation(id, identifier: id)
+        guard generation == expected, foreground, !automaticConnectionEnabled, !connected else {
+          return
+        }
+      }
+      guard generation == expected, foreground, !automaticConnectionEnabled, !connected else {
+        return
+      }
+      _ = applyList(result.catalogue.list)
+      for (id, read) in result.transcripts {
+        guard !deletedIDs.contains(id), !pendingDeletionIDs.contains(id) else { continue }
+        switch read {
+        case .available(let value):
+          if case .available(let projection) = value.value.view {
+            unavailableNativeIDs.remove(id)
+            apply(projection.display, to: id)
+          }
+        case .failed(let failure):
+          unavailableNativeIDs.insert(id)
+          views.removeValue(forKey: id)
+          previewViews.removeValue(forKey: id)
+          replyProjections.removeValue(forKey: id)
+          phoneSyncFailure = failure
+          phoneSyncError = "Saved conversation unavailable."
+        }
+      }
+    } catch {
+      guard generation == expected, foreground else { return }
+      nativeHistoryReady = false
+      nativeCommandReady = false
+      conversations = []
+      views = [:]
+      previewViews = [:]
+      replyProjections = [:]
+      phoneSyncFailure = error
+      phoneSyncError = "Saved chats unavailable."
+    }
+  }
+
   public func savedCredential() -> String { credentials.load() ?? "" }
   public func connect(
     address: String, credential: String, instance: String,
-    restoringSavedProfile: Bool = false
+    restoringSavedProfile: Bool = false, automatically: Bool = false
   ) async {
+    if automatically && !automaticConnectionEnabled {
+      await restoreDisconnectedHistory()
+      return
+    }
+    if !automatically { setAutomaticConnection(true) }
     recoveryTask?.cancel()
     recoveryTask = nil
     reconnecting = false
@@ -403,6 +959,7 @@ public final class MessagesViewModel: ObservableObject {
     nativeHistoryReady = false
     nativeCommandReady = false
     nativeOfflineEligible = false
+    clearPhoneSharing()
     nativeReadRequested = false
     nativeReadTargets = []
     unavailableNativeIDs = []
@@ -433,6 +990,8 @@ public final class MessagesViewModel: ObservableObject {
     unlistedCreations = [:]
     do {
       if phoneSync != nil { await retirementTask?.value }
+      _ = try? await phoneStartupTask?.value
+      _ = await phoneSetupTask?.value
       await nativeReadTask?.value
       guard generation == expected, foreground, !Task.isCancelled else { return }
       let restored = try await restorePhone(generation: expected)
@@ -536,8 +1095,11 @@ public final class MessagesViewModel: ObservableObject {
     }
   }
 
-  private func loadNativeDisplay(_ targets: Set<String> = []) async {
-    guard let phoneSync, nativeReceiverBound,
+  private func loadNativeDisplay(
+    _ targets: Set<String> = [], admittedSetup: UUID? = nil
+  ) async {
+    guard !phoneSetupBusy || (admittedSetup != nil && admittedSetup == phoneSetupToken),
+      let phoneSync, nativeReceiverBound,
       acceptedLease != nil || nativeOfflineEligible
     else { return }
     nativeReadTargets.formUnion(targets)
@@ -647,7 +1209,7 @@ public final class MessagesViewModel: ObservableObject {
 
   private func validateNativeCommand(_ id: String?, generation expected: Int) async -> Bool {
     guard nativeConfigured else { return generation == expected && connected }
-    guard acceptedLease != nil, nativeReceiverBound else { return false }
+    guard !phoneSetupBusy, acceptedLease != nil, nativeReceiverBound else { return false }
     await loadNativeDisplay(id.map { [$0] } ?? [])
     return generation == expected && foreground && connected && acceptedLease != nil
       && nativeCommandReady && (id.map { !unavailableNativeIDs.contains($0) } ?? true)
@@ -737,8 +1299,16 @@ public final class MessagesViewModel: ObservableObject {
       let lease = snapshotLease
       if let lease { await snapshots?.recordAgents(agents, lease: lease) }
       guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
-      if !nativeConfigured { try credentials.save(profile.credential) }
+      if !nativeConfigured {
+        try credentials.save(profile.credential)
+        preferences.save(
+          ["address": profile.address, "instance": profile.instance],
+          forKey: Self.savedConnectionKey)
+      }
+      originalConnection = profile
       connected = true
+      await refreshPhoneShareIntents(generation: expected)
+      guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
       connectionRevision += 1
     } catch {
       if generation == expected { acceptedLease = nil }
@@ -746,9 +1316,16 @@ public final class MessagesViewModel: ObservableObject {
       throw error
     }
   }
-  /// Retire authority before waiting for any cache I/O. The cache writer is already owned.
-  public func suspendConnection() async {
-    foreground = false
+  /// Actual background changes foreground authority; local Disconnect does not.
+  public func suspendConnection() async { await retireConnection(background: true) }
+  private func retireConnection(background: Bool) async {
+    if background { foreground = false }
+    let capturedLease = acceptedLease
+    let setup = phoneSetupTask
+    let startup = phoneStartupTask
+    let read = nativeReadTask
+    let deletes = Array(deletionDrains.values)
+    clearPhoneSharing()
     acceptedLease = nil
     nativeHistoryReady = false
     nativeCommandReady = false
@@ -757,6 +1334,7 @@ public final class MessagesViewModel: ObservableObject {
     nativeReadTargets = []
     cancelPreviews()
     generation += 1
+    let expected = generation
     connectionRevision += 1
     recoveryTask?.cancel()
     recoveryTask = nil
@@ -767,15 +1345,24 @@ public final class MessagesViewModel: ObservableObject {
     sending = false
     commandActions = [:]
     checkingCommands = []
-    unlistedCreations = [:]
     let service = service
     let phoneSync = phoneSync
+    let prior = retirementTask
     let retirement = Task { [weak self] in
-      async let product: Void = service.disconnect()
+      await prior?.value
+      async let product: Void =
+        capturedLease != nil ? service.retire(capturedLease) : service.disconnect()
       do { try await phoneSync?.suspend() } catch {
-        self?.phoneSyncError = "Phone sync could not close."
+        if let self, self.generation == expected {
+          self.phoneSyncFailure = error
+          self.phoneSyncError = "Phone sync could not close."
+        }
       }
       await product
+      _ = try? await startup?.value
+      await read?.value
+      _ = await setup?.value
+      for task in deletes { await task.value }
     }
     retirementTask = retirement
     await retirement.value
@@ -784,10 +1371,12 @@ public final class MessagesViewModel: ObservableObject {
   }
   public func resumeConnection() {
     foreground = true
-    if !connected { startRecovery() }
+    if automaticConnectionEnabled && !connected { startRecovery() }
   }
   private func startRecovery() {
-    guard let recovery, let profile, foreground, recoveryTask == nil, manualAttempt == nil
+    guard automaticConnectionEnabled, !phoneSetupBusy, let recovery, let profile, foreground,
+      recoveryTask == nil,
+      manualAttempt == nil
     else { return }
     let expected = generation
     reconnecting = true
@@ -815,6 +1404,7 @@ public final class MessagesViewModel: ObservableObject {
       if connected {
         cancelPreviews()
         connected = false
+        clearPhoneSharing()
         acceptedLease = nil
         nativeCommandReady = false
         busy = false
@@ -839,6 +1429,10 @@ public final class MessagesViewModel: ObservableObject {
     }
   }
   public func refreshList() async throws {
+    if !automaticConnectionEnabled && !connected {
+      await loadPassiveNativeDisplay()
+      return
+    }
     if nativeConfigured {
       if nativeReceiverBound { await loadNativeDisplay() }
       return
@@ -870,6 +1464,10 @@ public final class MessagesViewModel: ObservableObject {
     return NessaConversationList(conversations: visible, complete: result.complete)
   }
   public func refresh(_ id: String) async {
+    if !automaticConnectionEnabled && !connected {
+      await loadPassiveNativeDisplay([id])
+      return
+    }
     if nativeConfigured {
       guard nativeReceiverBound, !deletedIDs.contains(id), !pendingDeletionIDs.contains(id) else {
         return
@@ -919,8 +1517,20 @@ public final class MessagesViewModel: ObservableObject {
       }
     }
   }
-  public func watchInbox() async { await watch(nil) }
-  public func watchConversation(_ id: String) async { await watch(id) }
+  public func watchInbox() async {
+    if !automaticConnectionEnabled && !connected {
+      await loadPassiveNativeDisplay()
+      return
+    }
+    await watch(nil)
+  }
+  public func watchConversation(_ id: String) async {
+    if !automaticConnectionEnabled && !connected {
+      await loadPassiveNativeDisplay([id])
+      return
+    }
+    await watch(id)
+  }
   private func watch(_ id: String?) async {
     let expectedGeneration = generation
     guard connected else { return }
@@ -990,10 +1600,15 @@ public final class MessagesViewModel: ObservableObject {
       guard generation == currentGeneration, !Task.isCancelled else { return nil }
       listVersion += 1
       replyProjections.removeValue(forKey: id)
-      views[id] = NessaConversationView(
-        conversationId: id, messages: [], permissions: [],
-        truncated: false, interactionViewError: nil,
-        runtime: agent.map { NessaRuntime(agent: $0) })
+      if nativeConfigured {
+        // Creation belongs to the owner. Only an actual native transcript establishes phone access.
+        unavailableNativeIDs.insert(id)
+      } else {
+        views[id] = NessaConversationView(
+          conversationId: id, messages: [], permissions: [],
+          truncated: false, interactionViewError: nil,
+          runtime: agent.map { NessaRuntime(agent: $0) })
+      }
       if !conversations.contains(where: { $0.id == id }) {
         let row = NessaConversation(
           conversationId: id, title: nil, preview: nil,

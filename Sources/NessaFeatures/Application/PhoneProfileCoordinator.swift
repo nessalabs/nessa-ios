@@ -53,6 +53,94 @@ public actor PhoneProfileCoordinator: PhoneProfileCoordinating {
     if let native { Task.detached { try await native.session.close() } }
   }
 
+  /// Read protected historical state without status, refresh or metadata repair.
+  public func passiveRestore() async throws -> PhoneProfileSnapshot? {
+    try await perform(recovering: true) { coordinator, token in
+      let saved = try await coordinator.profiles.load()
+      try coordinator.checkAdmission(token)
+      if let old = coordinator.registry, old != saved { try await coordinator.releaseNative(token) }
+      coordinator.registry = saved
+      guard let saved else { return nil }
+      try saved.validate()
+      let profile = try coordinator.selected()
+      if profile.phase == .retired || profile.hasRetirementEvidence {
+        coordinator.local = nil
+        coordinator.observedNative = profile.lastNativeStatus
+        return try coordinator.snapshot()
+      }
+      _ = try await coordinator.capturePassiveLocal(token)
+      return try coordinator.snapshot()
+    }
+  }
+
+  /// One admitted, bounded historical cache read. Its snapshot grants no live authority.
+  public func passiveDisplay(conversations: [String], revision: UUID) async throws
+    -> PhoneRetainedDisplay
+  {
+    guard conversations.count <= 20 else { throw PhoneRetainedHistoryRefusal.quota }
+    return try await perform(recovering: true) { coordinator, token in
+      let owner = try await coordinator.capturePassiveLocal(token)
+      let snapshot = try coordinator.snapshot()
+      let reader = PassiveRetainedReader(
+        session: owner.session, snapshot: snapshot,
+        current: { try await coordinator.check(token) })
+      let history = PhoneRetainedHistory(session: reader)
+      let catalogue = try await history.catalogue(for: snapshot)
+      try await coordinator.check(token)
+      var transcripts: [String: PhoneRetainedTranscriptRead] = [:]
+      for id in conversations {
+        do {
+          let value = try await history.transcript(id, for: snapshot, revision: revision)
+          if let scope = value.value.scope, let page = catalogue.pages.first {
+            guard PhonePairingCorrelation.equal(scope.receiver, page.scope.receiver),
+              PhonePairingCorrelation.equal(scope.origin, page.scope.origin),
+              PhonePairingCorrelation.equal(scope.accessEpoch, page.scope.accessEpoch)
+            else {
+              throw PhoneRetainedHistoryFailure(
+                profileID: snapshot.profile.id, revision: snapshot.registry.revision,
+                pages: catalogue.pages, transcript: value.value,
+                underlying: PhoneRetainedHistoryRefusal.changed)
+            }
+          }
+          transcripts[id] = .available(value)
+        } catch { transcripts[id] = .failed(error) }
+        try await coordinator.check(token)
+      }
+      return .init(
+        snapshot: snapshot, catalogue: catalogue, transcripts: transcripts, refreshFailure: nil)
+    }
+  }
+
+  private func capturePassiveLocal(_ token: UUID) async throws -> NativeOwner {
+    let profile = try readableProfile()
+    guard !profile.hasRetirementEvidence else { throw PhoneRetainedHistoryRefusal.retired }
+    let owner = try await owner(token)
+    local = try await owner.session.localEnrollment()
+    admittedLocal = local
+    try await check(token)
+    // Historical purge survives successful unlink of the issued enrollment.
+    if let receiver = profile.nativeReceiver,
+      let recovered = try await owner.session.purgeReceipt(receiver: receiver)
+    {
+      try await check(token)
+      throw PhonePassivePurgeFailure(profileID: profile.id, receipt: recovered)
+    }
+    try await check(token)
+    guard let local, let issued = local.issued,
+      PhonePairingCorrelation.equal(issued.receiver, profile.nativeReceiver ?? "")
+    else {
+      throw PhoneProfileCoordinationRefusal.receiverUnavailable
+    }
+    if let status = profile.pairingStatus {
+      try PhonePairingCorrelation.validate(status, local: local, profile: profile)
+    }
+    if let historical = profile.lastNativeStatus {
+      try validateNative(historical, local: local, profile: profile)
+    }
+    observedNative = profile.lastNativeStatus
+    return owner
+  }
+
   public func restore() async throws -> PhoneProfileSnapshot? {
     try await perform(recovering: true) { coordinator, token in
       let saved = try await coordinator.profiles.load()
@@ -562,5 +650,28 @@ public actor PhoneProfileCoordinator: PhoneProfileCoordinating {
     try .init(
       registry: selectedRegistry(), local: local, nativeStatus: observedNative,
       source: source, activationStopped: stopped, nativeRefresh: observedRefresh)
+  }
+}
+
+/// Adapts the actual native cache owner to the existing bounded projection reader.
+private struct PassiveRetainedReader: PhoneScopedRetentionReading {
+  let session: any RetainedSession
+  let snapshot: PhoneProfileSnapshot
+  let current: @Sendable () async throws -> Void
+  func cataloguePage(after: RetainedEntryKey?, maximum: UInt32) async throws
+    -> PhoneScopedRetention<RetainedCataloguePage?>
+  {
+    try await current()
+    let page = try await session.cataloguePage(after: after, maximum: maximum)
+    try await current()
+    return .init(profileID: snapshot.profile.id, revision: snapshot.registry.revision, value: page)
+  }
+  func transcript(conversation: String, revision: UUID) async throws -> PhoneScopedRetention<
+    RetainedTranscript
+  > {
+    try await current()
+    let value = try await session.transcript(conversation: conversation, revision: revision)
+    try await current()
+    return .init(profileID: snapshot.profile.id, revision: snapshot.registry.revision, value: value)
   }
 }

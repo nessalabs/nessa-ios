@@ -98,7 +98,9 @@ public struct PhoneProfileCloseFailure: Error, Sendable {
   public init(failures: [Captured]) { self.failures = failures }
 }
 
-public protocol PhoneProfileCoordinating: Sendable {
+public protocol PhoneProfileCoordinating: PhoneScopedRetentionReading {
+  func passiveRestore() async throws -> PhoneProfileSnapshot?
+  func passiveDisplay(conversations: [String], revision: UUID) async throws -> PhoneRetainedDisplay
   func restore() async throws -> PhoneProfileSnapshot?
   func prepare(_ desired: PhoneProfile, credential: String, on lease: GatewayConnectionLease)
     async throws -> PhoneProfileSnapshot
@@ -111,9 +113,26 @@ public protocol PhoneProfileCoordinating: Sendable {
     async throws -> PhoneProfileSnapshot
   func cancelPairing(on lease: GatewayConnectionLease) async throws -> PhoneProfileSnapshot
   func refresh(on lease: GatewayConnectionLease?) async throws -> PhoneProfileSnapshot
-  func cataloguePage(after: RetainedEntryKey?, maximum: UInt32) async throws
-    -> PhoneScopedRetention<RetainedCataloguePage?>
-  func transcript(conversation: String, revision: UUID) async throws
-    -> PhoneScopedRetention<RetainedTranscript>
   func close() async throws
+}
+
+extension PhoneProfileCoordinating {
+  public func passiveRestore() async throws -> PhoneProfileSnapshot? {
+    throw PhoneProfileCoordinationRefusal.receiverUnavailable
+  }
+  public func passiveDisplay(conversations: [String], revision: UUID) async throws
+    -> PhoneRetainedDisplay
+  {
+    throw PhoneProfileCoordinationRefusal.receiverUnavailable
+  }
+}
+
+/// Local purge evidence closes history while retaining the original cleanup payload.
+public struct PhonePassivePurgeFailure: Error, Sendable {
+  public let profileID: UUID
+  public let receipt: RetainedPurge
+  public init(profileID: UUID, receipt: RetainedPurge) {
+    self.profileID = profileID
+    self.receipt = receipt
+  }
 }

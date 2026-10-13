@@ -164,3 +164,110 @@ profile, explicit selected recovery invitation and displayed approval key, and
 captured failure evidence. Their presentation admission/controls and actual
 normal-app enrollment remain pending, alongside the broader backlog, artifact,
 deletion-failure and physical-device gates.
+
+
+## Explicit phone setup and per-conversation sharing
+
+The normal live app's isolated simulator now completes Prepare, native claim and
+user-approved exact-key approval against product/native ports 19743/19744. The
+original simulator and gateway on 18743 are unchanged. Public owner and actual
+native receipts both show Active. The native cached catalogue is empty and the
+unshared newly created transcript is `notLoaded`; no default chat sharing is
+inferred from activation. The product list also omits empty sessions that have
+no summary.
+
+The reviewed sharing slice adds an explicit owner picker and a sync action on a
+new chat. The owner picker never supplies native history or command readiness.
+Requests persist their original owner credential namespace, selected profile,
+device and conversation before dispatch. Current grants and historical replies
+remain distinct; exact retry cannot undo a later unshare. No reconnect dispatch
+or automatic grant is added.
+
+Independent reviews pass; all 272 tests, architecture/design-system gates,
+published-schema generation/provenance and formatting pass. Four setup VM, six
+sharing action/storage and two sharing VM compiling reversals fail their intended
+semantic assertions; restored tests pass. One initial pending-publication probe
+exposed a weak test rather than a product failure. The strengthened test checks
+after the physical held load settles in the suspended model; the same reversal
+now fails at that final assertion.
+
+The signed arm64 simulator build installs and starts, and the unsigned generic
+Release iPhone compile/link passes. This is not physical-device execution.
+The user approved granting one selected test chat Read access. The UI attempt
+instead dismissed the chat before creating a share intent or grant. Admission
+had changed the navigation/feed revision before settlement; that ordering and
+preservation of uncertain sends were corrected and covered by two more sharing
+VM tests. No successful post-share projection or Send/reply is claimed from that
+attempt. The user subsequently requested removal of the per-chat controls and
+one owner-wide phone authorization instead. That capability is tracked in gateway
+issue #811. Artifact integration, deletion recovery in the app, paired timings,
+and physical-device experiments remain unfinished.
+
+## Gateway b4d9e90 compatibility
+
+The matching native package and generated product rules now pin gateway main
+`b4d9e9083956459fab38bd71b677a910561758b8`. Its ready handshake advertises 67
+methods; the older 763574a client accepted at most 65. Two real paired runs of
+that old client failed their first refresh with a typed protocol refusal. A
+disposable diagnostic gateway with the same b4 implementation advertising only
+the prior 65 methods passed all five paired lifecycle stages with the unchanged
+old client, identifying the handshake boundary. No production method list or
+decoder was relaxed.
+
+The freshly built matching b4 package passes the normal 67-method five-stage
+lifecycle and a separate five-stage run carrying actual Note records through
+snapshot reload. Generated Swift/worker/FFI interfaces remain byte-identical;
+all three platform libraries, signatures and provenance pass verification.
+This proves record decoding and lifecycle behavior, not rendering notes in the
+phone UI. The existing running gateways were preserved during these fixtures.
+
+The first consolidated app test run reported 294 passes and one recovery failure
+in `canceledRecoveryCannotPrepareCacheAfterDelayedRetirement`. The original
+failure log is retained. Final recovery correction and restored app/platform
+results are recorded separately below; the failed run is not counted as passing.
+
+## Simple connection settings and persistent local pause
+
+Final independent source review passes and all 300 app tests pass. Seven compiled
+semantic reversals fail their intended assertions and are restored. These cover
+automatic reconnect after a local pause, physical close ownership, accidental
+native contact, common native scope mismatch, incorrectly equating catalogue
+and transcript streams, protected profile replacement, and purge evidence after
+local enrollment was unlinked. The original delayed-retirement recovery test
+remains unchanged and passes.
+
+Signed arm64 simulator and unsigned Release iPhone compile/link both pass on the
+reviewed source. The isolated Nessa Sync Verification simulator connects to the
+verified b4 gateway on 19743/19744. CUA observes only Connected + Disconnect in
+Settings, then Disconnected + Connect after the action. A cold process restart
+remains disconnected with New message disabled; explicit Connect restores the
+saved connection. The technical pairing and Conversations on this phone sections
+are absent. No new conversation grant or remote revocation was performed.
+
+The disposable gateway restart preserves its exact identity, pairing receipt,
+device key, receiver, access epoch, and existing credential grants. The original
+gateway on 18743 remains unchanged. The isolated device has no shared catalogue
+entries, so this UI check does not prove cached-message rendering or first Send;
+public-port tests cover passive history and the owner-wide capability still
+requires the implementation tracked in #811. Physical-iPhone execution remains
+outstanding.
+
+## Endpoint and unavailable-Send feedback
+
+The final Settings polish shows the actual connected gateway endpoint and a
+separate Disconnect button. When disconnected, its saved endpoint follows the
+same selection used by Connect, including recovery after a failed replacement.
+The final signed simulator build was installed in Nessa Sync Verification;
+CUA confirms the endpoint and standalone button without an extra Form-row card.
+
+In a newly created isolated empty Codex chat, entering `Hey` leaves Send disabled
+and muted, with the visible and accessible explanation “This chat isn’t available
+on this phone.” This makes the existing refusal understandable; it does not fix
+owner-wide authorization. No Send or grant was performed. The existing DeviceRead
+pairing cannot yet admit that unshared chat. Issue #811 tracks the gateway and
+native integration needed to admit fresh empty chats and their first message.
+
+Independent review passes for these changes, and the final full app suite passes
+301 tests. Simulator and Release device compilation pass for the endpoint and
+Send changes. These checks do not establish owner-wide Read/Write, physical-phone
+execution, or the first-Send path.

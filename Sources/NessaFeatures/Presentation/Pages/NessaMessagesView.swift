@@ -47,11 +47,7 @@ public struct NessaMessagesView: View {
           dictation: dependencies.makeDictationViewModel(), autoFocusComposer: route.focusComposer)
       }
       .sheet(isPresented: $settings) {
-        if dependencies.mode == .development {
-          DevelopmentInfoPage()
-        } else {
-          NessaConnectionView(store: store, address: $address, instance: instance)
-        }
+        NessaConnectionView(store: store, address: $address, instance: instance)
       }
       .alert(
         "Nessa connection",
@@ -64,19 +60,21 @@ public struct NessaMessagesView: View {
       .task {
         if dependencies.mode == .development {
           await store.connect(
-            address: "mock://development", credential: "", instance: "development")
+            address: "mock://development", credential: "", instance: "development",
+            automatically: true)
           return
         }
         if instance.isEmpty { instance = UUID().uuidString.lowercased() }
         if let connection = dependencies.launchConnection {
           await store.connect(
-            address: connection.address, credential: connection.credential, instance: instance)
+            address: connection.address, credential: connection.credential, instance: instance,
+            automatically: true)
           if store.connected { address = connection.address }
           return
         }
         await store.connect(
           address: address, credential: "", instance: instance,
-          restoringSavedProfile: true)
+          restoringSavedProfile: true, automatically: true)
       }
     }
     .task(id: store.connectionRevision) {

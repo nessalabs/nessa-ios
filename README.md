@@ -19,16 +19,16 @@ The inherited screens, Nostr transport, and crypto dependencies have been remove
 
 See [backend connection details](docs/NESSA_BACKEND.md). In the application,
 open Messages options → Connection settings, enter the gateway's `/session` WebSocket URL and a
-product credential, then Connect. Simulator loopback defaults to port 7420
-(production); development normally uses 7421. Prefer the gateway's actual
-published endpoint when its port is configured differently.
+product credential, then Connect. Use the gateway's published endpoint. The
+isolated verification gateway uses `ws://127.0.0.1:19743/session`; a physical
+phone requires a gateway address reachable from that phone.
 
 ## Verify
 
 ```sh
 ./scripts/verify.sh
 xcodebuild -project App/Nessa.xcodeproj -scheme Nessa \
-  -destination 'generic/platform=iOS Simulator' CODE_SIGN_IDENTITY=- build
+  -destination 'generic/platform=iOS Simulator' ARCHS=arm64 CODE_SIGN_IDENTITY=- build
 ```
 
 Live-feed fault and image-input experiments are reproducible through
@@ -44,10 +44,12 @@ Run the native adapter's scripted socket lifecycle checks with synthetic data:
 The runner uses a temporary loopback peer and the fixture-only credential. Real
 message and image experiments accept a credential file; see the runner's guide.
 
-Live builds retain a private, bounded cache of the inbox, agent metadata and the
-20 most recently viewed chats for offline display. Cache identities include the
-gateway, instance and credential fingerprint. Reconnecting replaces live feeds;
-offline display does not enable sending or establish retained-sync checkpoints.
+Live builds with a prepared phone profile read saved conversation history through
+Nessa's native retained-sync engine. The native owner controls progress, access
+withdrawal and retained readability. Fresh connected native evidence is required
+before sending. A private, bounded legacy cache remains available only when no
+phone profile exists; it is never substituted for native history on a damaged,
+unavailable or retired profile.
 
 Live chat creation and sends save frozen request identities before dispatch. An
 uncertain delivery reappears after restart with Check and Retry actions; reconnect
@@ -56,12 +58,27 @@ intents wait for pending delivery to resolve. Known first-attempt model/photo
 refusals retain the draft and release the pending slot; later uncertain refusals
 remain pending until stronger confirmation is available.
 
+## Connection settings
+
+Settings show connection status and the connected or saved gateway endpoint,
+with a separate **Disconnect** or **Connect** button. Technical pairing controls, **Conversations on this
+phone**, and the per-chat **Sync this conversation** action are removed from the
+normal UI. Disconnect is a local pause, not remote device revocation.
+
+The intended phone authorization is one read/write approval for the owner's
+current and future chats. The current gateway's paired-device contract still
+requires per-chat grants; removing those controls does not widen its authority.
+The gateway capability is tracked in [issue #811](https://github.com/nessalabs/nessa-agent/issues/811).
+Existing native profiles retain their original access rules until that capability
+is implemented and explicitly authorized.
+
 ## Remaining product work
 
-General mobile file uploads, audio attachments, push notifications, full offline history, device pairing UI,
-agent questions, full transcript pagination, uncertain deletion recovery, and
-shared retained-sync integration are not yet implemented in the new surface. Live gateway credential and network
-setup must be supplied before testing against a real Nessa deployment.
+General mobile file uploads, audio attachments, push notifications, agent
+questions, full transcript pagination and uncertain deletion recovery remain
+unfinished. Physical-device execution and broader backlog/failure experiments
+are still required. Supply a real gateway credential and reachable product and
+native addresses before testing a deployment.
 
 Simulator builds need ad hoc signing for Keychain access; an unsigned build can
 compile but fails credential storage with errSecMissingEntitlement (-34018).

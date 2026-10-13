@@ -132,6 +132,7 @@ struct NessaThreadView: View {
                 sending: store.sending, connected: store.connected,
                 attachmentPolicy: store.attachmentPolicy,
                 submissionAllowed: store.canSubmit(in: conversationID),
+                submissionUnavailableReason: store.submissionUnavailableReason(in: conversationID),
                 autoFocus: autoFocusComposer, onSend: send)
             }
           }

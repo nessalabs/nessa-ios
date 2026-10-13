@@ -24,6 +24,10 @@ private func registrationHandoff(_ endpoint: String, rapid: Bool) async throws {
     try await Task.sleep(for: .milliseconds(50))
     stream = try await client.follow(c)
     do {
+      if CommandLine.arguments.count == 6, CommandLine.arguments[1] == "--phone-share" {
+        try await PhoneSharingVerification.run(Array(CommandLine.arguments.dropFirst(2)))
+        return
+      }
       _ = try await next.value
       throw Failure.assertion("Obsolete navigation registered")
     } catch is CancellationError {}
@@ -133,6 +137,21 @@ private func connectionOwnership(_ endpoint: String) async throws {
         ["first", "offline", "resumed", "terminal", "epoch"].contains(CommandLine.arguments[1])
       {
         try await RetainedVerification.run(Array(CommandLine.arguments.dropFirst()))
+        return
+      }
+      if CommandLine.arguments.count == 5, CommandLine.arguments[1] == "--owner-list" {
+        try await PairingVerification.ownerList(
+          endpoint: CommandLine.arguments[2], credentialFile: CommandLine.arguments[3],
+          instance: CommandLine.arguments[4])
+        return
+      }
+      if CommandLine.arguments.count == 6, CommandLine.arguments[1] == "--retained-inspect" {
+        try await RetainedInspection.run(Array(CommandLine.arguments.dropFirst(2)))
+        return
+      }
+      if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "--pairing-inspect" {
+        try await PairingVerification.inspect(
+          endpoint: CommandLine.arguments[2], credentialFile: CommandLine.arguments[3])
         return
       }
       if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "--pairing-live" {

@@ -199,6 +199,48 @@ private actor PairingAdmissionGate {
 }
 
 extension PairingVerification {
+  static func ownerList(endpoint: String, credentialFile: String, instance: String) async throws {
+    let credential = try String(contentsOfFile: credentialFile, encoding: .utf8)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let client = NessaGatewayClient()
+    let lease = try await client.connectWithLease(
+      address: endpoint, credential: credential, instance: instance)
+    do {
+      let source = try await client.authenticatedSession(for: lease)
+      let list = try await client.list()
+      let final = try await client.authenticatedSession(for: lease)
+      try pairingCheck(final == source, "Owner list source changed")
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+      FileHandle.standardOutput.write(try encoder.encode(list))
+      FileHandle.standardOutput.write(Data("\n".utf8))
+      await client.retire(lease)
+    } catch {
+      await client.retire(lease)
+      throw error
+    }
+  }
+  /// Read-only published owner evidence for an explicitly selected test gateway.
+  static func inspect(endpoint: String, credentialFile: String) async throws {
+    let credential = try String(contentsOfFile: credentialFile, encoding: .utf8)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let client = NessaGatewayClient()
+    let lease = try await client.connectWithLease(
+      address: endpoint, credential: credential, instance: "ios-pairing-inspection")
+    do {
+      let source = try await client.authenticatedSession(for: lease)
+      let receipt = try await client.pendingPairings(on: lease)
+      try pairingCheck(receipt.source == source, "Inspection source changed")
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+      FileHandle.standardOutput.write(try encoder.encode(receipt.value))
+      FileHandle.standardOutput.write(Data("\n".utf8))
+      await client.retire(lease)
+    } catch {
+      await client.retire(lease)
+      throw error
+    }
+  }
   static func live(endpoint: String, credentialFile: String) async throws {
     let credential = try String(contentsOfFile: credentialFile, encoding: .utf8).trimmingCharacters(
       in: .whitespacesAndNewlines)
