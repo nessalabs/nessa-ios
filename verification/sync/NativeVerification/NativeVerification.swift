@@ -135,6 +135,16 @@ private func connectionOwnership(_ endpoint: String) async throws {
         try await RetainedVerification.run(Array(CommandLine.arguments.dropFirst()))
         return
       }
+      if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "--pairing-live" {
+        try await PairingVerification.live(
+          endpoint: CommandLine.arguments[2], credentialFile: CommandLine.arguments[3])
+        return
+      }
+      if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "--pairing-fixture" {
+        try await PairingVerification.run(
+          endpoint: CommandLine.arguments[2], markers: CommandLine.arguments[3])
+        return
+      }
       if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "--identity-fixture" {
         try await IdentityVerification.run(
           endpoint: CommandLine.arguments[2], markers: CommandLine.arguments[3])

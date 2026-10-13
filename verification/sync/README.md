@@ -66,3 +66,39 @@ The executable accepts those seven fixture arguments; do not point it at a user'
 private native directory. Full view bytes and exact progress stay separate from
 the display projection. This checks the application boundary; production profile
 enrollment and actual phone history composition still need integration.
+
+Pairing setup uses the explicit authenticated connection lease and the existing
+request/timeout owner. Run the real WebSocket contract and ordering cases with:
+
+```sh
+bash verification/sync/run-pairing-fixtures.sh
+```
+
+This verifies create-device, status, approval, cancel and pending parameters,
+complete original-source receipts, UInt64-max and beyond-JavaScript-safe counters,
+byte-array identity encoding, malformed/raw JSON refusals, error-code policy,
+pre-admission cancellation, admitted cancellation, connection replacement and
+accepted receipts held before publication. It starts only a disposable loopback
+peer and also runs the opt-in actor-settlement socket test. Normal `swift test`
+reports that socket test skipped unless `NESSA_PAIRING_FIXTURE_ENDPOINT` is set.
+
+The generated wire grammar is frozen from a clean reviewed gateway checkout;
+normal app compilation does not need that checkout. To verify provenance and
+unsupported-grammar regressions, provide the source explicitly:
+
+```sh
+python3 scripts/generate-gateway-pairing.py "$GATEWAY_CHECKOUT" --check
+NESSA_GATEWAY_SCHEMA_SOURCE="$GATEWAY_CHECKOUT" \
+  python3 -m unittest discover -s verification/sync -p test_gateway_pairing_generator.py
+```
+
+Without that explicit prerequisite the generator regression class reports a
+skip; it never guesses a sibling checkout. To observe the currently configured
+real gateway's pairing capability without creating or approving an invitation:
+
+```sh
+.build/debug/PhoneSyncVerification --pairing-live ws://127.0.0.1:18743/session /absolute/path/to/test-panel.token
+```
+
+A typed capability/configuration refusal is reported as observed evidence. This
+read-only check does not broaden grants or substitute a different credential.

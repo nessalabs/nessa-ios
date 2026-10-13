@@ -362,3 +362,42 @@ app and embedded signatures verify. The pinned gateway82d1438 CI run38319390190
 passes every required check on macOS, Linux and Windows. These are preparation
 and native-boundary results, not production enrollment/repository or physical
 phone execution evidence.
+
+## Leased product pairing boundary
+
+The app's `GatewayPairingManaging` port uses the existing product request owner
+for create-device, status, approve, cancel and pending. Each accepted result and
+admitted failure captures the original complete authenticated publication. Stale
+lease, invalid input and cancellation before pending admission cause no dispatch.
+Cancellation after admission does not discard an accepted code or status.
+Replacement before acceptance leaves the remote outcome unknown; accepted replies
+remain historical receipts, with no later current-lease/cancellation fence.
+The future coordinator must revalidate that source before advancing setup.
+
+Passive values preserve full consent, claimed key, receiver, terminal actor/cause,
+cleanup-pending and approval activation-stop facts separately. A create code has
+no Codable or profile-storage field. A generated contract, pinned to gateway82d,
+validates exact schema fields, nullability, integer bounds, byte arrays and enum
+spellings. Shared ready/grant/resource decoding uses that same rule owner;
+malformed frames become the application's invalid-frame failure while owner wire
+codes, diagnostics/details and actual transport errors stay distinct. One mapped
+error settles waiter/subscriber owners; no second retry/timeout lifecycle exists.
+
+The actual current gateway's read-only pairing.pending check returns
+`pairing_not_configured`. This is not real enrollment success. Production profile
+coordination, explicit approval, retained-history composition and native-enabled
+live gateway experiments remain necessary; existing chats still use the previous
+product-view repository path. The gateway review fixes also introduce native
+uncertain-cache variants: the vendored library and phone mappings must be refreshed
+from the reviewed stack before that newer ABI is used.
+
+The restored pairing slice passes 163 app tests (the externally hosted socket test
+is explicitly opt-in), eight explicit-source generator regressions, all real
+pairing socket cases including two controlled accepted-receipt orderings, and the
+existing full default transport/command/identity fault runner. Seven deliberate
+rule reversals fail at runtime/test assertions. Fresh independent source review
+passes with no remaining findings after fixing union rejection and all malformed
+frame classifications. Corrected signed simulator and generic Release device
+builds pass; actual simulator native/profile probes emit both success markers,
+and the existing pinned Web Search and Image chats remain visible after reinstall.
+No physical-device execution or chat latency improvement is claimed by this slice.

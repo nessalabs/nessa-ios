@@ -4,7 +4,7 @@ import Foundation
 /// Native implementation of Nessa's product v1 req/res protocol. Commands are never replayed.
 public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ConversationFollowing,
   ConnectionLeasing, PreparedCommandTransport, CommandRecoveryProviding,
-  AuthenticatedGatewaySessionProviding
+  AuthenticatedGatewaySessionProviding, GatewayPairingManaging
 {
   public nonisolated var attachmentPolicy: AttachmentPolicy { .nessa }
   private var imageCache: AttachmentImageCache?
@@ -14,7 +14,12 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   private var uploadURL: URL?
   private var socket: URLSessionWebSocketTask?
   private var reader: Task<Void, Never>?
-  private var pending: [String: CheckedContinuation<Data, Error>] = [:]
+  private struct PendingRequest {
+    let continuation: CheckedContinuation<Data, Error>
+    let strictEnvelope: Bool
+    let failure: @Sendable (String?, String?, Data?) -> any Error
+  }
+  private var pending: [String: PendingRequest] = [:]
   private var timeouts: [String: Task<Void, Never>] = [:]
   private var subscriptions = GatewaySubscriptions()
   private struct RegistrationWaiter {
@@ -32,11 +37,18 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   private var connectionScope: PhoneCacheScope?
   private var authenticatedPublication: AuthenticatedGatewaySession?
 
+  private let pairingAccepted: (@Sendable () async -> Void)?
   private let commands: JournaledGatewayCommands?
   private var commandBinding: JournaledGatewayCommands.Binding?
   private var commandBindingError: (any Error)?
   public init(journal: PhoneCommandJournal? = nil) {
     commands = journal.map { JournaledGatewayCommands(journal: $0) }
+    pairingAccepted = nil
+  }
+  /// Internal ordering seam: the production initializer never installs this observer.
+  init(pairingAccepted: @escaping @Sendable () async -> Void) {
+    commands = nil
+    self.pairingAccepted = pairingAccepted
   }
 
   public func connect(address: String, credential: String, instance: String) async throws {
@@ -81,6 +93,67 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     else { throw NessaGatewayError.disconnected }
     return publication
   }
+  public func createDevice(on lease: GatewayConnectionLease) async throws
+    -> GatewayPairingReceipt<GatewayPairingCreated>
+  {
+    let (source, value): (AuthenticatedGatewaySession, GatewayPairingCreatedDTO) =
+      try await pairing(
+        "pairing.create", params: PairingCreate(enrollee: .device), schema: "PairingCreateParams",
+        on: lease)
+    return .init(source: source, value: value.value)
+  }
+  public func pairingStatus(_ invitation: Data, on lease: GatewayConnectionLease) async throws
+    -> GatewayPairingReceipt<GatewayPairingStatus>
+  {
+    let (source, value): (AuthenticatedGatewaySession, GatewayPairingStatusDTO) = try await pairing(
+      "pairing.status", params: PairingInvitation(invitationId: Array(invitation)),
+      schema: "PairingInvitationParams", on: lease)
+    return .init(source: source, value: value.value)
+  }
+  public func approvePairing(_ invitation: Data, deviceKey: Data, on lease: GatewayConnectionLease)
+    async throws
+    -> GatewayPairingReceipt<GatewayPairingApproval>
+  {
+    let (source, value): (AuthenticatedGatewaySession, GatewayPairingApprovalDTO) =
+      try await pairing(
+        "pairing.approve",
+        params: PairingApprove(invitationId: Array(invitation), deviceKey: Array(deviceKey)),
+        schema: "PairingApproveParams", on: lease)
+    return .init(source: source, value: value.value)
+  }
+  public func cancelPairing(_ invitation: Data, on lease: GatewayConnectionLease) async throws
+    -> GatewayPairingReceipt<GatewayPairingStatus>
+  {
+    let (source, value): (AuthenticatedGatewaySession, GatewayPairingStatusDTO) = try await pairing(
+      "pairing.cancel", params: PairingInvitation(invitationId: Array(invitation)),
+      schema: "PairingInvitationParams", on: lease)
+    return .init(source: source, value: value.value)
+  }
+  public func pendingPairings(on lease: GatewayConnectionLease) async throws
+    -> GatewayPairingReceipt<[GatewayPairingStatus]>
+  {
+    let (source, value): (AuthenticatedGatewaySession, GatewayPairingPendingDTO) =
+      try await pairing(
+        "pairing.pending", params: Empty(), schema: nil, on: lease)
+    return .init(source: source, value: value.values)
+  }
+  private func pairing<P: Encodable, R: Decodable>(
+    _ method: String, params: P, schema: String?, on lease: GatewayConnectionLease
+  ) async throws -> (AuthenticatedGatewaySession, R) {
+    let source = try authenticatedSession(for: lease)
+    guard let originalSocket = socket else { throw NessaGatewayError.disconnected }
+    if let schema { try validateGatewayWire(JSONEncoder().encode(params), named: schema) }
+    let value: R = try await request(
+      method, params: params, expectedSocket: originalSocket, pairingSource: source)
+    return (source, value)
+  }
+  private struct PairingCreate: Encodable { let enrollee: GatewayPairingEnrollee }
+  private struct PairingInvitation: Encodable { let invitationId: [UInt8] }
+  private struct PairingApprove: Encodable {
+    let invitationId: [UInt8]
+    let deviceKey: [UInt8]
+  }
+
   private func openConnection(
     address: String, credential: String, instance: String, generation: Int
   ) async throws {
@@ -554,33 +627,56 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   }
   private func request<P: Encodable, R: Decodable>(
     _ method: String, params: P,
-    id: String = UUID().uuidString, expectedSocket: URLSessionWebSocketTask? = nil
+    id: String = UUID().uuidString, expectedSocket: URLSessionWebSocketTask? = nil,
+    pairingSource: AuthenticatedGatewaySession? = nil
   ) async throws -> R {
     guard let socket, expectedSocket == nil || socket === expectedSocket else {
       throw NessaGatewayError.disconnected
     }
     let data = try JSONEncoder().encode(
       Request(type: "req", id: id, method: method, params: params))
-    let payload: Data = try await withCheckedThrowingContinuation { continuation in
-      pending[id] = continuation
-      Task {
-        do { try await socket.send(.string(String(decoding: data, as: UTF8.self))) } catch {
-          self.expire(id, error: error)
+    // Before admission cancellation proves no dispatch. After admission the existing
+    // response/timeout/close owner completes it, even when the caller is cancelled.
+    if pairingSource != nil { try Task.checkCancellation() }
+    do {
+      let payload: Data = try await withCheckedThrowingContinuation { continuation in
+        pending[id] = PendingRequest(
+          continuation: continuation, strictEnvelope: pairingSource != nil,
+          failure: { code, message, details in
+            if pairingSource != nil, let code, let message {
+              return GatewayPairingRejection(code: code, diagnostic: message, details: details)
+            }
+            return GatewayFailureDTO.failure(code: code, message: message)
+          })
+        Task {
+          do { try await socket.send(.string(String(decoding: data, as: UTF8.self))) } catch {
+            self.expire(id, error: error)
+          }
+        }
+        timeouts[id] = Task {
+          do { try await Task.sleep(for: .seconds(30)) } catch { return }
+          self.expire(id, error: NessaGatewayError.timeout)
         }
       }
-      timeouts[id] = Task {
-        do { try await Task.sleep(for: .seconds(30)) } catch { return }
-        self.expire(id, error: NessaGatewayError.timeout)
+      // The waiter has settled. Testing can hold this ordering before decode/publication.
+      if pairingSource != nil, let pairingAccepted { await pairingAccepted() }
+      // No current-lease or cancellation fence: this is an accepted historical receipt.
+      return try JSONDecoder().decode(R.self, from: payload)
+    } catch {
+      if let pairingSource {
+        // Wire grammar has one application failure; transport and owner codes stay intact.
+        let underlying: any Error = error is DecodingError ? NessaGatewayError.invalidFrame : error
+        throw GatewayPairingOperationFailure(source: pairingSource, underlying: underlying)
       }
+      throw error
     }
-    return try JSONDecoder().decode(R.self, from: payload)
   }
   private func expire(_ id: String, error: Error) {
     timeouts.removeValue(forKey: id)?.cancel()
     let registration = subscriptions.awaiting(id)
     subscriptions.fail(id, error: error)
     registrationSettled(id)
-    pending.removeValue(forKey: id)?.resume(throwing: error)
+    pending.removeValue(forKey: id)?.continuation.resume(throwing: error)
     // A lost registration answer may leave an unnamed remote watcher. Close its owner socket.
     if registration { disconnect() }
   }
@@ -593,8 +689,26 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     @unknown default: return
     }
     do {
-      guard let frame = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      let object: Any
+      do { object = try JSONSerialization.jsonObject(with: data) } catch {
         throw NessaGatewayError.invalidFrame
+      }
+      guard let frame = object as? [String: Any] else { throw NessaGatewayError.invalidFrame }
+      if pending.values.contains(where: { $0.strictEnvelope }) {
+        guard let kind = frame["type"] as? String, kind == "res" || kind == "event" else {
+          throw NessaGatewayError.invalidFrame
+        }
+      }
+      if frame["type"] as? String == "res" {
+        guard let id = frame["id"] as? String, !id.isEmpty else {
+          throw NessaGatewayError.invalidFrame
+        }
+      }
+      let strict: GatewayPairingEnvelope?
+      if let id = frame["id"] as? String, pending[id]?.strictEnvelope == true {
+        strict = try JSONDecoder().decode(GatewayPairingEnvelope.self, from: data)
+      } else {
+        strict = nil
       }
       if frame["type"] as? String == "event", frame["event"] as? String == "session.challenge",
         let payload = frame["payload"]
@@ -607,9 +721,9 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
         let waiter = pending.removeValue(forKey: id)
       {
         timeouts.removeValue(forKey: id)?.cancel()
-        if frame["ok"] as? Bool == true {
-          let registration = subscriptions.awaiting(id)
-          do {
+        let registration = subscriptions.awaiting(id)
+        do {
+          if frame["ok"] as? Bool == true {
             let payload = try JSONSerialization.data(
               withJSONObject: frame["payload"] ?? [:], options: .fragmentsAllowed)
             if subscriptions.awaiting(id),
@@ -619,23 +733,24 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
               _ = beginCleanup(stopped, generation: generation)
             }
             registrationSettled(id)
-            waiter.resume(returning: payload)
-          } catch {
-            subscriptions.fail(id, error: error)
+            waiter.continuation.resume(returning: payload)
+          } else {
+            let error = frame["error"] as? [String: Any]
+            let details = try error?["details"].map {
+              try JSONSerialization.data(withJSONObject: $0, options: .fragmentsAllowed)
+            }
+            let failure = waiter.failure(
+              strict?.rejection?.code ?? error?["code"] as? String,
+              strict?.rejection?.diagnostic ?? error?["message"] as? String, details)
+            subscriptions.fail(id, error: failure)
             registrationSettled(id)
-            waiter.resume(throwing: error)
-            if registration { close(error) }
+            waiter.continuation.resume(throwing: failure)
           }
-        } else {
-          let error = frame["error"] as? [String: Any]
-          subscriptions.fail(
-            id,
-            error: GatewayFailureDTO.failure(
-              code: error?["code"] as? String, message: error?["message"] as? String))
+        } catch {
+          subscriptions.fail(id, error: error)
           registrationSettled(id)
-          waiter.resume(
-            throwing: GatewayFailureDTO.failure(
-              code: error?["code"] as? String, message: error?["message"] as? String))
+          waiter.continuation.resume(throwing: error)
+          if registration { close(error) }
         }
       } else if frame["type"] as? String == "event", let name = frame["event"] as? String,
         let payload = frame["payload"]
@@ -656,7 +771,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   private func failPending(_ error: Error) {
     for timeout in timeouts.values { timeout.cancel() }
     timeouts.removeAll()
-    for waiter in pending.values { waiter.resume(throwing: error) }
+    for waiter in pending.values { waiter.continuation.resume(throwing: error) }
     pending.removeAll()
     challengeWaiter?.resume(throwing: error)
     challengeWaiter = nil
