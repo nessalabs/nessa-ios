@@ -252,6 +252,23 @@ public-port tests cover passive history and the owner-wide capability still
 requires the implementation tracked in #811. Physical-iPhone execution remains
 outstanding.
 
+## Owner-phone preparation storage foundations
+
+The Application-only original preparation journal and concrete private-file
+adapter pass independent review. Fifteen public-port tests cover original
+reservation/proof ownership, durable publication, source replacement and
+cancellation-independent close; six storage tests cover real cold reopening,
+canonical-byte compare-and-swap, concurrent lock contention, corruption,
+permissions, quota and symlink refusals. Four Application and three storage
+semantic reversals compile and fail their intended assertions, then are restored.
+The restored full Swift suite passes 322 tests.
+
+These foundations do not select a profile, grant access, contact the gateway,
+or enable Send. Production composition still needs the reviewed native signer,
+owner-phone RPC contract and protected product child from #811. Public saved
+proof is revalidated against the original native private scope before reuse;
+visible bytes after failed durability cannot skip a successful republish.
+
 ## Endpoint and unavailable-Send feedback
 
 The final Settings polish shows the actual connected gateway endpoint and a
