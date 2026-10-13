@@ -62,7 +62,13 @@ enum RetainedVerification {
         try require(
           intent.invitation.count == 16 && intent.attempt.count == 16 && intent.consent.count == 16,
           "correlation lost")
-        try require(intent.consentClass == .deviceRead && intent.generation > 0, "intent changed")
+        try require(
+          intent.consentClass == .deviceRead
+            && intent.consentClassName.utf8.elementsEqual(
+              (ProcessInfo.processInfo.environment["NESSA_NATIVE_EXPECTED_CONSENT_CLASS"] ?? "")
+                .utf8)
+            && !intent.consentClassName.isEmpty && intent.generation > 0,
+          "intent changed")
         try require(refresh.selectionFailure == nil, "unexpected selection failure")
         if mode == "epoch" {
           try require(refresh.read?.failure == .refused, "missing read refusal")
@@ -94,7 +100,10 @@ enum RetainedVerification {
           (ProcessInfo.processInfo.environment["NESSA_NATIVE_EXPECTED_CREDENTIAL_ID"] ?? "").utf8)
           && issued.receiver.utf8.elementsEqual(receiver.utf8), "foreign local issued selectors")
       try require(
-        local.gatewayPin.count == 44 && local.publicIntent.consentClass == .deviceRead,
+        local.gatewayPin.count == 44 && local.publicIntent.consentClass == .deviceRead
+          && local.publicIntent.consentClassName.utf8.elementsEqual(
+            (ProcessInfo.processInfo.environment["NESSA_NATIVE_EXPECTED_CONSENT_CLASS"] ?? "").utf8)
+          && !local.publicIntent.consentClassName.isEmpty,
         "lost native pin or consent class")
       guard let page = try await session.cataloguePage(after: nil, maximum: 16) else {
         throw Failure.assertion("missing retained catalogue")
@@ -181,7 +190,8 @@ private struct RetainedSessionSubstitute: RetainedSession {
     .init(
       publicIntent: .init(
         attempt: Data(repeating: 1, count: 16), consent: Data(repeating: 2, count: 16),
-        consentClass: .deviceRead, expiryMs: UInt64.max, generation: UInt64.max,
+        consentClass: .deviceRead, consentClassName: "gateway-conversation-read",
+        expiryMs: UInt64.max, generation: UInt64.max,
         invitation: Data(repeating: 3, count: 16)),
       deviceKey: Data(repeating: 4, count: 32), gatewayPin: Data(repeating: 5, count: 44),
       issued: .init(credential: "credential", receiver: "receiver"))

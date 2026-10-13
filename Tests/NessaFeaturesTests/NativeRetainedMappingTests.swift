@@ -155,7 +155,8 @@ private func fields(_ value: Any, path: String = "") -> [String: String] {
     #expect(NativeRetainedCapture.capture(value).rawValue == String(describing: value))
   }
   for value: NativeReadFailure in [
-    .refused, .unreachable, .resetRequired, .`protocol`, .cache, .cacheDamaged, .quota, .stopped,
+    .refused, .unreachable, .resetRequired, .`protocol`, .cache, .cacheDamaged, .cacheUncertain,
+    .quota, .stopped,
   ] {
     #expect(NativeRetainedCapture.capture(value).rawValue == String(describing: value))
   }

@@ -27,6 +27,7 @@ extension NativeRetainedCapture {
     case .DamagedHandle: return .damagedHandle
     case .Cache: return .cache
     case .CacheDamaged: return .cacheDamaged
+    case .CacheUncertain: return .cacheUncertain
     case .ResetRequired: return .resetRequired
     case .Quota: return .quota
     case .InvalidTarget: return .invalidTarget

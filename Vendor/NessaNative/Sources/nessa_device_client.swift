@@ -2608,6 +2608,12 @@ public protocol NativePublicIntentProtocol: AnyObject, Sendable {
     func consentClass()  -> NativeConsentClass
     
     /**
+     * Auth-owned wire class name for receipt/status correlation, delegated to
+     * [`ConsentClass::as_str`] without foreign spelling or normalization policy.
+     */
+    func consentClassName()  -> String
+    
+    /**
      * Original exclusive invitation expiry in Unix milliseconds.
      */
     func expiryMs()  -> UInt64
@@ -2710,6 +2716,19 @@ open func consentClass() -> NativeConsentClass  {
     return try!  FfiConverterTypeNativeConsentClass_lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_nessa_device_client_fn_method_nativepublicintent_consent_class(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Auth-owned wire class name for receipt/status correlation, delegated to
+     * [`ConsentClass::as_str`] without foreign spelling or normalization policy.
+     */
+open func consentClassName() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativepublicintent_consent_class_name(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -6455,6 +6474,10 @@ public enum NativeReadFailure: Equatable, Hashable {
     /**
      * Existing same-named core variant.
      */
+    case cacheUncertain
+    /**
+     * Existing same-named core variant.
+     */
     case cacheDamaged
     /**
      * Existing same-named core variant.
@@ -6495,11 +6518,13 @@ public struct FfiConverterTypeNativeReadFailure: FfiConverterRustBuffer {
         
         case 5: return .cache
         
-        case 6: return .cacheDamaged
+        case 6: return .cacheUncertain
         
-        case 7: return .quota
+        case 7: return .cacheDamaged
         
-        case 8: return .stopped
+        case 8: return .quota
+        
+        case 9: return .stopped
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -6529,16 +6554,20 @@ public struct FfiConverterTypeNativeReadFailure: FfiConverterRustBuffer {
             writeInt(&buf, Int32(5))
         
         
-        case .cacheDamaged:
+        case .cacheUncertain:
             writeInt(&buf, Int32(6))
         
         
-        case .quota:
+        case .cacheDamaged:
             writeInt(&buf, Int32(7))
         
         
-        case .stopped:
+        case .quota:
             writeInt(&buf, Int32(8))
+        
+        
+        case .stopped:
+            writeInt(&buf, Int32(9))
         
         }
     }
@@ -6992,6 +7021,10 @@ enum NativeViewError: Swift.Error, Equatable, Hashable, Foundation.LocalizedErro
      */
     case Cache
     /**
+     * A prior cache commit remains unconfirmed; reload durable evidence.
+     */
+    case CacheUncertain
+    /**
      * Saved schema/data needs explicit recovery.
      */
     case CacheDamaged
@@ -7047,12 +7080,13 @@ public struct FfiConverterTypeNativeViewError: FfiConverterRustBuffer {
         case 1: return .Busy
         case 2: return .DamagedHandle
         case 3: return .Cache
-        case 4: return .CacheDamaged
-        case 5: return .ResetRequired
-        case 6: return .Quota
-        case 7: return .InvalidTarget
-        case 8: return .ViewTooLarge
-        case 9: return .Serialization
+        case 4: return .CacheUncertain
+        case 5: return .CacheDamaged
+        case 6: return .ResetRequired
+        case 7: return .Quota
+        case 8: return .InvalidTarget
+        case 9: return .ViewTooLarge
+        case 10: return .Serialization
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -7077,28 +7111,32 @@ public struct FfiConverterTypeNativeViewError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(3))
         
         
-        case .CacheDamaged:
+        case .CacheUncertain:
             writeInt(&buf, Int32(4))
         
         
-        case .ResetRequired:
+        case .CacheDamaged:
             writeInt(&buf, Int32(5))
         
         
-        case .Quota:
+        case .ResetRequired:
             writeInt(&buf, Int32(6))
         
         
-        case .InvalidTarget:
+        case .Quota:
             writeInt(&buf, Int32(7))
         
         
-        case .ViewTooLarge:
+        case .InvalidTarget:
             writeInt(&buf, Int32(8))
         
         
-        case .Serialization:
+        case .ViewTooLarge:
             writeInt(&buf, Int32(9))
+        
+        
+        case .Serialization:
+            writeInt(&buf, Int32(10))
         
         }
     }
@@ -8155,6 +8193,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativepublicintent_consent_class() != 60791) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativepublicintent_consent_class_name() != 47967) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativepublicintent_expiry_ms() != 48526) {

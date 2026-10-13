@@ -134,6 +134,7 @@ enum NativeRetainedCapture {
     case .`protocol`: return .`protocol`
     case .cache: return .cache
     case .cacheDamaged: return .cacheDamaged
+    case .cacheUncertain: return .cacheUncertain
     case .quota: return .quota
     case .stopped: return .stopped
     }
@@ -268,6 +269,7 @@ enum NativeRetainedCapture {
       attempt: value.attempt(),
       consent: value.consent(),
       consentClass: capture(value.consentClass()),
+      consentClassName: value.consentClassName(),
       expiryMs: value.expiryMs(),
       generation: value.generation(),
       invitation: value.invitation()

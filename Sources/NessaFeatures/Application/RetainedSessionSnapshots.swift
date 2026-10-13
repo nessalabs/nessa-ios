@@ -109,6 +109,7 @@ public enum RetainedReadFailure: String, Equatable, Sendable {
   case `protocol`
   case cache
   case cacheDamaged
+  case cacheUncertain
   case quota
   case stopped
 }
@@ -287,16 +288,19 @@ public struct RetainedPublicIntent: Equatable, Sendable {
   public let attempt: Data
   public let consent: Data
   public let consentClass: RetainedConsentClass
+  public let consentClassName: String
   public let expiryMs: UInt64
   public let generation: UInt64
   public let invitation: Data
   public init(
-    attempt: Data, consent: Data, consentClass: RetainedConsentClass, expiryMs: UInt64,
+    attempt: Data, consent: Data, consentClass: RetainedConsentClass, consentClassName: String,
+    expiryMs: UInt64,
     generation: UInt64, invitation: Data
   ) {
     self.attempt = attempt
     self.consent = consent
     self.consentClass = consentClass
+    self.consentClassName = consentClassName
     self.expiryMs = expiryMs
     self.generation = generation
     self.invitation = invitation
@@ -482,7 +486,7 @@ public struct RetainedWireFailure: Equatable, Sendable {
 }
 
 public enum RetainedViewFailure: String, Equatable, Sendable {
-  case busy, damagedHandle, cache, cacheDamaged, resetRequired, quota
+  case busy, damagedHandle, cache, cacheDamaged, cacheUncertain, resetRequired, quota
   case invalidTarget, viewTooLarge, serialization
 }
 
@@ -505,6 +509,16 @@ private enum RetainedTextEquality {
   }
   static func equal(_ lhs: [String], _ rhs: [String]) -> Bool {
     lhs.count == rhs.count && zip(lhs, rhs).allSatisfy { equal($0.0, $0.1) }
+  }
+}
+
+extension RetainedPublicIntent {
+  public static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.attempt == rhs.attempt && lhs.consent == rhs.consent
+      && lhs.consentClass == rhs.consentClass
+      && RetainedTextEquality.equal(lhs.consentClassName, rhs.consentClassName)
+      && lhs.expiryMs == rhs.expiryMs && lhs.generation == rhs.generation
+      && lhs.invitation == rhs.invitation
   }
 }
 

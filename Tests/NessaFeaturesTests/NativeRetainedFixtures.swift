@@ -316,17 +316,20 @@ final class FixtureNativePublicIntent: NativePublicIntent, @unchecked Sendable {
   let stored_attempt: Data
   let stored_consent: Data
   let stored_consentClass: NativeConsentClass
+  let stored_consentClassName: String
   let stored_expiryMs: UInt64
   let stored_generation: UInt64
   let stored_invitation: Data
   init(
     attempt: Data = Data(repeating: 1, count: 16), consent: Data = Data(repeating: 2, count: 16),
-    consentClass: NativeConsentClass = .peerEnvironment, expiryMs: UInt64 = UInt64.max - 3,
+    consentClass: NativeConsentClass = .peerEnvironment,
+    consentClassName: String = "peer-gateway-environment-serve", expiryMs: UInt64 = UInt64.max - 3,
     generation: UInt64 = UInt64.max - 4, invitation: Data = Data(repeating: 6, count: 16)
   ) {
     stored_attempt = attempt
     stored_consent = consent
     stored_consentClass = consentClass
+    stored_consentClassName = consentClassName
     stored_expiryMs = expiryMs
     stored_generation = generation
     stored_invitation = invitation
@@ -344,6 +347,10 @@ final class FixtureNativePublicIntent: NativePublicIntent, @unchecked Sendable {
   override func consentClass() -> NativeConsentClass {
     precondition(!Thread.isMainThread)
     return stored_consentClass
+  }
+  override func consentClassName() -> String {
+    precondition(!Thread.isMainThread)
+    return stored_consentClassName
   }
   override func expiryMs() -> UInt64 {
     precondition(!Thread.isMainThread)
@@ -780,11 +787,14 @@ final class FixtureNativeLocalEnrollment: NativeLocalEnrollmentProtocol, @unchec
   let stored_gatewayPin: Data
   let stored_issued: NativeLocalIssuedEnrollment?
   let stored_publicIntent: NativePublicIntent
-  init(issued: NativeLocalIssuedEnrollment? = nil) {
+  init(
+    issued: NativeLocalIssuedEnrollment? = nil,
+    publicIntent: NativePublicIntent = FixtureNativePublicIntent()
+  ) {
     stored_deviceKey = Data((0..<32).map(UInt8.init))
     stored_gatewayPin = Data((32..<76).map(UInt8.init))
     stored_issued = issued
-    stored_publicIntent = FixtureNativePublicIntent()
+    stored_publicIntent = publicIntent
   }
   func deviceKey() -> Data {
     precondition(!Thread.isMainThread)
