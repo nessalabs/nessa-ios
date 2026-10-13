@@ -441,3 +441,33 @@ Production composition, setup UI, retained chat-history hydration and configured
 native gateway phone experiments remain pending. This coordinator is not yet used
 by the normal chat UI. No new phone latency or physical-device execution result is
 claimed by these checks.
+
+## Application lifetime and history projections
+
+`PhoneSyncRuntime` owns a temporary background drain separately from permanent
+close. Concurrent and canceled waiters join the same physical close; replacement
+waits for both native shutdown and admitted wrapper work, including a delayed
+credential read. Failed drains retain their child and fence. Successful suspension
+permits a fresh child to reopen the same persisted profile on foreground.
+
+Startup restores the selected profile before handing off its immutable credential.
+Only a prepared profile can hand off product connection material. A retired
+profile returns passive metadata without reading the secret; preparing, changed,
+corrupt or locked state never becomes a legacy fallback. A missing native profile
+allows legacy startup only after the registry is confirmed still absent.
+
+`PhoneRetainedHistory` bounds native catalogue pagination and verifies profile,
+revision, receiver, full scope, generation, active boundary and cursor continuity.
+It preserves complete native pages and transcript observations alongside UI
+projections. Missing or unavailable history is a finite refusal, not an empty
+product-cache replacement. Transcript projections must name the requested chat
+and UI revision epoch. Catalogue enumeration does not establish remote catch-up.
+Identical public metadata avoids incidental writes; restore still forces a
+successful publication to confirm durability after an uncertain earlier write.
+
+The application layer has passed independent review and 213 tests. Seven compiling
+reversals are rejected by assertions: preparing handoff, stale handoff registry,
+late wrapper publication, mixed history revision/generation, incidental identical
+metadata writes and omitted restore durability confirmation. Actual packaged Rust
+shutdown and same-directory reopen run through the runtime test. Normal chat UI,
+setup composition and configured native gateway experiments remain pending.

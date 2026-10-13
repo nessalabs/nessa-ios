@@ -84,3 +84,22 @@ reopen. Five compiling rule reversals fail their intended assertions. Signed
 simulator and generic Release device builds pass. Production setup/history wiring
 and actual native-enabled gateway experiments remain open; the earlier transport
 measurements above are not measurements of this coordinator.
+
+## Application runtime and history verification
+
+The runtime/history application slice passes 213 tests and independent review.
+Held credential work, canceled suspension waiters, failed physical drain, changed
+registry and preparing/retired profiles cannot hand off an obsolete connection.
+The actual native library closes and reopens the same private profile directory.
+History tests preserve full observations while rejecting mixed pagination scope,
+revision/generation, duplicate or cyclic keys, unavailable transcripts and quota
+overflow. Identical facts skip incidental metadata writes; cold restore still
+confirms durability. Seven compiling reversals fail assertions and restored gates
+pass. These are application-boundary results; production UI composition and
+native-enabled app/gateway experiments remain unfinished.
+
+The signed simulator build installs and starts in live mode with the original two
+chats present. Its UIKit context menu opens with a 600 ms hold; no custom hold
+delay is added. The generic Release device build passes without signing. This
+machine lacks the app's development provisioning profile, so the device result
+is compile/link evidence, not an install or physical-device execution result.

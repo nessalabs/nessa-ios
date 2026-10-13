@@ -449,12 +449,18 @@ private struct HeldRealCoordinatorFactory: RetainedSessionFactory {
   #expect(result.nativeRefresh?.initial == initial)
   #expect(result.nativeRefresh?.read?.withdrawn == ["old-chat"])
   await harness.profiles.configure(.nativeStatus)
+  // Change a public receipt fact so this operation requires a real metadata publication.
+  let later = coordinatorStatus(coordinatorReceipt(phase: .staging))
+  let failedCompound = RetainedRefresh(
+    initial: initial, read: compound.read, recheck: later,
+    selectionFailure: compound.selectionFailure)
+  await harness.native.setRefresh(failedCompound)
   do {
     _ = try await coordinator.refresh(on: nil)
     Issue.record("Expected post-refresh save failure")
   } catch let failure as PhoneProfileCoordinationFailure {
-    #expect(failure.nativeRefresh == compound)
-    #expect(failure.nativeStatus == recheck)
+    #expect(failure.nativeRefresh == failedCompound)
+    #expect(failure.nativeStatus == later)
     #expect(failure.local == coordinatorLocal(issued: true))
   }
   try await coordinator.close()

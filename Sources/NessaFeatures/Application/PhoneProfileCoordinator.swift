@@ -64,7 +64,7 @@ public actor PhoneProfileCoordinator: PhoneProfileCoordinating {
       guard let saved else { return nil }
       try saved.validate()
       // Re-publish even visible bytes: a prior writer may have failed its durability step.
-      try await coordinator.publish(coordinator.selected(), token: token)
+      try await coordinator.publish(coordinator.selected(), token: token, force: true)
       coordinator.needsRecovery = false
       let profile = try coordinator.selected()
       _ = try await coordinator.credentials.load(reference: profile.credentialReference)
@@ -423,9 +423,10 @@ public actor PhoneProfileCoordinator: PhoneProfileCoordinating {
       local = nil
     }
   }
-  private func publish(_ profile: PhoneProfile, token: UUID) async throws {
+  private func publish(_ profile: PhoneProfile, token: UUID, force: Bool = false) async throws {
     try await check(token)
     let old = try selectedRegistry()
+    if !force, old.profiles.first(where: { $0.id == profile.id }) == profile { return }
     let next = PhoneProfiles(
       revision: revision(), selected: old.selected,
       profiles: old.profiles.map { $0.id == profile.id ? profile : $0 })
