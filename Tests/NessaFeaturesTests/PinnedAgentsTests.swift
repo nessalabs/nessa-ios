@@ -97,7 +97,7 @@ func previewDoesNotCreateAndConversationActionsPersist() async throws {
   #expect(reloaded.unreadChats == ["codex"])
   #expect(reloaded.mutedChats == ["codex"])
   await reloaded.loadPreview("codex")
-  #expect(reloaded.agentPreviews["codex"] != nil)
+  #expect(reloaded.previewState(for: "codex") == .empty)
   _ = await reloaded.openAgent("codex")
   #expect(reloaded.unreadChats.isEmpty)
   await reloaded.deleteConversation(for: "codex")

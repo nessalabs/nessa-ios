@@ -7,6 +7,7 @@ import Testing
 private actor DelayedRepository: MessagingRepository {
   private var reads: [CheckedContinuation<NessaConversationView, Error>?] = []
   var readCount: Int { reads.count }
+  private(set) var totalReadCount = 0
   private var readWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
   private var lists: [CheckedContinuation<NessaConversationList, Error>?] = []
   private var listWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
@@ -49,6 +50,7 @@ private actor DelayedRepository: MessagingRepository {
     }
   }
   func read(_ id: String) async throws -> NessaConversationView {
+    totalReadCount += 1
     if let immediateRead { return immediateRead }
     return try await withCheckedThrowingContinuation { continuation in
       reads.append(continuation)
@@ -152,7 +154,7 @@ func deletionInvalidatesPendingInboxThreadAndPreview() async throws {
   await preview.value
   #expect(model.conversations.isEmpty)
   #expect(model.views["thread"] == nil)
-  #expect(model.agentPreviews["thread"] == nil)
+  #expect(model.previewState(for: "thread") == .unavailable)
 }
 
 @Test @MainActor
@@ -257,4 +259,184 @@ func staleSendFailureCannotPublishErrorInReplacementSession() async {
   #expect(await send.value == false)
   #expect(model.error == nil)
   #expect(model.connected)
+}
+
+private func previewThread(_ text: String? = nil) -> NessaConversationView {
+  NessaConversationView(
+    conversationId: "thread",
+    messages: text.map {
+      [NessaTurn(executionId: "turn", userText: $0, status: "done", error: nil, parts: [])]
+    } ?? [],
+    permissions: [], truncated: false, interactionViewError: nil, runtime: nil)
+}
+@MainActor private func previewModel(_ repository: DelayedRepository, alias: Bool = false) async
+  -> MessagesViewModel
+{
+  let preferences = InMemoryChatPreferences()
+  if alias {
+    preferences.save(["codex": "thread"], forKey: "nessa.agentThreads.mock://preview:test")
+  }
+  let model = MessagesViewModel(
+    service: MessagingService(repository: repository),
+    credentials: InMemoryCredentialStore(), preferences: preferences)
+  await model.connect(address: "mock://preview", credential: "", instance: "test")
+  model.conversations = [
+    NessaConversation(
+      conversationId: "thread", title: "thread", preview: nil, updatedAtMs: 0, running: false)
+  ]
+  return model
+}
+@Test @MainActor func loadedAndOfflinePreviewsReuseHistoryWithoutReadingAgain() async {
+  let repository = DelayedRepository()
+  let model = await previewModel(repository)
+  let view = previewThread("Already loaded")
+  await repository.useImmediateRead(view)
+  await model.refresh("thread")
+  #expect(await repository.totalReadCount == 1)
+  #expect(model.previewState(for: "thread") == .available(view))
+  await model.loadPreview("thread")
+  #expect(await repository.totalReadCount == 1)
+  await model.suspendConnection()
+  await model.loadPreview("thread")
+  #expect(model.previewState(for: "thread") == .available(view))
+  #expect(await repository.totalReadCount == 1)
+}
+@Test @MainActor func emptyAndRefusedPreviewReadsSettleInsteadOfLoadingForever() async {
+  for fails in [false, true] {
+    let repository = DelayedRepository()
+    let model = await previewModel(repository)
+    let pending = Task { await model.loadPreview("thread") }
+    await repository.waitForReads(1)
+    #expect(model.previewState(for: "thread") == .loading)
+    await repository.finishRead(
+      0, result: fails ? .failure(NessaGatewayError.disconnected) : .success(previewThread()))
+    await pending.value
+    #expect(model.previewState(for: "thread") == (fails ? .unavailable : .empty))
+    #expect(model.connected)
+    #expect(model.error == nil)
+    if !fails {
+      await model.loadPreview("thread")
+      #expect(await repository.totalReadCount == 1)
+    }
+  }
+}
+@Test @MainActor func previewAliasesShareReadAndObserverCancellationDoesNotCancelOwner() async {
+  let repository = DelayedRepository()
+  let model = await previewModel(repository, alias: true)
+  let first = Task { await model.loadPreview("codex") }
+  await repository.waitForReads(1)
+  let second = Task { await model.loadPreview("thread") }
+  await Task.yield()
+  #expect(model.previewState(for: "codex") == .loading)
+  #expect(model.previewState(for: "thread") == .loading)
+  #expect(await repository.totalReadCount == 1)
+  first.cancel()
+  let view = previewThread("Shared")
+  await repository.finishRead(0, result: .success(view))
+  await first.value
+  await second.value
+  #expect(model.previewState(for: "codex") == .available(view))
+  #expect(model.previewState(for: "thread") == .available(view))
+}
+@Test @MainActor func newerConversationWinsOverLatePreviewResponse() async {
+  let repository = DelayedRepository()
+  let model = await previewModel(repository)
+  let old = Task { await model.loadPreview("thread") }
+  await repository.waitForReads(1)
+  let current = Task { await model.refresh("thread") }
+  await repository.waitForReads(2)
+  let latest = previewThread("Latest")
+  await repository.finishRead(1, result: .success(latest))
+  await current.value
+  #expect(model.previewState(for: "thread") == .available(latest))
+  await repository.finishRead(0, result: .success(previewThread("Stale")))
+  await old.value
+  #expect(model.previewState(for: "thread") == .available(latest))
+}
+@Test @MainActor func oldPreviewCleanupCannotClearReplacementReadAcrossReconnect() async {
+  let repository = DelayedRepository()
+  let model = await previewModel(repository)
+  let old = Task { await model.loadPreview("thread") }
+  await repository.waitForReads(1)
+  await model.connect(address: "mock://preview", credential: "", instance: "test")
+  model.conversations = [
+    NessaConversation(
+      conversationId: "thread", title: "thread", preview: nil, updatedAtMs: 0, running: false)
+  ]
+  let current = Task { await model.loadPreview("thread") }
+  await repository.waitForReads(2)
+  await repository.finishRead(0, result: .success(previewThread("Obsolete")))
+  await old.value
+  #expect(model.previewState(for: "thread") == .loading)
+  await repository.finishRead(1, result: .success(previewThread("Replacement")))
+  await current.value
+  #expect(model.previewState(for: "thread") == .available(previewThread("Replacement")))
+}
+@Test @MainActor func suspensionEndsPreviewLoadingAndRejectsItsLateRead() async {
+  let repository = DelayedRepository()
+  let model = await previewModel(repository)
+  let pending = Task { await model.loadPreview("thread") }
+  await repository.waitForReads(1)
+  await model.suspendConnection()
+  #expect(model.previewState(for: "thread") == .unavailable)
+  await repository.finishRead(0, result: .success(previewThread("Late")))
+  await pending.value
+  #expect(model.previewState(for: "thread") == .unavailable)
+}
+@Test @MainActor func frozenChatMenuCannotFollowAnAliasIntoAnotherConversation() async {
+  let repository = DelayedRepository()
+  let model = await previewModel(repository, alias: true)
+  let selection = ChatMenuSelection(identifier: "codex", store: model)
+  #expect(selection.conversationID == "thread")
+  #expect(selection.isCurrent(in: model))
+  // A current read can update the agent's preferred thread within the same profile.
+  let newView = NessaConversationView(
+    conversationId: "other", messages: [], permissions: [], truncated: false,
+    interactionViewError: nil, runtime: .init(agent: "codex"))
+  await repository.useImmediateRead(newView)
+  await model.refresh("other")
+  #expect(model.deliveryScopeRevision == selection.scope)
+  #expect(!selection.isCurrent(in: model))
+}
+
+@Test @MainActor func automaticConnectionLossReleasesObsoletePreviewOwnership() async {
+  let repository = DelayedRepository()
+  let model = await previewModel(repository)
+  let preview = Task { await model.loadPreview("thread") }
+  await repository.waitForReads(1)
+  let failing = Task { await model.refresh("thread") }
+  await repository.waitForReads(2)
+  await repository.finishRead(1, result: .failure(NessaGatewayError.disconnected))
+  await failing.value
+  #expect(!model.connected)
+  #expect(model.previewState(for: "thread") == .unavailable)
+  // A later ready publication may permit a fresh read without joining the old token.
+  model.connected = true
+  let replacement = Task { await model.loadPreview("thread") }
+  await repository.waitForReads(3)
+  await repository.finishRead(0, result: .success(previewThread("Old connection")))
+  await preview.value
+  #expect(model.previewState(for: "thread") == .loading)
+  await repository.finishRead(2, result: .success(previewThread("New connection")))
+  await replacement.value
+  #expect(model.previewState(for: "thread") == .available(previewThread("New connection")))
+}
+@Test @MainActor func legacyPinnedDeleteUsesFrozenConversationAndClearsAliasPreferences()
+  async throws
+{
+  let repository = DelayedRepository()
+  let model = await previewModel(repository, alias: true)
+  model.togglePin("codex")
+  model.markUnread("codex")
+  model.toggleAlerts("codex")
+  let selection = ChatMenuSelection(identifier: "codex", store: model)
+  var confirmed: String?
+  let actions = chatMenuActions(selection: selection, store: model, onDelete: { confirmed = $0 })
+  try #require(actions.first { $0.id == "delete" }).perform()
+  #expect(confirmed == "thread")
+  await model.deleteConversations([try #require(confirmed)])
+  #expect(!model.hasConversation("codex"))
+  #expect(!model.isPinned("codex"))
+  #expect(!model.unreadChats.contains("codex"))
+  #expect(!model.mutedChats.contains("codex"))
 }

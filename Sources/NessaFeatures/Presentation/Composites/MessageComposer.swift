@@ -125,7 +125,7 @@ struct MessageComposer: View {
         dictation.cancel()
       }
     }
-    .onAppear { if autoFocus { focused = true } }
+    .onChange(of: autoFocus, initial: true) { _, value in if value { focused = true } }
     .onChange(of: reply?.id) { _, _ in if autoFocus { focused = true } }
     .alert(
       "Attachment",

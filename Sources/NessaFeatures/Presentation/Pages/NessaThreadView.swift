@@ -5,9 +5,14 @@ struct NessaThreadView: View {
   @ObservedObject var store: MessagesViewModel
   let conversationID: String
   @StateObject private var dictation: DictationViewModel
-  init(store: MessagesViewModel, conversationID: String, dictation: DictationViewModel) {
+  let autoFocusComposer: Bool
+  init(
+    store: MessagesViewModel, conversationID: String, dictation: DictationViewModel,
+    autoFocusComposer: Bool = false
+  ) {
     self.store = store
     self.conversationID = conversationID
+    self.autoFocusComposer = autoFocusComposer
     _dictation = StateObject(wrappedValue: dictation)
   }
   @StateObject private var messageContext = MessageContextController()
@@ -126,7 +131,8 @@ struct NessaThreadView: View {
                 dictation: dictation,
                 sending: store.sending, connected: store.connected,
                 attachmentPolicy: store.attachmentPolicy,
-                submissionAllowed: store.canSubmit(in: conversationID), onSend: send)
+                submissionAllowed: store.canSubmit(in: conversationID),
+                autoFocus: autoFocusComposer, onSend: send)
             }
           }
         }

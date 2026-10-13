@@ -39,7 +39,17 @@ public final class MessagesViewModel: ObservableObject {
   @Published public var unreadChats: [String] = []
   @Published public var mutedChats: [String] = []
   @Published public private(set) var archivedChats: [String] = []
-  @Published public var agentPreviews: [String: NessaConversationView] = [:]
+  public enum PreviewState: Equatable {
+    case available(NessaConversationView)
+    case loading, empty, unavailable
+  }
+  @Published private var previewViews: [String: NessaConversationView] = [:]
+  private struct PreviewRead: Sendable {
+    let token: UUID
+    let task: Task<Void, Never>
+  }
+  private var previewReads: [String: PreviewRead] = [:]
+  @Published private var loadingPreviews: Set<String> = []
   private var statusKey = ""
   private let preferences: any ChatPreferences
   private var conversationAgents: [String: String] = [:]
@@ -94,7 +104,10 @@ public final class MessagesViewModel: ObservableObject {
     self.snapshots = snapshots
     self.recovery = recovery
   }
-  deinit { recoveryTask?.cancel() }
+  deinit {
+    recoveryTask?.cancel()
+    for read in previewReads.values { read.task.cancel() }
+  }
   public func reaction(message: String, in conversation: String) -> String? {
     reactions[conversation + ":" + message]
   }
@@ -123,7 +136,9 @@ public final class MessagesViewModel: ObservableObject {
     // same inputs, including the initially absent history and saved reply links.
     if let cached = replyProjections[conversation], cached.name == name,
       cached.turns == turns, cached.targets == targets
-    { return cached.value }
+    {
+      return cached.value
+    }
     let value = ConversationReplies(
       turns: turns, targets: targets, agentName: name)
     replyProjections[conversation] = ReplyProjection(
@@ -179,30 +194,76 @@ public final class MessagesViewModel: ObservableObject {
       await deleteConversation(for: id)
     }
   }
-  public func loadPreview(_ agent: String) async {
-    guard let id = conversationID(for: agent), connected, !isDeleting(agent) else { return }
-    let currentGeneration = generation
-    let version = readVersions[id] ?? 0
-    do {
-      let result = try await service.read(id)
-      guard currentGeneration == generation, !deletedIDs.contains(id),
-        !pendingDeletionIDs.contains(id),
-        (readVersions[id] ?? 0) == version
-      else { return }
-      agentPreviews[agent] = result
-    } catch { /* A preview must not interrupt inbox navigation. */  }
+  public func previewState(for identifier: String) -> PreviewState {
+    guard let id = existingConversationID(for: identifier), !isDeleting(identifier),
+      !deletedIDs.contains(id)
+    else { return .unavailable }
+    if let view = views[id] ?? previewViews[id] {
+      return view.messages.isEmpty ? .empty : .available(view)
+    }
+    return loadingPreviews.contains(id) ? .loading : .unavailable
   }
-  private func conversationID(for identifier: String) -> String? {
+  public func loadPreview(_ identifier: String) async {
+    guard let id = existingConversationID(for: identifier), !isDeleting(identifier),
+      !deletedIDs.contains(id), views[id] == nil, previewViews[id] == nil
+    else { return }
+    if let read = previewReads[id] {
+      await read.task.value
+      return
+    }
+    guard connected else { return }
+    let expected = generation
+    let version = readVersions[id] ?? 0
+    let token = UUID()
+    // The model owns this read; dismissing one observer must not cancel another.
+    let task = Task { [weak self, service] in
+      do {
+        let result = try await service.read(id)
+        self?.finishPreview(result, id: id, token: token, generation: expected, version: version)
+      } catch {
+        self?.finishPreview(nil, id: id, token: token, generation: expected, version: version)
+      }
+    }
+    previewReads[id] = PreviewRead(token: token, task: task)
+    loadingPreviews.insert(id)
+    await task.value
+  }
+  private func finishPreview(
+    _ result: NessaConversationView?, id: String, token: UUID, generation expected: Int,
+    version: Int
+  ) {
+    guard previewReads[id]?.token == token else { return }
+    previewReads.removeValue(forKey: id)
+    loadingPreviews.remove(id)
+    guard generation == expected, !Task.isCancelled, !deletedIDs.contains(id),
+      !pendingDeletionIDs.contains(id), (readVersions[id] ?? 0) == version,
+      let result, result.conversationId == id
+    else { return }
+    previewViews[id] = result
+  }
+  private func cancelPreviews(_ id: String? = nil) {
+    if let id {
+      previewReads.removeValue(forKey: id)?.task.cancel()
+      loadingPreviews.remove(id)
+    } else {
+      let reads = previewReads.values
+      previewReads = [:]
+      loadingPreviews = []
+      for read in reads { read.task.cancel() }
+    }
+  }
+  public func existingConversationID(for identifier: String) -> String? {
     conversations.contains { $0.id == identifier } ? identifier : agentThreads[identifier]
   }
   public func chatName(_ id: String) -> String {
     conversations.first { $0.id == id }?.title ?? agentName(for: id)
   }
-  public func hasConversation(_ agent: String) -> Bool { conversationID(for: agent) != nil }
+  public func hasConversation(_ agent: String) -> Bool { existingConversationID(for: agent) != nil }
   public func deleteConversation(for agent: String) async {
-    guard connected, let id = conversationID(for: agent) else { return }
+    guard connected, let id = existingConversationID(for: agent) else { return }
     let currentGeneration = generation
     pendingDeletionIDs.insert(id)
+    cancelPreviews(id)
     listVersion += 1
     readVersions[id, default: 0] += 1
     defer {
@@ -229,6 +290,7 @@ public final class MessagesViewModel: ObservableObject {
     }
   }
   private func removeDeletedConversation(_ id: String, identifier agent: String) async {
+    let identifiers = Set(agentThreads.compactMap { $0.value == id ? $0.key : nil } + [id, agent])
     deletedIDs.insert(id)
     unlistedCreations.removeValue(forKey: id)
     listVersion += 1
@@ -237,12 +299,13 @@ public final class MessagesViewModel: ObservableObject {
     preferences.save(conversationAgents, forKey: identityKey)
     agentThreads = agentThreads.filter { $0.value != id }
     preferences.save(agentThreads, forKey: threadKey)
-    agentPreviews.removeValue(forKey: agent)
-    unreadChats.removeAll { $0 == agent }
+    previewViews.removeValue(forKey: id)
+    unreadChats.removeAll { identifiers.contains($0) }
+    mutedChats.removeAll { identifiers.contains($0) }
     archivedChats.removeAll { $0 == id }
     preferences.save(archivedChats, forKey: statusKey + ".archived")
     saveStatus()
-    if isPinned(agent) { togglePin(agent) }
+    for identifier in identifiers where isPinned(identifier) { togglePin(identifier) }
     conversations.removeAll { $0.id == id }
     views.removeValue(forKey: id)
     reactions = reactions.filter { !$0.key.hasPrefix(id + ":") }
@@ -285,6 +348,7 @@ public final class MessagesViewModel: ObservableObject {
       acknowledgmentOrder = []
     }
     profile = next
+    cancelPreviews()
     generation += 1
     connectionRevision += 1
     let expected = generation
@@ -313,7 +377,7 @@ public final class MessagesViewModel: ObservableObject {
     reactions = [:]
     replyTargets = [:]
     replyProjections = [:]
-    agentPreviews = [:]
+    previewViews = [:]
     conversationAgents = [:]
     agentThreads = [:]
     deletedIDs = []
@@ -377,7 +441,7 @@ public final class MessagesViewModel: ObservableObject {
     unreadChats = preferences.strings(forKey: statusKey + ".unread") ?? []
     mutedChats = preferences.strings(forKey: statusKey + ".muted") ?? []
     archivedChats = preferences.strings(forKey: statusKey + ".archived") ?? []
-    agentPreviews = [:]
+    previewViews = [:]
     let savedPins = preferences.strings(forKey: pinKey) ?? []
     pinnedChats = NessaPinPolicy.normalize(savedPins)
     preferences.save(pinnedChats, forKey: pinKey)
@@ -425,6 +489,7 @@ public final class MessagesViewModel: ObservableObject {
   /// Retire authority before waiting for any cache I/O. The cache writer is already owned.
   public func suspendConnection() async {
     foreground = false
+    cancelPreviews()
     generation += 1
     connectionRevision += 1
     recoveryTask?.cancel()
@@ -475,6 +540,7 @@ public final class MessagesViewModel: ObservableObject {
     guard generation == expected else { return }
     if ConnectionRecovery.retryable(error) {
       if connected {
+        cancelPreviews()
         connected = false
         busy = false
         sending = false

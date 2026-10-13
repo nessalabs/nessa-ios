@@ -6,6 +6,7 @@ struct MessagesInboxView: View {
   let onSettings: () -> Void
   let onOpen: (String) -> Void
   let onCompose: () -> Void
+  let onOpenComposer: (String) -> Void
   @State private var scrollOffset: CGFloat = 0
   @State private var editing = false
   @State private var showingArchived = false
@@ -23,7 +24,9 @@ struct MessagesInboxView: View {
         if !editing && !showingArchived
           && store.pinnedChats.contains(where: { !store.isDeleting($0) }) && search.isEmpty
         {
-          PinnedChatsGrid(store: store, onOpen: onOpen)
+          PinnedChatsGrid(
+            store: store, onOpen: onOpen, onOpenComposer: onOpenComposer,
+            onDelete: { pendingDeletion = [$0] }, enabled: !deleting)
         }
         if !store.connected {
           Button(store.reconnecting ? "Reconnecting…" : "Connect to Nessa", action: onSettings)
@@ -64,6 +67,12 @@ struct MessagesInboxView: View {
                 ? "Select \(store.chatName(conversation.id))" : store.chatName(conversation.id)
             )
             .accessibilityAddTraits(selected.contains(conversation.id) ? .isSelected : [])
+            .chatContextMenu(
+              store: store, identifier: conversation.id,
+              enabled: !editing && !deleting,
+              onTap: { onOpen(conversation.id) }, onCommit: onOpenComposer,
+              onDelete: { pendingDeletion = [$0] }
+            )
             .swipeActions(edge: .leading, allowsFullSwipe: false) {
               if !editing && !showingArchived {
                 Button(

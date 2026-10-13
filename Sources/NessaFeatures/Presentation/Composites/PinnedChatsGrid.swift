@@ -4,7 +4,9 @@ import SwiftUI
 struct PinnedChatsGrid: View {
   @ObservedObject var store: MessagesViewModel
   let onOpen: (String) -> Void
-  @State private var deletingAgent: String?
+  let onOpenComposer: (String) -> Void
+  let onDelete: (String) -> Void
+  var enabled = true
   var body: some View {
     LazyVGrid(
       columns: Array(repeating: GridItem(.flexible(), spacing: MessagesStyle.pinGap), count: 3),
@@ -28,37 +30,12 @@ struct PinnedChatsGrid: View {
             Text(store.chatName(agent)).font(MessagesStyle.pinLabel)
               .foregroundStyle(MessagesStyle.secondary).lineLimit(1)
           }.frame(maxWidth: .infinity)
-        }.buttonStyle(.plain)
+        }.buttonStyle(.plain).disabled(!enabled)
           .accessibilityLabel("Open pinned chat \(store.chatName(agent))")
-          .contextMenu {
-            Button("Unpin", systemImage: "pin.slash") { store.togglePin(agent) }
-            Button("Mark as Unread", systemImage: "bubble") { store.markUnread(agent) }
-            Button(
-              store.mutedChats.contains(agent) ? "Show Alerts" : "Hide Alerts",
-              systemImage: store.mutedChats.contains(agent) ? "bell" : "bell.slash"
-            ) { store.toggleAlerts(agent) }
-            Button("Delete", systemImage: "trash", role: .destructive) { deletingAgent = agent }
-              .disabled(!store.hasConversation(agent) || !store.connected)
-          } preview: {
-            ChatConversationPreview(store: store, agent: agent)
-          }
+          .chatContextMenu(
+            store: store, identifier: agent, enabled: enabled,
+            onTap: { onOpen(agent) }, onCommit: onOpenComposer, onDelete: onDelete)
       }
     }.padding(.top, NessaSpacing.sm).padding(.bottom, NessaSpacing.xxs)
-      .confirmationDialog(
-        "Delete this conversation permanently?",
-        isPresented: Binding(
-          get: { deletingAgent != nil }, set: { if !$0 { deletingAgent = nil } }),
-        titleVisibility: .visible
-      ) {
-        if let agent = deletingAgent {
-          Button("Delete conversation", role: .destructive) {
-            Task { await store.deleteConversation(for: agent) }
-          }
-        }
-        Button("Cancel", role: .cancel) { deletingAgent = nil }
-      } message: {
-        Text(
-          "This removes the conversation and its history from Nessa. The agent remains available.")
-      }
   }
 }

@@ -8,7 +8,11 @@ public struct NessaMessagesView: View {
   @AppStorage("nessaGatewayAddress") private var address = "ws://127.0.0.1:7420/session"
   @AppStorage("nessaSurfaceInstance") private var instance = ""
   @State private var settings = false
-  @State private var path: [String] = []
+  private struct Route: Hashable {
+    let conversationID: String
+    let focusComposer: Bool
+  }
+  @State private var path: [Route] = []
   @Environment(\.scenePhase) private var scenePhase
   public init(dependencies: NessaDependencies) {
     self.dependencies = dependencies
@@ -18,13 +22,29 @@ public struct NessaMessagesView: View {
     NavigationStack(path: $path) {
       MessagesInboxView(
         store: store, onSettings: { settings = true },
-        onOpen: { path.append($0) },
-        onCompose: { Task { if let id = await store.create() { path.append(id) } } }
+        onOpen: { identifier in
+          let id = store.existingConversationID(for: identifier) ?? identifier
+          if path.last?.conversationID != id {
+            path.append(Route(conversationID: id, focusComposer: false))
+          }
+        },
+        onCompose: {
+          Task {
+            if let id = await store.create() {
+              path.append(Route(conversationID: id, focusComposer: false))
+            }
+          }
+        },
+        onOpenComposer: { id in
+          if path.last?.conversationID != id {
+            path.append(Route(conversationID: id, focusComposer: true))
+          }
+        }
       )
-      .navigationDestination(for: String.self) { id in
+      .navigationDestination(for: Route.self) { route in
         NessaThreadView(
-          store: store, conversationID: id,
-          dictation: dependencies.makeDictationViewModel())
+          store: store, conversationID: route.conversationID,
+          dictation: dependencies.makeDictationViewModel(), autoFocusComposer: route.focusComposer)
       }
       .sheet(isPresented: $settings) {
         if dependencies.mode == .development {
@@ -71,7 +91,9 @@ public struct NessaMessagesView: View {
         store.resumeConnection()
       }
     }
-    .onChange(of: store.deliveryScopeRevision) { _, _ in path = [] }
+    .onChange(of: store.deliveryScopeRevision) { _, _ in
+      path = []
+    }
     .preferredColorScheme(.dark)
     .tint(MessagesStyle.foreground)
   }
