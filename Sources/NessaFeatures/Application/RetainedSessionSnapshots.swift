@@ -1,27 +1,27 @@
 import Foundation
 
 /// Passive evidence from the native owner, not command or account authority.
-public enum RetainedAttemptFailure: String, Equatable, Sendable {
+public enum RetainedAttemptFailure: String, Codable, Equatable, Sendable {
   case invalidProof
   case connectionClosed
   case handshakeDeadline
   case verifierUnavailable
 }
 
-public enum RetainedAttemptState: String, Equatable, Sendable {
+public enum RetainedAttemptState: String, Codable, Equatable, Sendable {
   case pending
   case failed
   case claimed
   case superseded
 }
 
-public enum RetainedConsentClass: String, Equatable, Sendable {
+public enum RetainedConsentClass: String, Codable, Equatable, Sendable {
   case deviceRead
   case peerRead
   case peerEnvironment
 }
 
-public enum RetainedCryptoFailure: String, Equatable, Sendable {
+public enum RetainedCryptoFailure: String, Codable, Equatable, Sendable {
   case invalidCode
   case invalidContext
   case invalidProof
@@ -29,7 +29,7 @@ public enum RetainedCryptoFailure: String, Equatable, Sendable {
   case pendingStorage
 }
 
-public enum RetainedEnrollmentFailureKind: String, Equatable, Sendable {
+public enum RetainedEnrollmentFailureKind: String, Codable, Equatable, Sendable {
   case busy
   case pendingExists
   case enrolled
@@ -47,7 +47,7 @@ public enum RetainedEnrollmentFailureKind: String, Equatable, Sendable {
   case workerFault
 }
 
-public enum RetainedEnrollmentPhase: String, Equatable, Sendable {
+public enum RetainedEnrollmentPhase: String, Codable, Equatable, Sendable {
   case pending
   case unclaimed
   case claimed
@@ -57,12 +57,12 @@ public enum RetainedEnrollmentPhase: String, Equatable, Sendable {
   case terminal
 }
 
-public enum RetainedKeyPublication: String, Equatable, Sendable {
+public enum RetainedKeyPublication: String, Codable, Equatable, Sendable {
   case notPublished
   case published
 }
 
-public enum RetainedPairingFailure: String, Equatable, Sendable {
+public enum RetainedPairingFailure: String, Codable, Equatable, Sendable {
   case invalid
   case expired
   case attemptsExhausted
@@ -74,7 +74,7 @@ public enum RetainedPairingFailure: String, Equatable, Sendable {
   case staleGeneration
 }
 
-public enum RetainedPrivateStateKind: String, Equatable, Sendable {
+public enum RetainedPrivateStateKind: String, Codable, Equatable, Sendable {
   case auditUnavailable
   case publication
   case auditPublication
@@ -85,12 +85,12 @@ public enum RetainedPrivateStateKind: String, Equatable, Sendable {
   case uncertain
 }
 
-public enum RetainedPublicationEffect: String, Equatable, Sendable {
+public enum RetainedPublicationEffect: String, Codable, Equatable, Sendable {
   case notPublished
   case published
 }
 
-public enum RetainedPublicationStep: String, Equatable, Sendable {
+public enum RetainedPublicationStep: String, Codable, Equatable, Sendable {
   case validateDestination
   case verifyOriginBinding
   case validateReservation
@@ -102,7 +102,7 @@ public enum RetainedPublicationStep: String, Equatable, Sendable {
   case syncDirectory
 }
 
-public enum RetainedReadFailure: String, Equatable, Sendable {
+public enum RetainedReadFailure: String, Codable, Equatable, Sendable {
   case refused
   case unreachable
   case resetRequired
@@ -126,12 +126,12 @@ public enum RetainedSessionFailureKind: String, Equatable, Sendable {
   case stopped
 }
 
-public enum RetainedStorageFailure: String, Equatable, Sendable {
+public enum RetainedStorageFailure: String, Codable, Equatable, Sendable {
   case unsafeStorage
   case unavailable
 }
 
-public enum RetainedTerminalCause: String, Equatable, Sendable {
+public enum RetainedTerminalCause: String, Codable, Equatable, Sendable {
   case credentialRevoked
   case denied
   case cancelled
@@ -145,13 +145,13 @@ public enum RetainedTranscriptState: String, Equatable, Sendable {
   case retained
 }
 
-public enum RetainedWireFailureKind: String, Equatable, Sendable {
+public enum RetainedWireFailureKind: String, Codable, Equatable, Sendable {
   case tooLarge
   case invalid
   case correlation
 }
 
-public enum RetainedWorkerFault: String, Equatable, Sendable {
+public enum RetainedWorkerFault: String, Codable, Equatable, Sendable {
   case panic
   case cancelled
 }
@@ -207,7 +207,7 @@ public struct RetainedCataloguePage: Equatable, Sendable {
   }
 }
 
-public struct RetainedEnrollmentFailure: Equatable, Sendable {
+public struct RetainedEnrollmentFailure: Codable, Equatable, Sendable {
   public let crypto: RetainedCryptoFailure?
   public let ioDiagnostic: String?
   public let kind: RetainedEnrollmentFailureKind
@@ -227,7 +227,7 @@ public struct RetainedEnrollmentFailure: Equatable, Sendable {
   }
 }
 
-public struct RetainedEnrollmentReceipt: Equatable, Sendable {
+public struct RetainedEnrollmentReceipt: Codable, Equatable, Sendable {
   public let accessEpoch: UInt64?
   public let attemptFailure: RetainedAttemptFailure?
   public let attemptState: RetainedAttemptState?
@@ -270,7 +270,7 @@ public struct RetainedEntryKey: Equatable, Sendable {
   }
 }
 
-public struct RetainedPrivateStateFailure: Equatable, Sendable {
+public struct RetainedPrivateStateFailure: Codable, Equatable, Sendable {
   public let keyPublication: RetainedKeyPublication?
   public let kind: RetainedPrivateStateKind
   public let publication: RetainedPublicationFailure?
@@ -284,7 +284,7 @@ public struct RetainedPrivateStateFailure: Equatable, Sendable {
   }
 }
 
-public struct RetainedPublicIntent: Equatable, Sendable {
+public struct RetainedPublicIntent: Codable, Equatable, Sendable {
   public let attempt: Data
   public let consent: Data
   public let consentClass: RetainedConsentClass
@@ -337,7 +337,7 @@ public struct RetainedLocalIssuedEnrollment: Equatable, Sendable {
   }
 }
 
-public struct RetainedPublicationFailure: Equatable, Sendable {
+public struct RetainedPublicationFailure: Codable, Equatable, Sendable {
   public let cleanup: RetainedStorageFailure?
   public let effect: RetainedPublicationEffect
   public let primary: RetainedStorageFailure
@@ -356,7 +356,7 @@ public struct RetainedPublicationFailure: Equatable, Sendable {
   }
 }
 
-public struct RetainedPurge: Equatable, Sendable {
+public struct RetainedPurge: Codable, Equatable, Sendable {
   public let catalogueEntries: UInt64
   public let observedAtMs: UInt64
   public let receiver: String
@@ -456,7 +456,7 @@ public struct RetainedSessionFailure: Equatable, Sendable {
   }
 }
 
-public struct RetainedStatus: Equatable, Sendable {
+public struct RetainedStatus: Codable, Equatable, Sendable {
   public let completionCaptured: Bool
   public let failure: RetainedEnrollmentFailure?
   public let purge: RetainedPurge?
@@ -476,7 +476,7 @@ public struct RetainedStatus: Equatable, Sendable {
   }
 }
 
-public struct RetainedWireFailure: Equatable, Sendable {
+public struct RetainedWireFailure: Codable, Equatable, Sendable {
   public let correlation: RetainedPairingFailure?
   public let kind: RetainedWireFailureKind
   public init(correlation: RetainedPairingFailure?, kind: RetainedWireFailureKind) {

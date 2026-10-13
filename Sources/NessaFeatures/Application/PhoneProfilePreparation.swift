@@ -19,7 +19,9 @@ public struct PhoneProfilePreparation: Sendable {
   ) async throws -> PhoneProfiles {
     var records = expected?.profiles ?? []
     if let existing = records.first(where: { $0.id == desired.id }) {
-      guard existing.sameSetup(as: desired) else { throw PhoneProfileStoreError.changed }
+      guard existing.phase != .retired, existing.sameSetup(as: desired) else {
+        throw PhoneProfileStoreError.changed
+      }
     } else {
       guard desired.phase == .preparing else { throw PhoneProfileStoreError.invalid }
       records.append(desired)

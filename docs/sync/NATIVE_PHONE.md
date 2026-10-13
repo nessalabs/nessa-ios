@@ -401,3 +401,43 @@ frame classifications. Corrected signed simulator and generic Release device
 builds pass; actual simulator native/profile probes emit both success markers,
 and the existing pinned Web Search and Image chats remain visible after reinstall.
 No physical-device execution or chat latency improvement is claimed by this slice.
+
+## Profile coordinator and recovery
+
+`PhoneProfileCoordinator` now owns admission, original leased account correlation,
+explicit create/claim/approval/cancellation, cold restore and native shutdown through
+injected public ports. Profile metadata preserves the complete owner pairing status,
+captured receiver, historical native status/purge and an immutable local creation
+attempt. The attempt is saved before dispatch; it is not a gateway idempotency key.
+A lost create answer cannot silently create another invitation on restart. Explicit
+owner-selected recovery never retargets an existing local claim. A never-enrolled
+user discard is a separate negative local decision, with no invented remote
+cancellation or native terminal proof.
+
+An issued receiver is saved before native status/refresh can remove revoked state.
+Terminal evidence is then saved before durable legacy-snapshot suppression and
+irreversible retirement. Failed writes remain failures even when readback sees the
+new bytes; restore confirms durability before advancing. Reads require the saved
+receiver and still defer current permission to Rust. Full compound refresh evidence
+(initial status, read, selection failure and recheck) remains available on success
+and subsequent metadata failure. No code, private key, catalogue or checkpoint is
+added to profile metadata.
+
+Close fences admission, retains one physical drain independent of any caller's
+cancellation, waits for admitted work, and drains late native construction. Repeated
+close joins the same owner. A failed drain is retained as failure and never permits
+replacement. Last-owner disposal schedules native cleanup off the UI executor.
+
+200 application tests and architecture/design checks pass. Eighteen coordinator
+regressions include real atomic-file before/after-write uncertainty, actual Rust
+late construction/drain/same-directory reopen, original lease/profile replacement,
+claim-key/class correlation, receiver-before-effect failures, purge recovery and
+compound refresh preservation. Five compiling reversals are rejected by assertions:
+missing request marker, missing receiver save, independent close owners dropped
+refresh evidence and ignored initial refresh correlation. Restored tests pass; signed simulator and generic Release device
+builds pass. The native package remains pinned to reviewed gateway `542eafc3`.
+
+Production composition, setup UI, retained chat-history hydration and configured
+native gateway phone experiments remain pending. This coordinator is not yet used
+by the normal chat UI. No new phone latency or physical-device execution result is
+claimed by these checks.
