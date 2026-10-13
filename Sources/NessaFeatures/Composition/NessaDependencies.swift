@@ -8,6 +8,7 @@ import Foundation
   public let credentials: any NessaCredentialStoring
   public let preferences: any ChatPreferences
   public let retainedSessions: (any RetainedSessionFactory)?
+  public let phoneSync: (any PhoneSyncRunning)?
   private let snapshots: PhoneSnapshotSession
   private let recovery: ConnectionRecovery
   private let speechFactory: @MainActor () -> any SpeechTranscribing
@@ -18,7 +19,8 @@ import Foundation
     launchConnection: (address: String, credential: String)? = nil,
     speechFactory: (@MainActor () -> any SpeechTranscribing)? = nil,
     snapshots: PhoneSnapshotSession? = nil, recovery: ConnectionRecovery? = nil,
-    retainedSessions: (any RetainedSessionFactory)? = nil
+    retainedSessions: (any RetainedSessionFactory)? = nil,
+    phoneSync: (any PhoneSyncRunning)? = nil
   ) {
     self.mode = mode
     self.service = MessagingService(
@@ -26,10 +28,33 @@ import Foundation
     self.credentials = credentials
     self.preferences = preferences
     self.retainedSessions = retainedSessions
-    self.snapshots =
+    let snapshotOwner =
       snapshots
       ?? PhoneSnapshotSession(
         store: mode == .live ? PhoneSnapshotStore() : InMemoryPhoneSnapshotStore())
+    self.snapshots = snapshotOwner
+    if let phoneSync {
+      self.phoneSync = phoneSync
+    } else if mode == .live, let retainedSessions,
+      let identity = repository as? any AuthenticatedGatewaySessionProviding,
+      let pairing = repository as? any GatewayPairingManaging
+    {
+      let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Nessa/PhoneProfiles", isDirectory: true)
+      let profiles = PhoneProfileStore(root: root)
+      let profileCredentials = PhoneProfileCredentials()
+      let locations = PhoneNativeLocations(root: root)
+      self.phoneSync = PhoneSyncRuntime(
+        profiles: profiles, credentials: profileCredentials,
+        factory: {
+          PhoneProfileCoordinator(
+            profiles: profiles, credentials: profileCredentials, locations: locations,
+            identity: identity, pairing: pairing, factory: retainedSessions,
+            withdrawal: snapshotOwner)
+        })
+    } else {
+      self.phoneSync = nil
+    }
     self.recovery = recovery ?? ConnectionRecovery(waiting: SystemRecoveryWait())
     self.launchConnection = launchConnection
     self.speechFactory =
@@ -74,7 +99,7 @@ import Foundation
   public func makeMessagesViewModel() -> MessagesViewModel {
     MessagesViewModel(
       service: service, credentials: credentials, preferences: preferences,
-      snapshots: snapshots, recovery: recovery)
+      snapshots: snapshots, recovery: recovery, phoneSync: phoneSync)
   }
   private static func liveRepository() -> NessaGatewayClient {
     NessaGatewayClient(journal: PhoneCommandJournal(store: PhoneCommandStore()))

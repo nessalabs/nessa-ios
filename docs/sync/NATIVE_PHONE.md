@@ -1,4 +1,4 @@
-# Native receiver in the phone (proposed integration)
+# Native receiver in the phone
 
 The gateway bridge is published in
 [#789](https://github.com/nessalabs/nessa-agent/pull/789). The native API at
@@ -7,7 +7,8 @@ correlation/cursor and admitted capture extension, following the reviewed bridge
 at `69499fe7890f4d2ee6f2d358e3db4a2a9bf76347`. Its library
 and Swift worker have run against paired records, offline reopen, restart and
 revocation; a release library also runs in a disposable simulator app. These
-checks do not mean Nessa's production repository uses the receiver yet.
+checks establish the library boundary. Production startup/history wiring is
+recorded below; explicit setup and native-enabled phone experiments remain open.
 
 ## Ownership and delivery
 
@@ -437,10 +438,9 @@ missing request marker, missing receiver save, independent close owners dropped
 refresh evidence and ignored initial refresh correlation. Restored tests pass; signed simulator and generic Release device
 builds pass. The native package remains pinned to reviewed gateway `542eafc3`.
 
-Production composition, setup UI, retained chat-history hydration and configured
-native gateway phone experiments remain pending. This coordinator is not yet used
-by the normal chat UI. No new phone latency or physical-device execution result is
-claimed by these checks.
+At the coordinator checkpoint, production composition, setup UI, history hydration
+and configured native gateway phone experiments remained pending. No new phone
+latency or physical-device execution result was established by those checks.
 
 ## Application lifetime and history projections
 
@@ -469,5 +469,43 @@ The application layer has passed independent review and 213 tests. Seven compili
 reversals are rejected by assertions: preparing handoff, stale handoff registry,
 late wrapper publication, mixed history revision/generation, incidental identical
 metadata writes and omitted restore durability confirmation. Actual packaged Rust
-shutdown and same-directory reopen run through the runtime test. Normal chat UI,
-setup composition and configured native gateway experiments remain pending.
+shutdown and same-directory reopen run through the runtime test. At this application
+checkpoint, normal chat wiring, setup and configured gateway experiments remained
+pending.
+
+## Production startup and display wiring
+
+Production composition now shares one product adapter and snapshot withdrawal
+owner with the native runtime, using per-profile Keychain and the current sandbox
+root. The root asks for native startup before reading the legacy credential/cache.
+Only confirmed registry absence selects legacy history. Saved native connections
+use their original credential; changed manual input cannot display that history
+before authenticated ready matches the original account.
+
+One admitted display operation owns refresh, bounded catalogue and requested
+transcripts, with a final registry check. Its results retain partial observations
+and failures. Paired lists, previews and threads use these projections; product
+events trigger coalesced refreshes and supply subscription continuity only. Native
+data is not written into legacy display snapshots. Background joins product and
+native physical retirement; foreground restores before redial.
+
+Cached history availability is separate from command readiness. Paired commands
+require a fresh positive native read on the current product lease. Returned native
+failures block dispatch while cached messages and the setup control plane remain
+available. Successful and partial reads normally have no recheck; a recheck is
+validated when the native driver provides one. Partial progress does not claim
+catch-up. Access withdrawal drops display/read owners without deleting preferences;
+later authorized regrant can restore the chat. Actual catalogue tombstones and
+confirmed product deletion retain their deletion fence.
+
+Independent review and 227 tests pass. Eight compiling reversals fail assertions,
+covering cache fallback, raw live writers, fresh command admission, returned
+refusal, fabricated recheck requirements, manual account crossover, final registry
+validation and withdrawal mistaken for deletion. Restored gates and simulator/
+generic Release builds pass. The signed live simulator retains both original chats
+and opens the image conversation. The generic device build is unsigned compile/link
+evidence, not physical-device execution.
+
+Explicit pairing controls and a configured native-enabled gateway run are still
+required. Backlog/catch-up behavior, actual paired latency, artifacts, uncertain
+deletion and physical-device failures remain part of the original goal.

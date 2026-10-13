@@ -103,3 +103,21 @@ chats present. Its UIKit context menu opens with a 600 ms hold; no custom hold
 delay is added. The generic Release device build passes without signing. This
 machine lacks the app's development provisioning profile, so the device result
 is compile/link evidence, not an install or physical-device execution result.
+
+## Production display wiring verification
+
+227 tests and independent review pass for actual production startup/history wiring.
+Public-port tests verify offline history, absent versus corrupt/preparing/retired
+profiles, original saved connection, changed manual input before ready, coalesced
+mid-read targets, stale bootstrap, foreground restore, returned native failures and
+access withdrawal/regrant versus deletion. Cached messages remain readable when
+fresh command admission fails. Positive successful/partial reads use the actual
+driver's optional-recheck ordering. Aggregate registry change preserves captured
+evidence while refusing publication.
+
+Eight compiling reversals fail assertions; restored architecture/design checks and
+the full suite pass. Signed simulator and unsigned generic Release builds pass;
+the installed live app still shows Web Search and Image and opens the original
+image conversation. Explicit pairing controls, native-enabled phone/gateway runs,
+backlog and fresh paired timings remain unfinished. Existing latency measurements
+above are not results for this new display path.

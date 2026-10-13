@@ -35,6 +35,8 @@ public struct PhoneSyncRuntimeFailure: Error, Sendable {
 public protocol PhoneSyncRunning: PhoneProfileCoordinating {
   func startup() async throws -> PhoneSyncStartup?
   func savedProfiles() async throws -> PhoneProfiles?
+  func display(on lease: GatewayConnectionLease?, conversations: [String], revision: UUID)
+    async throws -> PhoneRetainedDisplay
   /// Temporary physical drain. Only actual success permits a new child on foreground.
   func suspend() async throws
 }
@@ -47,6 +49,7 @@ public actor PhoneSyncRuntime: PhoneSyncRunning {
   private var child: (any PhoneProfileCoordinating)?
   private var admission: UUID?
   private var observed: PhoneProfileSnapshot?
+  private var selected: PhoneProfileSnapshot?
   private var suspending = false
   private var closed = false
   private var drainTask: Task<Void, Error>?
@@ -69,9 +72,11 @@ public actor PhoneSyncRuntime: PhoneSyncRunning {
           throw PhoneSyncRuntimeRefusal.changed
         }
         try runtime.check(token)
+        runtime.selected = nil
         return nil
       }
       runtime.observed = snapshot
+      runtime.selected = snapshot
       try runtime.check(token)
       let profile = snapshot.profile
       let connection: PhoneProductConnection?
@@ -103,6 +108,7 @@ public actor PhoneSyncRuntime: PhoneSyncRunning {
     try await perform { runtime, _, child in
       let value = try await child.restore()
       runtime.observed = value
+      runtime.selected = value
       return value
     }
   }
@@ -152,12 +158,72 @@ public actor PhoneSyncRuntime: PhoneSyncRunning {
       try await child.transcript(conversation: conversation, revision: revision)
     }
   }
+  public func display(on lease: GatewayConnectionLease?, conversations: [String], revision: UUID)
+    async throws -> PhoneRetainedDisplay
+  {
+    guard conversations.count <= 20 else { throw PhoneRetainedHistoryRefusal.quota }
+    return try await perform { runtime, token, child in
+      guard var snapshot = runtime.selected,
+        try await runtime.profiles.load() == snapshot.registry
+      else { throw PhoneSyncRuntimeRefusal.changed }
+      runtime.observed = snapshot
+      try runtime.check(token)
+      var refreshFailure: (any Error)?
+      do {
+        snapshot = try await child.refresh(on: lease)
+      } catch {
+        // Offline refresh failure is evidence, not permission. Native reads still decide
+        // whether retained data is available. A refused live account cannot mix history.
+        guard lease == nil else { throw error }
+        refreshFailure = error
+        guard let registry = try await runtime.profiles.load(),
+          registry.selected == snapshot.profile.id
+        else { throw PhoneSyncRuntimeRefusal.changed }
+        let failure = error as? PhoneProfileCoordinationFailure
+        snapshot = try .init(
+          registry: registry, local: failure?.local ?? snapshot.local,
+          nativeStatus: failure?.nativeStatus ?? snapshot.nativeStatus,
+          source: failure?.source ?? snapshot.source,
+          nativeRefresh: failure?.nativeRefresh ?? snapshot.nativeRefresh)
+      }
+      runtime.observed = snapshot
+      runtime.selected = snapshot
+      try runtime.check(token)
+      let history = PhoneRetainedHistory(session: child)
+      var catalogue: PhoneRetainedCatalogue?
+      var transcripts: [String: PhoneRetainedTranscriptRead] = [:]
+      do {
+        let loaded = try await history.catalogue(for: snapshot)
+        catalogue = loaded
+        for id in conversations {
+          try runtime.check(token)
+          do {
+            transcripts[id] = .available(
+              try await history.transcript(
+                id, for: snapshot, revision: revision))
+          } catch { transcripts[id] = .failed(error) }
+        }
+        guard try await runtime.profiles.load() == snapshot.registry else {
+          throw PhoneSyncRuntimeRefusal.changed
+        }
+        try runtime.check(token)
+        return .init(
+          snapshot: snapshot, catalogue: loaded, transcripts: transcripts,
+          refreshFailure: refreshFailure)
+      } catch {
+        throw PhoneRetainedDisplayFailure(
+          snapshot: snapshot, catalogue: catalogue,
+          transcripts: transcripts, refreshFailure: refreshFailure, underlying: error)
+      }
+    }
+  }
   private func snapshot(
     _ operation: @Sendable (any PhoneProfileCoordinating) async throws -> PhoneProfileSnapshot
   ) async throws -> PhoneProfileSnapshot {
     try await perform { runtime, _, child in
       let value = try await operation(child)
       runtime.observed = value
+      runtime.selected = value
       return value
     }
   }
@@ -218,6 +284,7 @@ public actor PhoneSyncRuntime: PhoneSyncRunning {
     try await captured?.close()
     if admission != nil { await withCheckedContinuation { settled.append($0) } }
     child = nil
+    selected = nil
     if !closed {
       suspending = false
       drainTask = nil

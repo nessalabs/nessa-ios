@@ -39,13 +39,16 @@ actor RuntimeSnapshotChild: PhoneProfileCoordinating {
   var closes = 0
   var pageResults: [PhoneScopedRetention<RetainedCataloguePage?>] = []
   var transcriptResult: PhoneScopedRetention<RetainedTranscript>?
+  var transcriptGate: CoordinatorGate?
   var requestedKeys: [RetainedEntryKey?] = []
   func configure(
     pages: [PhoneScopedRetention<RetainedCataloguePage?>] = [],
-    transcript: PhoneScopedRetention<RetainedTranscript>? = nil
+    transcript: PhoneScopedRetention<RetainedTranscript>? = nil,
+    transcriptGate: CoordinatorGate? = nil
   ) {
     pageResults = pages
     transcriptResult = transcript
+    self.transcriptGate = transcriptGate
   }
   init(
     value: PhoneProfileSnapshot?, restore: CoordinatorGate? = nil, close: CoordinatorGate? = nil,
@@ -91,9 +94,10 @@ actor RuntimeSnapshotChild: PhoneProfileCoordinating {
     guard !pageResults.isEmpty else { throw PhoneSyncRuntimeRefusal.unavailable }
     return pageResults.removeFirst()
   }
-  func transcript(conversation: String, revision: UUID) throws -> PhoneScopedRetention<
+  func transcript(conversation: String, revision: UUID) async throws -> PhoneScopedRetention<
     RetainedTranscript
   > {
+    if let transcriptGate { await transcriptGate.pause() }
     guard let transcriptResult else { throw PhoneSyncRuntimeRefusal.unavailable }
     return transcriptResult
   }

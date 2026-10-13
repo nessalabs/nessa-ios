@@ -67,8 +67,6 @@ public actor PhoneProfileCoordinator: PhoneProfileCoordinating {
       try await coordinator.publish(coordinator.selected(), token: token, force: true)
       coordinator.needsRecovery = false
       let profile = try coordinator.selected()
-      _ = try await coordinator.credentials.load(reference: profile.credentialReference)
-      try await coordinator.check(token)
       if profile.phase == .retired {
         try await coordinator.suppress(profile, token: token)
         return try coordinator.snapshot()
@@ -76,6 +74,8 @@ public actor PhoneProfileCoordinator: PhoneProfileCoordinating {
       guard profile.phase == .prepared else {
         throw PhoneProfileCoordinationRefusal.knownInvitationNeedsRecovery
       }
+      _ = try await coordinator.credentials.load(reference: profile.credentialReference)
+      try await coordinator.check(token)
       try await coordinator.captureNative(token)
       return try coordinator.snapshot()
     }

@@ -208,3 +208,126 @@ private func scopedHistory(
   #expect(await harness.profiles.writes == savedWrites + 1)
   try await coordinator.close()
 }
+
+@Test func runtimeDisplayKeepsOfflineRefreshFailureAndNativeHistoryTogether() async throws {
+  let snapshot = try retainedHistorySnapshot()
+  let child = RuntimeSnapshotChild(value: snapshot)
+  let profiles = CoordinatorProfiles(snapshot.registry)
+  let runtime = PhoneSyncRuntime(
+    profiles: profiles, credentials: CoordinatorCredentials(snapshot.profile), factory: { child })
+  _ = try await runtime.startup()
+  await child.configure(pages: [scopedHistory(retainedHistoryPage(["saved"]), snapshot: snapshot)])
+  let result = try await runtime.display(on: nil, conversations: [], revision: UUID())
+  #expect(result.catalogue.list.conversations.map(\.id) == ["saved"])
+  #expect(result.refreshFailure != nil)
+  await child.configure(pages: [scopedHistory(nil, snapshot: snapshot)])
+  do {
+    _ = try await runtime.display(on: nil, conversations: [], revision: UUID())
+    Issue.record("Missing catalogue became successful display")
+  } catch let failure as PhoneSyncRuntimeFailure {
+    let display = try #require(failure.underlying as? PhoneRetainedDisplayFailure)
+    #expect(display.refreshFailure != nil && display.catalogue == nil)
+    #expect(display.underlying is PhoneRetainedHistoryFailure)
+  }
+  // A live refresh refusal cannot display the offline account under another ready source.
+  do {
+    _ = try await runtime.display(on: .init(), conversations: [], revision: UUID())
+    Issue.record("Refused live source fell back to offline history")
+  } catch let failure as PhoneSyncRuntimeFailure {
+    #expect(failure.underlying as? PhoneSyncRuntimeRefusal == .unavailable)
+    #expect(failure.snapshot?.profile.id == snapshot.profile.id)
+  }
+  try await runtime.close()
+}
+
+private actor NoProfileSecrets: PhoneProfileCredentialStoring {
+  var reads = 0
+  func load(reference: String) throws -> String {
+    reads += 1
+    throw PhoneProfileCredentialError.missing
+  }
+  func insertOrVerify(_ credential: String, reference: String) {}
+}
+@Test func coordinatorPreparingRecoverySkipsSecretsAndRetirementKeepsCleanupFailure() async throws {
+  for retired in [false, true] {
+    let profile =
+      retired
+      ? exampleProfile(phase: .prepared).recording(
+        pairingStatus: nil,
+        nativeReceiver: nil, nativeStatus: nil, recoveredPurge: nil, retired: true,
+        retirementReason: .userDiscarded) : exampleProfile()
+    let profiles = CoordinatorProfiles(exampleProfiles(profile))
+    let credentials = NoProfileSecrets()
+    let harness = CoordinatorHarness()
+    let coordinator = PhoneProfileCoordinator(
+      profiles: profiles, credentials: credentials,
+      locations: CoordinatorLocations(), identity: harness.gateway, pairing: harness.gateway,
+      factory: harness.factory, withdrawal: CoordinatorWithdrawal())
+    if retired {
+      do {
+        _ = try await coordinator.restore()
+        Issue.record("Missing cleanup secret became success")
+      } catch let failure as PhoneProfileCoordinationFailure {
+        #expect(failure.profileID == profile.id)
+        #expect(failure.underlying as? PhoneProfileCredentialError == .missing)
+      }
+    } else {
+      do {
+        _ = try await coordinator.restore()
+        Issue.record("Preparation became usable")
+      } catch let failure as PhoneProfileCoordinationFailure {
+        #expect(
+          failure.underlying as? PhoneProfileCoordinationRefusal == .knownInvitationNeedsRecovery)
+      }
+    }
+    #expect(await credentials.reads == (retired ? 1 : 0))
+    try await coordinator.close()
+  }
+}
+
+@Test func runtimeAggregateRetainsEvidenceAndRefusesRegistryChangeDuringTranscript() async throws {
+  let snapshot = try retainedHistorySnapshot()
+  let profiles = CoordinatorProfiles(snapshot.registry)
+  let child = RuntimeSnapshotChild(value: snapshot)
+  let runtime = PhoneSyncRuntime(
+    profiles: profiles, credentials: CoordinatorCredentials(snapshot.profile), factory: { child })
+  _ = try await runtime.startup()
+  let epoch = UUID()
+  let gate = CoordinatorGate()
+  let display = try JSONDecoder().decode(
+    NessaConversationView.self,
+    from: Data(
+      "{\"conversationId\":\"a\",\"messages\":[],\"permissions\":[],\"truncated\":false}".utf8))
+  let page = retainedHistoryPage(["a"])
+  let transcript = RetainedTranscript(
+    state: .retained, scope: page.scope, downloaded: 1,
+    applied: 1, facts: 1, generation: 4,
+    view: .available(
+      .init(
+        json: Data(),
+        revision: epoch.uuidString, revisionEpoch: epoch, display: display)))
+  await child.configure(
+    pages: [scopedHistory(page, snapshot: snapshot)],
+    transcript: .init(
+      profileID: snapshot.profile.id, revision: snapshot.registry.revision,
+      value: transcript), transcriptGate: gate)
+  let reading = Task { try await runtime.display(on: nil, conversations: ["a"], revision: epoch) }
+  await gate.wait()
+  await profiles.replaceExternally(exampleProfiles(snapshot.profile))
+  await gate.release()
+  do {
+    _ = try await reading.value
+    Issue.record("Changed aggregate published")
+  } catch let failure as PhoneSyncRuntimeFailure {
+    let captured = try #require(failure.underlying as? PhoneRetainedDisplayFailure)
+    #expect(captured.underlying as? PhoneSyncRuntimeRefusal == .changed)
+    #expect(captured.catalogue?.pages == [page])
+    #expect(captured.refreshFailure != nil)
+    if case .available(let value) = captured.transcripts["a"] {
+      #expect(value.value == transcript)
+    } else {
+      Issue.record("Captured transcript evidence dropped")
+    }
+  }
+  try await runtime.close()
+}

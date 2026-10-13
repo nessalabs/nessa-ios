@@ -17,6 +17,10 @@ struct MessagesInboxView: View {
   var body: some View {
     List {
       Group {
+        if let status = store.phoneSyncError {
+          Button(status, action: onSettings).font(MessagesStyle.caption)
+            .foregroundStyle(MessagesStyle.secondary).padding(.vertical, NessaSpacing.md)
+        }
         if store.pendingLoadError != nil { PendingDeliveryUnavailable(store: store) }
         ForEach(store.pendingCreations, id: \.requestID) { command in
           PendingCommandActions(command: command, store: store, onCreated: onOpen)
@@ -35,7 +39,9 @@ struct MessagesInboxView: View {
           VStack(spacing: NessaSpacing.sm) {
             Text("Your chats, one message away.").font(MessagesStyle.title)
             Button("New message", action: onCompose).font(MessagesStyle.body)
-              .disabled(store.pendingLoadError != nil || !store.pendingCreations.isEmpty)
+              .disabled(
+                !store.conversationAuthorityReady || store.pendingLoadError != nil
+                  || !store.pendingCreations.isEmpty)
           }.padding(.vertical, NessaSpacing.xl)
         } else if showingArchived && filtered.isEmpty {
           Text("No archived chats.").font(MessagesStyle.body)
@@ -89,7 +95,8 @@ struct MessagesInboxView: View {
                   pendingDeletion = [conversation.id]
                 } label: {
                   Label("Delete", systemImage: "trash")
-                }.tint(MessagesStyle.danger).disabled(!store.connected)
+                }.tint(MessagesStyle.danger).disabled(
+                  !store.connected || !store.conversationAuthorityReady)
                 Button(showingArchived ? "Unarchive" : "Archive", systemImage: "archivebox") {
                   store.setArchived(!showingArchived, conversationID: conversation.id)
                 }.tint(MessagesStyle.archiveAction)
@@ -157,7 +164,8 @@ struct MessagesInboxView: View {
               .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
               .messagesGlass()
             }.disabled(
-              !store.connected || store.busy || store.pendingLoadError != nil
+              !store.connected || !store.conversationAuthorityReady || store.busy
+                || store.pendingLoadError != nil
                 || !store.pendingCreations.isEmpty
             )
             .accessibilityLabel(store.busy ? "Creating chat" : "New message")

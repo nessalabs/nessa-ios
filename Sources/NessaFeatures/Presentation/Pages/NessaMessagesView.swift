@@ -74,10 +74,9 @@ public struct NessaMessagesView: View {
           if store.connected { address = connection.address }
           return
         }
-        let credential = store.savedCredential()
-        if !credential.isEmpty {
-          await store.connect(address: address, credential: credential, instance: instance)
-        }
+        await store.connect(
+          address: address, credential: "", instance: instance,
+          restoringSavedProfile: true)
       }
     }
     .task(id: store.connectionRevision) {
