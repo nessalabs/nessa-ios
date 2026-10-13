@@ -436,7 +436,7 @@ claim-key/class correlation, receiver-before-effect failures, purge recovery and
 compound refresh preservation. Five compiling reversals are rejected by assertions:
 missing request marker, missing receiver save, independent close owners dropped
 refresh evidence and ignored initial refresh correlation. Restored tests pass; signed simulator and generic Release device
-builds pass. The native package remains pinned to reviewed gateway `542eafc3`.
+builds pass. At this slice the native package remained pinned to reviewed gateway `542eafc3`.
 
 At the coordinator checkpoint, production composition, setup UI, history hydration
 and configured native gateway phone experiments remained pending. No new phone

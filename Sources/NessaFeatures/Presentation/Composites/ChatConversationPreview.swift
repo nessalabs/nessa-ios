@@ -33,13 +33,15 @@ struct ChatConversationPreview: View {
       ScrollView {
         VStack(spacing: MessagesStyle.groupSpacing) {
           if case .available(let conversation) = state {
-            ForEach(conversation.messages.suffix(3)) { turn in
-              VStack(spacing: MessagesStyle.bubbleSpacing) {
-                if !turn.userText.isEmpty { MessageBubble(text: turn.userText, outgoing: true) }
-                ForEach(Array(turn.bubbles.enumerated()), id: \.offset) { _, text in
-                  MessageBubble(text: text, outgoing: false)
-                }
-              }
+            let projection = ConversationReplies(
+              turns: Array(conversation.messages.suffix(3)),
+              targets: store.replies(in: conversation.conversationId), agentName: name)
+            ForEach(projection.messages) { message in
+              ConversationMessageView(
+                message: message, conversationID: conversation.conversationId, store: store,
+                parent: projection.parent(of: message), onReply: { _ in },
+                onOpenThread: { _ in }
+              ).allowsHitTesting(false)
             }
           } else {
             Text(placeholder)

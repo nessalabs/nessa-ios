@@ -121,3 +121,46 @@ the installed live app still shows Web Search and Image and opens the original
 image conversation. Explicit pairing controls, native-enabled phone/gateway runs,
 backlog and fresh paired timings remain unfinished. Existing latency measurements
 above are not results for this new display path.
+
+## Gateway 763574a and attachment previews
+
+The gateway was fetched to frozen main `763574af653194f91076579fac9132cddf1ca527`.
+Its disposable product/native listeners run on 19743/19744 with the existing test
+surface identity and grants; the original gateway on 18743 is unchanged. Protocol
+145, retained-reader 35, SDK deadline 95, server deadline 75 serial, view-clock 1,
+and published-schema checks pass. An unchanged logging assertion failed in a
+parallel server test batch; isolated and serial reruns pass, so the initial
+failure remains recorded rather than being treated as a clean parallel result.
+
+Twenty actual product submissions pass: authentication 17.54 ms, creation 489.47
+ms, acknowledgment p50/p95/max 31.14/37.53/38.03 ms, first publication
+32.27/38.53/40.24 ms, model completion 1630.86/4200.24/6597.91 ms. Exact command
+retry/disk recreation and image upload/history/cache/model recognition also pass;
+test conversations are removed. These are transport measurements, not native
+retained display or physical-device render timings. Concurrent creates using one
+principal reproduce a temporary `conversation_storage_unavailable` refusal;
+retrying the exact failed command after the other creation settles succeeds.
+Existing principal-reservation regressions expect this contention behavior.
+
+The phone's native package and generated pairing provenance now pin the same
+763574a source. All platform libraries and their manifest hashes are verified;
+generated Swift API, worker, and FFI headers remain byte-identical. Both old and
+updated native readers pass the latest gateway's five-stage paired lifecycle:
+first read, offline reopen, restarted gateway, terminal purge recovery, and
+epoch refusal with retained partial progress. That fixture does not exercise
+the new deadline/grant observation variants; the source update and upstream
+deadline/projection tests cover those contracts without claiming this fixture
+proved them. No relay fallback is activated in phone composition.
+
+The read-only chat preview now uses the shared message renderer and canonical
+message projection, including photos, files, and reply quotes. The signed live
+simulator shows the original waterfall photo in the preview; a 600 ms native
+hold opens it and tapping it opens the conversation. App architecture/design
+checks and 235 tests pass; four compiling setup-facade reversals fail semantic
+assertions. Signed simulator and unsigned generic Release compile/link pass.
+
+Public application setup actions preserve exact leased identity, original resumed
+profile, explicit selected recovery invitation and displayed approval key, and
+captured failure evidence. Their presentation admission/controls and actual
+normal-app enrollment remain pending, alongside the broader backlog, artifact,
+deletion-failure and physical-device gates.

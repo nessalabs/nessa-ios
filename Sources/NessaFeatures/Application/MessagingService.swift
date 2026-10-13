@@ -13,6 +13,22 @@ public struct MessagingService: Sendable {
   }
   public var attachmentPolicy: AttachmentPolicy { repository.attachmentPolicy }
   public func agents() async throws -> [AgentProfile] { try await directory?.agents() ?? [] }
+  public func authenticatedSession(for lease: GatewayConnectionLease) async throws
+    -> AuthenticatedGatewaySession
+  {
+    guard let source = repository as? any AuthenticatedGatewaySessionProviding else {
+      throw NessaGatewayError.incompatibleProtocol
+    }
+    return try await source.authenticatedSession(for: lease)
+  }
+  public func pendingPairings(on lease: GatewayConnectionLease) async throws
+    -> GatewayPairingReceipt<[GatewayPairingStatus]>
+  {
+    guard let pairing = repository as? any GatewayPairingManaging else {
+      throw NessaGatewayError.incompatibleProtocol
+    }
+    return try await pairing.pendingPairings(on: lease)
+  }
   @discardableResult
   public func connect(address: String, credential: String, instance: String) async throws
     -> GatewayConnectionLease?
