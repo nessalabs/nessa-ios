@@ -179,7 +179,7 @@ private actor SwitchingGateway: MessagingRepository, AgentDirectory, Conversatio
   await first.value
   await snapshots.flush()
   let scope = PhoneCacheScope(address: "mock://new", credential: "new", instance: "phone")
-  #expect(await disk.load(scope)?.agents == [next])
+  #expect(try await disk.load(scope)?.agents == [next])
   #expect(model.agentProfiles == [next])
   #expect(model.connected)
   await model.suspendConnection()

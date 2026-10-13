@@ -27,7 +27,7 @@ func profileMetadataFile(_ root: URL) throws -> URL {
 }
 
 /// Faults use real atomic files and hold their actual lock; only the platform failure is substituted.
-final class FaultingProfileFiles: PhoneProfileFileAccess, @unchecked Sendable {
+final class FaultingProfileFiles: PrivatePhoneFileAccess, @unchecked Sendable {
   enum Mode {
     case beforeWrite, afterWrite, beforeSecondWrite, afterSecondWrite, failedReadback,
       differentReadback, heldWrite

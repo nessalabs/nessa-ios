@@ -80,16 +80,16 @@ private func example() -> PhoneSnapshot {
   await session.record(try update("a"), lease: lease)
   await session.record(.list(list([], complete: false)), lease: lease)
   await session.flush()
-  #expect(await store.load(scope())?.views["a"] != nil)
+  #expect(try await store.load(scope())?.views["a"] != nil)
   await session.record(.list(list([])), lease: lease)
   await session.flush()
-  #expect(await store.load(scope())?.views["a"] != nil)
+  #expect(try await store.load(scope())?.views["a"] != nil)
   await session.remove("a", lease: lease)
   await session.record(.list(list(["a"])), lease: lease)
   await session.record(try update("a"), lease: lease)
   await session.flush()
-  #expect(await store.load(scope())?.views.isEmpty == true)
-  #expect(await store.load(scope())?.list?.conversations.isEmpty == true)
+  #expect(try await store.load(scope())?.views.isEmpty == true)
+  #expect(try await store.load(scope())?.list?.conversations.isEmpty == true)
 }
 @Test func staleIdentityLeaseCannotMutateAReopenedIdentity() async throws {
   let store = InMemoryPhoneSnapshotStore()
@@ -100,7 +100,7 @@ private func example() -> PhoneSnapshot {
   await session.record(.list(list(["new"])), lease: current)
   await session.record(.list(list(["stale"])), lease: old)
   await session.flush()
-  #expect(await store.load(scope())?.list?.conversations.map(\.id) == ["new"])
+  #expect(try await store.load(scope())?.list?.conversations.map(\.id) == ["new"])
 }
 private actor DelayedSaves: PhoneSnapshotStoring {
   var saved: PhoneSnapshot?
@@ -135,8 +135,8 @@ private actor DelayedSaves: PhoneSnapshotStoring {
   await session.record(.list(list(["b"])), lease: other)
   await session.record(try update("b"), lease: other)
   _ = try await session.prepare(scope())
-  #expect(await store.load(scope())?.views["a"] != nil)
-  #expect(await store.load(scope("other"))?.views["b"] != nil)
+  #expect(try await store.load(scope())?.views["a"] != nil)
+  #expect(try await store.load(scope("other"))?.views["b"] != nil)
 }
 @Test func reopeningWaitsForDelayedOwnedWriteBeforeLoading() async throws {
   let store = DelayedSaves()

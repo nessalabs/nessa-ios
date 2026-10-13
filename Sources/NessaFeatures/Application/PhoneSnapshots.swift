@@ -32,7 +32,10 @@ public struct PhoneSnapshot: Codable, Sendable, Equatable {
     else { throw PhoneSnapshotError.corrupt }
   }
 }
-public enum PhoneSnapshotError: Error, Sendable, Equatable { case corrupt, quota, unavailable }
+public enum PhoneSnapshotError: Error, Sendable, Equatable {
+  case corrupt, quota, unavailable, withdrawn
+  case withdrawal(PhoneSnapshotMarkerFailure)
+}
 public protocol PhoneSnapshotStoring: Sendable {
   func load(_ scope: PhoneCacheScope) async throws -> PhoneSnapshot?
   func save(_ snapshot: PhoneSnapshot, scope: PhoneCacheScope) async throws
@@ -40,7 +43,7 @@ public protocol PhoneSnapshotStoring: Sendable {
 
 /// One coalescing writer: an older save finishes before the newer snapshot starts.
 /// These derived display values never establish physical retained progress.
-public actor PhoneSnapshotSession {
+public actor PhoneSnapshotSession: PhoneSnapshotWithdrawing {
   public struct Lease: Sendable, Equatable {
     fileprivate let id = UUID()
     fileprivate let scope: PhoneCacheScope
@@ -52,12 +55,14 @@ public actor PhoneSnapshotSession {
   private var removed: Set<String> = []
   private var pending: (PhoneSnapshot, Lease)?
   private var writer: Task<Void, Never>?
+  private var blockedScopes: [String: PhoneSnapshotError] = [:]
   public private(set) var failure: PhoneSnapshotError?
   public init(store: any PhoneSnapshotStoring, coalescingDelay: Duration = .milliseconds(250)) {
     self.store = store
     delay = coalescingDelay
   }
   public func prepare(_ scope: PhoneCacheScope) async throws -> (Lease, PhoneSnapshot?) {
+    if let failure = blockedScopes[scope.key] { throw failure }
     let next = Lease(scope: scope)
     lease = next
     // Fence callers before settling their last owned save and reading disk.
@@ -70,6 +75,11 @@ public actor PhoneSnapshotSession {
     do { loaded = try await store.load(scope) } catch {
       guard lease == next else { throw CancellationError() }
       failure = (error as? PhoneSnapshotError) ?? .unavailable
+      if let failure, Self.blocksHydration(failure) {
+        blockedScopes[scope.key] = failure
+        lease = nil
+        throw failure
+      }
       loaded = nil
     }
     guard lease == next else { throw CancellationError() }
@@ -112,6 +122,31 @@ public actor PhoneSnapshotSession {
     schedule(expected)
   }
   public func flush() async { await writer?.value }
+  // Passive barrier observation for deterministic held-writer verification.
+  func withdrawalFailure(_ scope: PhoneCacheScope) -> PhoneSnapshotError? {
+    blockedScopes[scope.key]
+  }
+  public func withdraw(_ scope: PhoneCacheScope) async throws {
+    // Fence before suspension: callbacks and new preparation cannot resurrect this scope.
+    blockedScopes[scope.key] = .withdrawn
+    if lease?.scope == scope {
+      lease = nil
+      snapshot = PhoneSnapshot()
+      removed = []
+    }
+    if pending?.1.scope == scope { pending = nil }
+    await writer?.value
+    guard let withdrawing = store as? any PhoneSnapshotWithdrawing else {
+      throw PhoneSnapshotWithdrawalError.unsupported
+    }
+    try await withdrawing.withdraw(scope)
+  }
+  private static func blocksHydration(_ failure: PhoneSnapshotError) -> Bool {
+    switch failure {
+    case .withdrawn, .withdrawal: return true
+    case .corrupt, .quota, .unavailable: return false
+    }
+  }
   private func schedule(_ lease: Lease) {
     pending = (snapshot, lease)
     guard writer == nil else { return }
@@ -122,6 +157,7 @@ public actor PhoneSnapshotSession {
       try? await Task.sleep(for: delay)
       guard let (next, writingLease) = pending else { break }
       pending = nil
+      guard blockedScopes[writingLease.scope.key] == nil else { continue }
       do {
         try await store.save(next, scope: writingLease.scope)
         if lease == writingLease { failure = nil }

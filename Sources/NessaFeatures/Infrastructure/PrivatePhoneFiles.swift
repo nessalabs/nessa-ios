@@ -3,8 +3,15 @@ import Foundation
 
 enum PrivatePhoneFileError: Error { case quota, unavailable }
 
+/// Synchronous transactions hold one private-file lock through write reconciliation.
+protocol PrivatePhoneFileAccess: Sendable {
+  func read(_ key: String) throws -> Data?
+  func write(_ data: Data, key: String) throws
+  func withLock<Value>(_ key: String, body: () throws -> Value) throws -> Value
+}
+
 /// Reusable bounded, atomic private-file I/O. Call on an infrastructure actor.
-struct PrivatePhoneFiles: Sendable {
+struct PrivatePhoneFiles: PrivatePhoneFileAccess {
   let root: URL
   let maximumBytes: Int
   init(root: URL, maximumBytes: Int) {

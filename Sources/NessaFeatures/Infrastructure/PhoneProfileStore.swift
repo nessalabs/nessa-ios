@@ -1,22 +1,14 @@
 import CryptoKit
 import Foundation
 
-/// The transaction is synchronous and holds the same private-file lock across read/write/readback.
-protocol PhoneProfileFileAccess: Sendable {
-  func read(_ key: String) throws -> Data?
-  func write(_ data: Data, key: String) throws
-  func withLock<Value>(_ key: String, body: () throws -> Value) throws -> Value
-}
-extension PrivatePhoneFiles: PhoneProfileFileAccess {}
-
 public actor PhoneProfileStore: PhoneProfileStoring {
-  private let files: any PhoneProfileFileAccess
+  private let files: any PrivatePhoneFileAccess
   private let key = SHA256.hash(data: Data("phone-profile-registry".utf8))
     .map { String(format: "%02x", $0) }.joined()
   public init(root: URL, maximumBytes: Int = 1024 * 1024) {
     files = PrivatePhoneFiles(root: root, maximumBytes: maximumBytes)
   }
-  init(files: any PhoneProfileFileAccess) { self.files = files }
+  init(files: any PrivatePhoneFileAccess) { self.files = files }
   private func encode(_ value: PhoneProfiles) throws -> Data {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
