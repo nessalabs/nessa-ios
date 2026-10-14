@@ -132,6 +132,16 @@ struct MessagesInboxView: View {
       )
       .listRowSeparator(.hidden).listRowBackground(Color.clear)
     }.listStyle(.plain).scrollContentBackground(.hidden)
+      // While the bar is a delete slide, a tap anywhere on the list puts it back.
+      .overlay {
+        if confirmingSelection {
+          Color.clear.contentShape(Rectangle())
+            .onTapGesture {
+              withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirmingSelection = false }
+            }
+            .accessibilityAddTraits(.isButton).accessibilityLabel("Keep chats")
+        }
+      }
       .environment(\.defaultMinListRowHeight, 0)
       .sensoryFeedback(.impact(flexibility: .soft), trigger: store.pinnedChats)
       .sensoryFeedback(.warning, trigger: pinRefusals)
@@ -161,23 +171,14 @@ struct MessagesInboxView: View {
       .messagesBar(edge: .bottom) {
         if editing && confirmingSelection {
           // The bar itself becomes the slide, so deleting a selection needs no sheet.
-          HStack(spacing: MessagesStyle.toolbarGap) {
-            NessaSlideToConfirm(
-              selected.count == 1 ? "Slide to delete" : "Slide to delete \(selected.count)",
-              tint: MessagesStyle.danger, height: MessagesStyle.composerHeight
-            ) {
-              let ids = selected
-              withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirmingSelection = false }
-              delete(ids)
-            }
-            Button {
-              withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirmingSelection = false }
-            } label: {
-              Image(systemName: "xmark").font(MessagesStyle.icon)
-                .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
-                .messagesGlass()
-            }
-            .buttonStyle(.nessaPress).accessibilityLabel("Keep chats")
+          // A tap anywhere else lets it go (see the catcher over the list).
+          NessaSlideToConfirm(
+            selected.count == 1 ? "Slide to delete" : "Slide to delete \(selected.count)",
+            tint: MessagesStyle.danger, height: MessagesStyle.composerHeight
+          ) {
+            let ids = selected
+            withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirmingSelection = false }
+            delete(ids)
           }
           .padding(.horizontal, MessagesStyle.horizontal)
           .padding(.bottom, MessagesStyle.bottomInset)
