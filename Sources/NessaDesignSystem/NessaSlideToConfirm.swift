@@ -143,7 +143,7 @@ private enum SlideStyle {
   static let labelFadeEnd: CGFloat = 0.45
   /// A selection tick each quarter of the way.
   static let ticks: CGFloat = 4
-  static let springBack = Animation.spring(duration: 0.35, bounce: 0.25)
+  static let springBack = Animation.spring(duration: 0.25, bounce: 0.15)
   static let pixel: CGFloat = 2
   static let peakDensity: Double = 0.92
   static let rampCurve: Double = 1.4
