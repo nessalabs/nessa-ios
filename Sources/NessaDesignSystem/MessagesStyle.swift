@@ -70,11 +70,12 @@ public enum MessagesStyle {
   /// How long after a layout change a scroll coming to rest is still the system's.
   public static let layoutSettleWindow: TimeInterval = 0.6
   public static let typingDotSize: CGFloat = 8
-  public static let typingWaveAmplitude: CGFloat = 3.5
-  public static let typingWavePeriod: TimeInterval = 1.3
-  public static let typingWavePhase: Double = .pi / 2
-  public static let typingDotMinimumOpacity: Double = 0.55
-  public static let typingDotMinimumScale: CGFloat = 0.88
+  /// The dots breathe in turn rather than bounce: a small lift, a deep fade, a slow beat.
+  public static let typingWaveAmplitude: CGFloat = 1.5
+  public static let typingWavePeriod: TimeInterval = 1.2
+  public static let typingWavePhase: Double = .pi * 0.45
+  public static let typingDotMinimumOpacity: Double = 0.3
+  public static let typingDotMinimumScale: CGFloat = 0.8
   public static let photoDraftWidth: CGFloat = 96
   public static let photoDraftHeight: CGFloat = 76
   public static let photoDraftRadius: CGFloat = 12
@@ -98,12 +99,11 @@ public enum MessagesStyle {
   public static let separator = NessaColor.muted
   public static let foreground = NessaColor.foreground
   public static let control = NessaColor.muted
-  /// How far the brand wash reaches down behind the inbox's header before it is gone.
-  public static let washHeight: CGFloat = 240
-  public static let washIntensity: Double = 0.32
-  public static let emptyWashSize: CGFloat = 220
+  /// How far the header's dither reaches down before it is gone.
+  public static let ditherHeight: CGFloat = 150
+  public static let emptyDitherSize: CGFloat = 220
   public static let emptyAvatar: CGFloat = 96
-  public static let emptyWashVisibleHeight: CGFloat = 165
+  public static let emptyDitherVisibleHeight: CGFloat = 165
   public static let rowSeparator = NessaColor.hairline
   /// A control swapping in place grows from this scale.
   public static let swapScale: CGFloat = 0.5
@@ -162,6 +162,13 @@ public enum MessagesStyle {
   public static let bubbleFadeAnimation = Animation.easeOut(duration: 0.14)
   public static let messageFollowAnimation = bubbleEntranceAnimation
   public static var bubbleRemoval: AnyTransition { .opacity.combined(with: .scale(scale: 0.9)) }
+  /// The typing bubble grows in like a reply and gets out of the way fast when the reply
+  /// lands, so the reply reads as taking its place rather than crossing over it.
+  public static var typingTransition: AnyTransition {
+    .asymmetric(
+      insertion: bubbleInsertion(outgoing: false),
+      removal: AnyTransition.opacity.animation(.easeOut(duration: NessaMotion.normal / 2)))
+  }
   public static func bubbleInsertion(outgoing: Bool) -> AnyTransition {
     let anchor: UnitPoint = outgoing ? .bottomTrailing : .bottomLeading
     let insertion: AnyTransition = AnyTransition.opacity.animation(bubbleFadeAnimation)
@@ -284,21 +291,14 @@ extension View {
   }
 }
 
-/// The near-black ground with the brand wash glowing faintly down from the top edge,
-/// mostly behind the header so it never sits under running text.
+/// The near-black ground with a dithered grain thinning down from the top edge, mostly
+/// behind the header so it never sits under running text.
 public struct MessagesAmbientGround: ViewModifier {
   public func body(content: Content) -> some View {
     content.background {
       MessagesStyle.background
         .overlay(alignment: .top) {
-          // Faded out by a mask rather than cut by the canvas edge, so it ends nowhere.
-          NessaWash(intensity: MessagesStyle.washIntensity)
-            .frame(height: MessagesStyle.washHeight)
-            .mask(
-              LinearGradient(
-                stops: [.init(color: .black, location: 0), .init(color: .clear, location: 1)],
-                startPoint: .top, endPoint: .bottom))
-            .offset(y: -MessagesStyle.washHeight * 0.3)
+          NessaDither(.down).frame(height: MessagesStyle.ditherHeight)
         }
         .ignoresSafeArea()
     }

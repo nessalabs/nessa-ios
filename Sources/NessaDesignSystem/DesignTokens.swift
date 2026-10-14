@@ -42,12 +42,6 @@ public enum NessaColor {
   /// `--destructive` (dark), oklch(0.704 0.187 22.216).
   public static let destructive = Color(hex: 0xFF6668)
 
-  /// The `--nessa-thinking-fill-*` trio: base, current and highlight.
-  public static let thinkingBase = Color(hex: 0x3364DB)
-  public static let thinkingCurrent = Color(hex: 0xB46DF4)
-  public static let thinkingHighlight = Color(hex: 0x50D9EF)
-  public static let thinking = [thinkingBase, thinkingCurrent, thinkingHighlight]
-
   /// The `--nessa-chat-rim-*` stops: amber through pink and purple into cyan, then the
   /// near-white head. A light source, identical in both themes.
   public static let rim: [Color] = [
@@ -56,10 +50,6 @@ public enum NessaColor {
     Color(hex: 0x38BDF8, opacity: 0.85), .white,
   ]
 
-  /// The desktop app icon's wash (`AGENT_ICON_WASH`): lavender into warm orange.
-  public static let wash: [Color] = [
-    Color(hex: 0xD3A9D8), Color(hex: 0xE6B6D2), Color(hex: 0xF7BFA6), Color(hex: 0xF9A86A),
-  ]
   /// The agent hue wheel (`AGENT_HUES`), in degrees.
   public static let agentHues: [Double] = [25, 195, 300, 340]
 }

@@ -77,8 +77,7 @@ struct NessaThreadView: View {
                   onReply: { composer.reply = $0 }, onOpenThread: { composer.reply = $0 })
               }
               if turn.status == "running" {
-                TypingIndicator()
-                  .transition(MessagesStyle.bubbleInsertion(outgoing: false))
+                TypingIndicator().transition(MessagesStyle.typingTransition)
               }
               if let error = turn.error {
                 Text(error).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.danger)

@@ -2,7 +2,7 @@ import SwiftUI
 
 public enum AgentDetailsStyle {
   public static let heroAvatar: CGFloat = 88
-  public static let heroWash: CGFloat = 220
+  public static let heroDither: CGFloat = 220
   public static let heroHeight: CGFloat = 132
   public static let compactAvatar: CGFloat = 28
   public static let title = Font.system(size: 28, weight: .bold)

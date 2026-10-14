@@ -12,7 +12,7 @@ struct AgentDetailsIdentity: View {
   }
 }
 
-/// The top of the details sheet: the agent's disc glowing in the brand wash, its name,
+/// The top of the details sheet: the agent's disc in its dither, its name,
 /// what it is for, and the model it answers with.
 struct AgentDetailsHero: View {
   let name: String
@@ -25,8 +25,8 @@ struct AgentDetailsHero: View {
   var body: some View {
     VStack(spacing: NessaSpacing.sm) {
       ZStack {
-        NessaWash(feathered: true)
-          .frame(width: AgentDetailsStyle.heroWash, height: AgentDetailsStyle.heroWash)
+        NessaDither(.radial, strength: NessaDither.defaultStrength * 1.5)
+          .frame(width: AgentDetailsStyle.heroDither, height: AgentDetailsStyle.heroDither)
         AgentAvatar(name: name, size: AgentDetailsStyle.heroAvatar, working: working)
       }
       .frame(height: AgentDetailsStyle.heroHeight)
@@ -38,7 +38,7 @@ struct AgentDetailsHero: View {
       }
       HStack(spacing: NessaSpacing.xs) {
         if working {
-          NessaChip("Working", symbol: "sparkles", tint: NessaColor.thinkingCurrent)
+          NessaChip("Working", symbol: "ellipsis", tint: MessagesStyle.foreground)
             .transition(.scale.combined(with: .opacity))
         }
         if let model { NessaChip(model, symbol: "cpu") }

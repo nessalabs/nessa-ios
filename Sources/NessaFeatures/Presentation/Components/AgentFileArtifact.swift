@@ -5,7 +5,7 @@ struct AgentFileArtifact: View {
   let file: NessaFileAttachment
   var body: some View {
     HStack(spacing: NessaSpacing.sm) {
-      Image(systemName: "doc.text").font(MessagesStyle.icon).foregroundStyle(MessagesStyle.link)
+      Image(systemName: "doc.text").font(MessagesStyle.icon).foregroundStyle(MessagesStyle.secondary)
         .frame(width: AgentDetailsStyle.fileIcon, height: AgentDetailsStyle.fileIcon)
         .background(MessagesStyle.control, in: Circle())
       VStack(alignment: .leading, spacing: NessaSpacing.xxs) {

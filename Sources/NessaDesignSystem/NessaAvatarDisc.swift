@@ -63,17 +63,17 @@ struct NessaAvatarPaint {
     }
     let first = Int(random.next(in: 0...Double(hues.count - 1)).rounded())
     ground = (
-      Color(hue: hue(first), saturation: 0.30, brightness: 0.97),
-      Color(hue: hue(first + 1), saturation: 0.42, brightness: 0.90)
+      Color(hue: hue(first), saturation: 0.16, brightness: 0.86),
+      Color(hue: hue(first + 1), saturation: 0.24, brightness: 0.74)
     )
     blooms = (0..<3).map { index in
       Bloom(
         center: CGPoint(x: random.next(in: 0.1...0.9), y: random.next(in: 0.15...0.95)),
         radius: CGFloat(random.next(in: 0.28...0.46)),
         color: Color(
-          hue: hue(first + 2 + index), saturation: random.next(in: 0.5...0.72),
-          brightness: random.next(in: 0.86...0.98)
-        ).opacity(0.85))
+          hue: hue(first + 2 + index), saturation: random.next(in: 0.26...0.4),
+          brightness: random.next(in: 0.78...0.9)
+        ).opacity(0.75))
     }
   }
 }
@@ -102,47 +102,59 @@ struct SeededRandom {
   }
 }
 
-/// The brand wash: lavender blooming into warm orange, as light diffusing through fog.
-/// For grounds, empty states and brand surfaces, never behind running text.
-public struct NessaWash: View {
-  private let intensity: Double
-  private let feathered: Bool
-  /// `feathered` fades the wash out to a circle, for a wash standing on its own.
-  public init(intensity: Double = 1, feathered: Bool = false) {
-    self.intensity = intensity
-    self.feathered = feathered
+/// An ordered (Bayer 4×4) dither in the foreground ink: a grain of square points, dense at its
+/// source and thinning to nothing. Monochrome on purpose, it gives a ground texture without colour.
+/// It is one path drawn once, so it costs nothing while the screen scrolls.
+public struct NessaDither: View {
+  public enum Falloff: Sendable {
+    /// Densest along the top edge, gone by the bottom.
+    case down
+    /// Densest at the centre, gone by the edge of the inscribed circle.
+    case radial
   }
+  private let falloff: Falloff
+  private let strength: Double
+  public init(_ falloff: Falloff, strength: Double = NessaDither.defaultStrength) {
+    self.falloff = falloff
+    self.strength = strength
+  }
+  public static let defaultStrength: Double = 0.16
+  private static let cell: CGFloat = 3
+  private static let point: CGFloat = 1.5
+  /// The densest the pattern gets, so even its source reads as grain rather than a fill.
+  private static let peak: Double = 0.7
+  private static let bayer: [[Double]] = [
+    [0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5],
+  ]
   public var body: some View {
-    if feathered {
-      canvas.mask(
-        GeometryReader { proxy in
-          RadialGradient(
-            colors: [.black, .clear], center: .center, startRadius: 0,
-            endRadius: min(proxy.size.width, proxy.size.height) / 2)
-        })
-    } else {
-      canvas
-    }
-  }
-  private var canvas: some View {
-    Canvas { context, canvas in
-      context.addFilter(.blur(radius: max(canvas.width, canvas.height) * 0.14))
-      let w = canvas.width
-      let h = canvas.height
-      let placements: [(CGFloat, CGFloat, CGFloat)] = [
-        (0.18, 0.30, 0.55), (0.55, 0.12, 0.50), (0.85, 0.42, 0.48), (0.42, 0.62, 0.42),
-      ]
-      for (index, placement) in placements.enumerated() {
-        let radius = placement.2 * w
-        let rect = CGRect(
-          x: placement.0 * w - radius, y: placement.1 * h - radius,
-          width: radius * 2, height: radius * 2)
-        context.fill(
-          Path(ellipseIn: rect),
-          with: .color(NessaColor.wash[index % NessaColor.wash.count].opacity(0.55 * intensity)))
+    Canvas { context, size in
+      let columns = Int((size.width / Self.cell).rounded(.up))
+      let rows = Int((size.height / Self.cell).rounded(.up))
+      let center = CGPoint(x: size.width / 2, y: size.height / 2)
+      let radius = max(1, min(size.width, size.height) / 2)
+      var path = Path()
+      for row in 0..<rows {
+        for column in 0..<columns {
+          let x = CGFloat(column) * Self.cell
+          let y = CGFloat(row) * Self.cell
+          let reach: Double
+          switch falloff {
+          case .down:
+            reach = 1 - Double(y / max(size.height, 1))
+          case .radial:
+            reach = 1 - Double(hypot(x - center.x, y - center.y) / radius)
+          }
+          guard reach > 0 else { continue }
+          // Eased so the grain thins gradually instead of ending on a visible line.
+          let density = Self.peak * reach * reach
+          let threshold = (Self.bayer[row % 4][column % 4] + 0.5) / 16
+          if density > threshold {
+            path.addRect(CGRect(x: x, y: y, width: Self.point, height: Self.point))
+          }
+        }
       }
+      context.fill(path, with: .color(NessaColor.foreground.opacity(strength)))
     }
-    .drawingGroup()
     .allowsHitTesting(false)
     .accessibilityHidden(true)
   }

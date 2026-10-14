@@ -77,7 +77,7 @@ extension View {
   }
 }
 
-/// A sheen that sweeps through text while something is in progress, in the thinking colours.
+/// A light sheen that sweeps through text while something is in progress.
 public struct NessaShimmer: ViewModifier {
   let active: Bool
   let base: Color
@@ -96,16 +96,16 @@ public struct NessaShimmer: ViewModifier {
           LinearGradient(
             stops: [
               .init(color: base, location: 0),
-              .init(color: NessaColor.thinkingCurrent, location: 0.4),
-              .init(color: NessaColor.thinkingHighlight, location: 0.5),
-              .init(color: NessaColor.thinkingCurrent, location: 0.6),
+              .init(color: base, location: 0.35),
+              .init(color: NessaColor.foreground, location: 0.5),
+              .init(color: base, location: 0.65),
               .init(color: base, location: 1),
             ],
             startPoint: UnitPoint(x: center - 0.45, y: 0.5),
             endPoint: UnitPoint(x: center + 0.45, y: 0.5)))
       }
     } else if active {
-      content.foregroundStyle(NessaColor.thinkingCurrent)
+      content.foregroundStyle(NessaColor.foreground)
     } else {
       content.foregroundStyle(base)
     }
@@ -113,7 +113,7 @@ public struct NessaShimmer: ViewModifier {
 }
 
 extension View {
-  /// Sweeps a thinking-coloured sheen through the view's text while `active`.
+  /// Sweeps a light sheen through the view's text while `active`.
   public func nessaShimmer(active: Bool, base: Color = NessaColor.mutedForeground) -> some View {
     modifier(NessaShimmer(active: active, base: base))
   }

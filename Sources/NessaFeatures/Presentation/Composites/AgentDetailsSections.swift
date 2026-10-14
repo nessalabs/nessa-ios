@@ -11,7 +11,7 @@ struct AgentDetailsSection<Content: View>: View {
       Label {
         Text(title.uppercased()).tracking(AgentDetailsStyle.sectionLabelTracking)
       } icon: {
-        Image(systemName: symbol).foregroundStyle(MessagesStyle.link)
+        Image(systemName: symbol)
       }
       .font(AgentDetailsStyle.sectionLabel).foregroundStyle(MessagesStyle.secondary)
       .accessibilityAddTraits(.isHeader)
@@ -49,7 +49,7 @@ struct AgentOverview: View {
               Label {
                 Text(item)
               } icon: {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(MessagesStyle.link)
+                Image(systemName: "checkmark").foregroundStyle(MessagesStyle.secondary)
               }
             }
           }
@@ -149,10 +149,10 @@ enum AgentActivityState: Equatable {
   }
   var tint: Color {
     switch self {
-    case .working: NessaColor.thinkingCurrent
+    case .working: MessagesStyle.foreground
     case .done: MessagesStyle.secondary
     case .failed: MessagesStyle.danger
-    case .requested: MessagesStyle.link
+    case .requested: MessagesStyle.foreground
     case .other: MessagesStyle.secondary
     }
   }
