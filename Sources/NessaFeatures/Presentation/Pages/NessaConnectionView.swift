@@ -9,6 +9,8 @@ struct NessaConnectionView: View {
   let instance: String
   @State private var draftAddress = ""
   @State private var credential = ""
+  /// The sheet's height fitted to what it holds, so no empty half sheet hangs under the action.
+  @State private var fittedHeight: CGFloat?
   @Environment(\.dismiss) private var dismiss
   var body: some View {
     ScrollView {
@@ -53,16 +55,23 @@ struct NessaConnectionView: View {
         }
       }
       .padding(.horizontal, MessagesStyle.horizontal)
-      .padding(.top, NessaSpacing.xs)
+      // The title's line box leaves room under its glyphs, so this tops it up to the same gap
+      // the card keeps from the action below it.
+      .padding(.top, NessaSpacing.sm)
       .padding(.bottom, NessaSpacing.xl)
     }
     .scrollDismissesKeyboard(.interactively)
+    .onScrollGeometryChange(for: CGFloat.self) { geometry in
+      geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
+    } action: { _, height in
+      fittedHeight = height
+    }
     .messagesScrollEdges()
     .messagesBar(edge: .top) { header.messagesHeaderGrain() }
     .foregroundStyle(MessagesStyle.foreground)
     .messagesAmbientGround()
     .onAppear { draftAddress = store.currentGatewayAddress ?? address }
-    .presentationDetents([.medium, .large])
+    .presentationDetents(fittedHeight.map { [.height($0), .large] } ?? [.medium, .large])
     .presentationDragIndicator(.visible)
     .presentationBackground(MessagesStyle.background)
     .presentationCornerRadius(AgentDetailsStyle.cardRadius * 2)

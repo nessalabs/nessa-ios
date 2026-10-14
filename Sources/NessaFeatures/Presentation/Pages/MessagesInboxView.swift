@@ -69,6 +69,10 @@ struct MessagesInboxView: View {
                 .animation(reduceMotion ? nil : NessaMotion.standard(), value: selected)
             }
             .contentShape(Rectangle())
+            // A row leaving (pinned, archived, deleted) collapses inside its own bounds, so
+            // its text never slides over the row moving up into its place. The mask is
+            // widened sideways only, to keep the selected fill's overhang.
+            .mask { Rectangle().padding(.horizontal, -NessaSpacing.xs) }
           }.buttonStyle(.plain)
             .disabled(deleting)
             .accessibilityLabel(
