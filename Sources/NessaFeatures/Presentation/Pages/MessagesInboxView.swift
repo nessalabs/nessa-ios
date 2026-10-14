@@ -14,6 +14,7 @@ struct MessagesInboxView: View {
   @State private var pendingDeletion: Set<String> = []
   @State private var deleting = false
   @State private var search = ""
+  @State private var pinRefusals = 0
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   var body: some View {
     List {
@@ -88,12 +89,20 @@ struct MessagesInboxView: View {
             )
             .swipeActions(edge: .leading, allowsFullSwipe: false) {
               if !editing && !showingArchived {
+                // A swipe action's button looks the same disabled or not, so a full pin row
+                // says so in its label and colour, and a tap on it buzzes instead of silently
+                // doing nothing.
+                let canPin = store.canTogglePin(conversation.id)
                 Button(
-                  store.isPinned(conversation.id) ? "Unpin" : "Pin",
+                  store.isPinned(conversation.id) ? "Unpin" : canPin ? "Pin" : "Pins full",
                   systemImage: store.isPinned(conversation.id) ? "pin.slash.fill" : "pin.fill"
                 ) {
-                  changeLayout { store.togglePin(conversation.id) }
-                }.tint(MessagesStyle.pinAction).disabled(!store.canTogglePin(conversation.id))
+                  if canPin {
+                    changeLayout { store.togglePin(conversation.id) }
+                  } else {
+                    pinRefusals += 1
+                  }
+                }.tint(canPin ? MessagesStyle.pinAction : MessagesStyle.control)
               }
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -125,6 +134,7 @@ struct MessagesInboxView: View {
       .environment(\.defaultMinListRowHeight, 0)
       .messagesTrackScroll(offset: $scrollOffset)
       .sensoryFeedback(.impact(flexibility: .soft), trigger: store.pinnedChats)
+      .sensoryFeedback(.warning, trigger: pinRefusals)
       .messagesAmbientGround()
       .messagesScrollEdges()
       .scrollDismissesKeyboard(.interactively)

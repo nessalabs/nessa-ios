@@ -55,10 +55,10 @@ struct NessaConnectionView: View {
         }
       }
       .padding(.horizontal, MessagesStyle.horizontal)
-      // The title's line box leaves room under its glyphs, so this tops it up to the same gap
-      // the card keeps from the action below it.
-      .padding(.top, NessaSpacing.sm)
-      .padding(.bottom, NessaSpacing.xl)
+      // Measured on device, these keep the title-to-card, card-to-action and action-to-edge
+      // gaps on one step.
+      .padding(.top, NessaSpacing.xs)
+      .padding(.bottom, NessaSpacing.xs)
     }
     .scrollDismissesKeyboard(.interactively)
     .onScrollGeometryChange(for: CGFloat.self) { geometry in
