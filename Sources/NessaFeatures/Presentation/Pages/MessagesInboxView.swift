@@ -124,6 +124,7 @@ struct MessagesInboxView: View {
       .messagesAmbientGround()
       .messagesScrollEdges()
       .scrollDismissesKeyboard(.interactively)
+      .messagesFooterGrain()
       .messagesBar(edge: .top) {
         InboxHeader(
           editing: editing,

@@ -184,6 +184,7 @@ struct NessaThreadView: View {
         // composer without ever changing the bar's height (which would grow the scroll range
         // and set the thread following itself). It shows only when the reader has left the
         // newest message, the pin's own state.
+        .messagesFooterGrain(lit: working)
         .overlay(alignment: .bottomTrailing) {
           ZStack {
             if readerScrolled && awayFromLatest {

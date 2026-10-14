@@ -127,6 +127,8 @@ public enum MessagesStyle {
   public static let control = NessaColor.muted
   /// How far the header's dither reaches down before it is gone.
   public static let ditherHeight: CGFloat = 150
+  /// The bottom bar's ground reaches this far above the bar.
+  public static let footerRise: CGFloat = 40
   public static let emptyAvatar: CGFloat = 56
   public static let rowSeparator = NessaColor.hairline
   /// The multi-select mark: a grey ring at rest, a white disc with a dark tick when chosen.
@@ -397,7 +399,43 @@ public struct MessagesHeaderGrain: ViewModifier {
   }
 }
 
+/// The ground under the bottom bar: solid from the screen's edge to the middle of the composer,
+/// so nothing scrolling beneath reads through or pokes out beside it, then fading upward while
+/// a faint glyph grain thins out above the bar, mirroring the header's grain.
+///
+/// Applied to the scrolling content, not the bar: it then sits under the bar's glass and under
+/// any control floated on the content (the jump arrow), instead of veiling them.
+public struct MessagesFooterGrain: ViewModifier {
+  let lit: Bool
+  public func body(content: Content) -> some View {
+    content.overlay {
+      GeometryReader { geometry in
+        // The bottom inset here is the bar plus the home indicator.
+        let below = geometry.safeAreaInsets.bottom
+        let height = below + MessagesStyle.footerRise
+        let solid = max(0, below - MessagesStyle.composerHeight / 2) / max(height, 1)
+        ZStack {
+          LinearGradient(
+            stops: [
+              .init(color: MessagesStyle.background, location: 0),
+              .init(color: MessagesStyle.background, location: solid),
+              .init(color: MessagesStyle.background.opacity(0), location: 1),
+            ], startPoint: .bottom, endPoint: .top)
+          NessaGlyphGrain(lit: lit)
+        }
+        .frame(height: height)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .offset(y: below)
+      }
+      .allowsHitTesting(false)
+    }
+  }
+}
+
 extension View {
   public func messagesAmbientGround() -> some View { modifier(MessagesAmbientGround()) }
+  public func messagesFooterGrain(lit: Bool = false) -> some View {
+    modifier(MessagesFooterGrain(lit: lit))
+  }
   public func messagesHeaderGrain() -> some View { modifier(MessagesHeaderGrain()) }
 }
