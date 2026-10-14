@@ -33,7 +33,9 @@ struct NessaThreadView: View {
   @Namespace private var replyMorph
   @State private var layoutClock = LayoutSettleClock()
   nonisolated private static func scrollRange(_ geometry: ScrollGeometry) -> CGFloat {
-    geometry.contentSize.height + geometry.contentInsets.bottom - geometry.containerSize.height
+    ThreadScrollMetrics.bottomOffset(
+      contentHeight: geometry.contentSize.height, containerHeight: geometry.containerSize.height,
+      topInset: geometry.contentInsets.top)
   }
   @Environment(\.dismiss) private var dismiss
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
