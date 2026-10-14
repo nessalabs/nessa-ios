@@ -161,7 +161,7 @@ public enum MessagesStyle {
   /// The fade finishes early so the overshoot happens on a solid bubble.
   public static let bubbleFadeAnimation = Animation.easeOut(duration: 0.14)
   public static let messageFollowAnimation = bubbleEntranceAnimation
-  public static let bubbleRemoval = AnyTransition.opacity.combined(with: .scale(scale: 0.9))
+  public static var bubbleRemoval: AnyTransition { .opacity.combined(with: .scale(scale: 0.9)) }
   public static func bubbleInsertion(outgoing: Bool) -> AnyTransition {
     let anchor: UnitPoint = outgoing ? .bottomTrailing : .bottomLeading
     let insertion: AnyTransition = AnyTransition.opacity.animation(bubbleFadeAnimation)
