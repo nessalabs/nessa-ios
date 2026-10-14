@@ -23,7 +23,8 @@ public struct NessaSelectionMark: View {
     }
     .frame(width: MessagesStyle.selectionMark, height: MessagesStyle.selectionMark)
     .animation(reduceMotion ? nil : MessagesStyle.selectionPop, value: selected)
-    .sensoryFeedback(.selection, trigger: selected)
+    // Only a mark being chosen ticks; clearing the whole selection at once stays silent.
+    .sensoryFeedback(.selection, trigger: selected) { _, new in new }
     .accessibilityHidden(true)
   }
 }
