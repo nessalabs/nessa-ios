@@ -7,7 +7,6 @@ struct MessagesInboxView: View {
   let onOpen: (String) -> Void
   let onCompose: () -> Void
   let onOpenComposer: (String) -> Void
-  @State private var scrollOffset: CGFloat = 0
   @State private var editing = false
   @State private var showingArchived = false
   @State private var selected: Set<String> = []
@@ -134,15 +133,17 @@ struct MessagesInboxView: View {
       .listRowSeparator(.hidden).listRowBackground(Color.clear)
     }.listStyle(.plain).scrollContentBackground(.hidden)
       .environment(\.defaultMinListRowHeight, 0)
-      .messagesTrackScroll(offset: $scrollOffset)
       .sensoryFeedback(.impact(flexibility: .soft), trigger: store.pinnedChats)
       .sensoryFeedback(.warning, trigger: pinRefusals)
       .messagesAmbientGround()
       .messagesScrollEdges()
       .scrollDismissesKeyboard(.interactively)
       .messagesFooterGrain()
-      .messagesBar(edge: .top) {
-        InboxHeader(
+      // The system bar, as in the thread, with the same grain over its edge.
+      .messagesTopGrain()
+      .nessaInlineNavigationTitle()
+      .toolbar {
+        InboxToolbar(
           editing: editing, accountSeed: store.currentGatewayAddress ?? "nessa",
           onEdit: {
             // The marks slide in from the edge as the rows make room, on one spring.
@@ -154,11 +155,8 @@ struct MessagesInboxView: View {
           onToggleArchived: {
             showingArchived.toggle()
             selected = []
-          }
+          }, disabled: deleting
         )
-        .disabled(deleting)
-        .messagesHeaderGrain()
-        .messagesHeaderBlur(scrollOffset: scrollOffset)
       }
       .messagesBar(edge: .bottom) {
         if editing && confirmingSelection {
@@ -243,7 +241,6 @@ struct MessagesInboxView: View {
           delete(ids)
         }
       }
-      .nessaHideNavigationBar()
       .onChange(of: store.connected) { _, _ in
         selected = []
         pendingDeletion = []

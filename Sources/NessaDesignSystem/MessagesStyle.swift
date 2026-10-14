@@ -115,7 +115,6 @@ public enum MessagesStyle {
   public static let photoHeight: CGFloat = 340
   public static let photoPlaceholderHeight: CGFloat = 160
   public static let photoRadius: CGFloat = 20
-  public static let headerBlurDistance: CGFloat = 24
   public static let headerBlurOpacity: Double = 0.9
   public static let background = NessaColor.background
   public static let danger = NessaColor.destructive
@@ -180,7 +179,8 @@ public enum MessagesStyle {
   public static let sendButton: CGFloat = 30
   public static let bubbleGutter: CGFloat = 70
   public static let rowAvatar: CGFloat = 45
-  public static let headerAvatar: CGFloat = 44
+  /// The reader's own disc in the inbox's navigation bar.
+  public static let accountAvatar: CGFloat = 32
   /// The agent's disc in the thread's navigation bar title.
   public static let titleAvatar: CGFloat = 28
   public static let controlHeight: CGFloat = 44
@@ -262,39 +262,6 @@ public struct MessagesComposerSurface: ViewModifier {
     }
   }
 }
-/// Full-width translucent surface for content scrolling beneath navigation controls.
-public struct MessagesHeaderBlur: ViewModifier {
-  public let scrollOffset: CGFloat
-  public func body(content: Content) -> some View {
-    if #available(iOS 26.0, macOS 26.0, *) {
-      content  // safeAreaBar owns the native progressive scroll-edge blur.
-    } else {
-      content.background {
-        Rectangle().fill(.thinMaterial)
-          .opacity(min(max(scrollOffset / MessagesStyle.headerBlurDistance, 0), 1))
-          .ignoresSafeArea(edges: .top)
-          .allowsHitTesting(false)
-      }
-    }
-  }
-}
-/// Native scroll geometry keeps the header effect independent of lazy row layout.
-public struct MessagesScrollTracking: ViewModifier {
-  @Binding var offset: CGFloat
-  public func body(content: Content) -> some View {
-    if #available(iOS 26.0, macOS 26.0, *) {
-      content
-    } else {
-      content.onScrollGeometryChange(for: CGFloat.self) { geometry in
-        min(
-          MessagesStyle.headerBlurDistance,
-          max(0, geometry.contentOffset.y + geometry.contentInsets.top))
-      } action: { _, newOffset in
-        offset = newOffset
-      }
-    }
-  }
-}
 extension View {
   @ViewBuilder public func messagesBar<Bar: View>(
     edge: VerticalEdge, @ViewBuilder content: () -> Bar
@@ -313,13 +280,6 @@ extension View {
     } else {
       self
     }
-  }
-
-  public func messagesHeaderBlur(scrollOffset: CGFloat) -> some View {
-    modifier(MessagesHeaderBlur(scrollOffset: scrollOffset))
-  }
-  public func messagesTrackScroll(offset: Binding<CGFloat>) -> some View {
-    modifier(MessagesScrollTracking(offset: offset))
   }
 
   public func messagesGlass() -> some View { modifier(MessagesGlass()) }
