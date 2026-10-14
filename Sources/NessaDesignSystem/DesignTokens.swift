@@ -42,12 +42,11 @@ public enum NessaColor {
   /// `--destructive` (dark), oklch(0.704 0.187 22.216).
   public static let destructive = Color(hex: 0xFF6668)
 
-  /// The `--nessa-chat-rim-*` stops: amber through pink and purple into cyan, then the
-  /// near-white head. A light source, identical in both themes.
+  /// The composer rim's light: a white trail fading out behind a bright head. Kept
+  /// monochrome so the one live signal doesn't add colour to the screen.
   public static let rim: [Color] = [
-    Color(hex: 0xF59E0B, opacity: 0.06), Color(hex: 0xF59E0B, opacity: 0.22),
-    Color(hex: 0xEC4899, opacity: 0.42), Color(hex: 0xA855F7, opacity: 0.62),
-    Color(hex: 0x38BDF8, opacity: 0.85), .white,
+    .white.opacity(0.02), .white.opacity(0.08), .white.opacity(0.18), .white.opacity(0.32),
+    .white.opacity(0.55), .white,
   ]
 
   /// The agent hue wheel (`AGENT_HUES`), in degrees.

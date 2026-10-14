@@ -26,6 +26,11 @@ struct NessaThreadView: View {
   /// Until the reader scrolls away from the newest message, the thread stays pinned there
   /// as late layout (photos, the composer's height, streamed text) grows the content.
   @State private var readerScrolled = false
+  /// Turns waiting on their first reply behind a typing bubble. When such a turn's reply lands,
+  /// its bubble grows out of the typing bubble. A turn that started streaming text while
+  /// running is dropped, since its reply bubble is already on screen.
+  @State private var morphTurns: Set<String> = []
+  @Namespace private var replyMorph
   /// Scrolls that settle before this were started by layout, not by the reader. A reference,
   /// so stamping it on every layout change doesn't re-render the thread.
   @State private var layoutClock = LayoutSettleClock()
@@ -68,16 +73,26 @@ struct NessaThreadView: View {
               MessagesStyle.secondary)
           }
           ForEach(current?.messages ?? []) { turn in
+            let turnMessages = replies.messages(in: turn.id)
+            let morphing = morphTurns.contains(turn.id)
+            let firstReply = turnMessages.first { !$0.outgoing }?.id
             VStack(spacing: MessagesStyle.bubbleSpacing) {
-              ForEach(replies.messages(in: turn.id)) { message in
+              ForEach(turnMessages) { message in
+                let grows = morphing && turn.status != "running" && message.id == firstReply
                 ConversationMessageView(
                   message: message, conversationID: conversationID,
                   store: store, parent: replies.parent(of: message),
                   replyCount: replies.count(for: message.id), arrivesWithTurn: true,
+                  growsFromTyping: grows,
                   onReply: { composer.reply = $0 }, onOpenThread: { composer.reply = $0 })
+                .environment(\.messageMorph, grows ? MessageMorph(id: turn.id, namespace: replyMorph) : nil)
               }
               if turn.status == "running" {
-                TypingIndicator().transition(MessagesStyle.typingTransition)
+                TypingIndicator()
+                  .environment(
+                    \.messageMorph,
+                    morphing ? MessageMorph(id: turn.id, namespace: replyMorph) : nil)
+                  .transition(MessagesStyle.typingTransition)
               }
               if let error = turn.error {
                 Text(error).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.danger)
@@ -142,7 +157,23 @@ struct NessaThreadView: View {
           // Shrinking never hides the newest message, so it needs nothing.
           guard new > old else { return }
           layoutClock.settlesAt = Date().addingTimeInterval(MessagesStyle.layoutSettleWindow)
-          if !readerScrolled && composer.reply == nil { position.scrollTo(edge: .bottom) }
+          guard !readerScrolled && composer.reply == nil else { return }
+          // While the thread is first settling (photos, the composer) the pin is invisible;
+          // after that, growth is a new message, so follow it on the message timing.
+          let settled = Date() > layoutClock.openedAt.addingTimeInterval(MessagesStyle.openSettleTime)
+          withAnimation(settled && !reduceMotion ? MessagesStyle.messageFollowAnimation : nil) {
+            position.scrollTo(edge: .bottom)
+          }
+        }
+        .onChange(of: messageStructure, initial: true) { _, _ in
+          var waiting: Set<String> = []
+          for turn in current?.messages ?? [] where turn.status == "running" {
+            if !replies.messages(in: turn.id).contains(where: { !$0.outgoing }) {
+              waiting.insert(turn.id)
+            }
+          }
+          // Keep a just-finished turn for the frame its reply lands in; drop it after.
+          morphTurns = waiting
         }
         .onChange(of: current != nil, initial: true) { _, loaded in
           hasLoadedHistory = loaded
@@ -187,6 +218,7 @@ struct NessaThreadView: View {
     .messagesBar(edge: .top) {
       ThreadHeader(
         name: name, onBack: { dismiss() }, onDetails: { details = true }, working: working)
+        .messagesHeaderGrain()
         .messagesHeaderBlur(scrollOffset: scrollOffset)
     }
     .environment(\.messageContext, messageContext)
@@ -262,4 +294,5 @@ struct NessaThreadView: View {
 /// When layout last moved the thread; read only when a scroll comes to rest.
 private final class LayoutSettleClock {
   var settlesAt = Date.distantPast
+  let openedAt = Date()
 }

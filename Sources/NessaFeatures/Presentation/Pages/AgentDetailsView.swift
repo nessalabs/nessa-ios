@@ -26,7 +26,7 @@ struct AgentDetailsView: View {
           .opacity(1 - collapse)
           .scaleEffect(
             reduceMotion ? 1 : 1 - collapse * (1 - AgentDetailsStyle.collapsedScale),
-            anchor: .top
+            anchor: .leading
           )
           .accessibilityHidden(collapse >= 1)
         Section {
@@ -53,7 +53,7 @@ struct AgentDetailsView: View {
       collapse = progress
     }
     .messagesScrollEdges()
-    .messagesBar(edge: .top) { header }
+    .messagesBar(edge: .top) { header.messagesHeaderGrain() }
     .foregroundStyle(MessagesStyle.foreground)
     .messagesAmbientGround()
     .presentationDragIndicator(.visible)

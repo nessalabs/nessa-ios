@@ -1,6 +1,9 @@
 import Foundation
 import SwiftUI
 
+/// The familiar chat typing bubble: three grey dots that light up one after another, then rest,
+/// in a received bubble with its small trailing tail. The dots don't move; only their
+/// brightness travels left to right, which is what people read as "typing".
 public struct MessagesTypingDots: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.scenePhase) private var scenePhase
@@ -19,36 +22,47 @@ public struct MessagesTypingDots: View {
         }
       }
     }
-    .frame(height: MessagesStyle.typingDotSize + MessagesStyle.typingWaveAmplitude * 2)
+    .padding(.horizontal, MessagesStyle.typingBubbleHorizontalInset)
+    .padding(.vertical, MessagesStyle.typingBubbleVerticalInset)
+    .messageBubbleSurface(outgoing: false)
+    .background(alignment: .bottomLeading) { tail }
     .accessibilityHidden(true)
   }
 
+  /// Two small circles trailing off the bubble's lower corner, as in every chat app.
+  private var tail: some View {
+    ZStack(alignment: .bottomLeading) {
+      Circle().fill(MessagesStyle.incoming)
+        .overlay(Circle().strokeBorder(MessagesStyle.incomingBorder, lineWidth: 0.5))
+        .frame(width: MessagesStyle.typingTailLarge, height: MessagesStyle.typingTailLarge)
+        .offset(x: -MessagesStyle.typingTailLarge / 3, y: MessagesStyle.typingTailLarge / 3)
+      Circle().fill(MessagesStyle.incoming)
+        .overlay(Circle().strokeBorder(MessagesStyle.incomingBorder, lineWidth: 0.5))
+        .frame(width: MessagesStyle.typingTailSmall, height: MessagesStyle.typingTailSmall)
+        .offset(x: -MessagesStyle.typingTailLarge, y: MessagesStyle.typingTailLarge)
+    }
+  }
+
   private func dots(at date: Date?) -> some View {
-    HStack(spacing: NessaSpacing.xs) {
-      ForEach(0..<3) { index in
-        let wave =
-          date.map {
-            sin(
-              $0.timeIntervalSince(startedAt) * 2 * .pi / MessagesStyle.typingWavePeriod
-                - Double(index) * MessagesStyle.typingWavePhase)
-          } ?? 0
-        let lift = (wave + 1) / 2
+    HStack(spacing: MessagesStyle.typingDotSpacing) {
+      ForEach(0..<3, id: \.self) { index in
+        let glow = glow(index: index, at: date)
         Circle().fill(MessagesStyle.secondary)
           .frame(width: MessagesStyle.typingDotSize, height: MessagesStyle.typingDotSize)
-          .scaleEffect(
-            date == nil
-              ? 1
-              : MessagesStyle.typingDotMinimumScale
-                + CGFloat(lift) * (1 - MessagesStyle.typingDotMinimumScale)
-          )
+          .scaleEffect(1 + (MessagesStyle.typingDotPeakScale - 1) * glow)
           .opacity(
-            date == nil
-              ? 1
-              : MessagesStyle.typingDotMinimumOpacity
-                + lift * (1 - MessagesStyle.typingDotMinimumOpacity)
-          )
-          .offset(y: -CGFloat(wave) * MessagesStyle.typingWaveAmplitude)
+            MessagesStyle.typingDotRestOpacity + (1 - MessagesStyle.typingDotRestOpacity) * glow)
       }
     }
+  }
+
+  /// 0 at rest, 1 at the peak of this dot's turn. Each dot's turn starts a step after the one
+  /// before it; after the last, all three rest until the cycle repeats.
+  private func glow(index: Int, at date: Date?) -> Double {
+    guard let date else { return 0 }
+    let cycle = date.timeIntervalSince(startedAt) / MessagesStyle.typingCycle
+    let local = cycle - floor(cycle) - Double(index) * MessagesStyle.typingStep
+    guard local >= 0, local < MessagesStyle.typingPulse else { return 0 }
+    return sin(.pi * local / MessagesStyle.typingPulse)
   }
 }

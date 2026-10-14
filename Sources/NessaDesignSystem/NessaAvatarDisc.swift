@@ -102,60 +102,44 @@ struct SeededRandom {
   }
 }
 
-/// An ordered (Bayer 4×4) dither in the foreground ink: a grain of square points, dense at its
-/// source and thinning to nothing. Monochrome on purpose, it gives a ground texture without colour.
+/// A fine dithered grain in the foreground ink, densest along the top edge and thinning to
+/// nothing below. Each point is a single scattered pixel-sized square with a fixed random
+/// threshold, so it reads as film grain rather than a halftone grid. Monochrome on purpose.
 /// It is one path drawn once, so it costs nothing while the screen scrolls.
 public struct NessaDither: View {
-  public enum Falloff: Sendable {
-    /// Densest along the top edge, gone by the bottom.
-    case down
-    /// Densest at the centre, gone by the edge of the inscribed circle.
-    case radial
-  }
-  private let falloff: Falloff
   private let strength: Double
-  public init(_ falloff: Falloff, strength: Double = NessaDither.defaultStrength) {
-    self.falloff = falloff
-    self.strength = strength
-  }
-  public static let defaultStrength: Double = 0.16
-  private static let cell: CGFloat = 3
-  private static let point: CGFloat = 1.5
-  /// The densest the pattern gets, so even its source reads as grain rather than a fill.
-  private static let peak: Double = 0.7
-  private static let bayer: [[Double]] = [
-    [0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5],
-  ]
+  public init(strength: Double = NessaDither.defaultStrength) { self.strength = strength }
+  public static let defaultStrength: Double = 0.1
+  private static let cell: CGFloat = 1
+  private static let point: CGFloat = 0.67
+  /// The densest the grain gets, so even its source reads as grain rather than a fill.
+  private static let peak: Double = 0.55
   public var body: some View {
     Canvas { context, size in
       let columns = Int((size.width / Self.cell).rounded(.up))
       let rows = Int((size.height / Self.cell).rounded(.up))
-      let center = CGPoint(x: size.width / 2, y: size.height / 2)
-      let radius = max(1, min(size.width, size.height) / 2)
       var path = Path()
       for row in 0..<rows {
-        for column in 0..<columns {
-          let x = CGFloat(column) * Self.cell
-          let y = CGFloat(row) * Self.cell
-          let reach: Double
-          switch falloff {
-          case .down:
-            reach = 1 - Double(y / max(size.height, 1))
-          case .radial:
-            reach = 1 - Double(hypot(x - center.x, y - center.y) / radius)
-          }
-          guard reach > 0 else { continue }
-          // Eased so the grain thins gradually instead of ending on a visible line.
-          let density = Self.peak * reach * reach
-          let threshold = (Self.bayer[row % 4][column % 4] + 0.5) / 16
-          if density > threshold {
-            path.addRect(CGRect(x: x, y: y, width: Self.point, height: Self.point))
-          }
+        let reach = 1 - Double(row) / Double(max(rows, 1))
+        // Eased so the grain thins gradually instead of ending on a visible line.
+        let density = Self.peak * reach * reach * reach
+        for column in 0..<columns where density > Self.threshold(column, row) {
+          path.addRect(
+            CGRect(
+              x: CGFloat(column) * Self.cell, y: CGFloat(row) * Self.cell,
+              width: Self.point, height: Self.point))
         }
       }
       context.fill(path, with: .color(NessaColor.foreground.opacity(strength)))
     }
     .allowsHitTesting(false)
     .accessibilityHidden(true)
+  }
+  /// A fixed pseudo-random threshold per point, the same on every draw.
+  private static func threshold(_ x: Int, _ y: Int) -> Double {
+    var h = UInt32(truncatingIfNeeded: x &* 374_761_393 &+ y &* 668_265_263)
+    h = (h ^ (h >> 13)) &* 1_274_126_177
+    h ^= h >> 16
+    return Double(h & 0xFFFF) / 65_535
   }
 }

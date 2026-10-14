@@ -12,8 +12,8 @@ struct AgentDetailsIdentity: View {
   }
 }
 
-/// The top of the details sheet: the agent's disc in its dither, its name,
-/// what it is for, and the model it answers with.
+/// The top of the details sheet: one quiet row with the agent's disc, its name, what it is
+/// for, and the model it answers with. Sized like a list header, not a profile page.
 struct AgentDetailsHero: View {
   let name: String
   let profile: AgentProfile?
@@ -23,28 +23,27 @@ struct AgentDetailsHero: View {
     return profile.models.first { $0.id == id }?.displayName ?? id
   }
   var body: some View {
-    VStack(spacing: NessaSpacing.sm) {
-      ZStack {
-        NessaDither(.radial, strength: NessaDither.defaultStrength * 1.5)
-          .frame(width: AgentDetailsStyle.heroDither, height: AgentDetailsStyle.heroDither)
-        AgentAvatar(name: name, size: AgentDetailsStyle.heroAvatar, working: working)
-      }
-      .frame(height: AgentDetailsStyle.heroHeight)
-      Text(name).font(AgentDetailsStyle.title).lineLimit(2).multilineTextAlignment(.center)
-      if let description = profile?.description, !description.isEmpty {
-        Text(description).font(AgentDetailsStyle.subtitle)
-          .foregroundStyle(MessagesStyle.secondary).multilineTextAlignment(.center)
-          .lineLimit(3)
-      }
-      HStack(spacing: NessaSpacing.xs) {
-        if working {
-          NessaChip("Working", symbol: "ellipsis", tint: MessagesStyle.foreground)
-            .transition(.scale.combined(with: .opacity))
+    HStack(alignment: .center, spacing: NessaSpacing.sm) {
+      AgentAvatar(name: name, size: AgentDetailsStyle.heroAvatar, working: working)
+      VStack(alignment: .leading, spacing: NessaSpacing.xxs) {
+        Text(name).font(AgentDetailsStyle.title).lineLimit(1)
+        if let description = profile?.description, !description.isEmpty {
+          Text(description).font(AgentDetailsStyle.subtitle)
+            .foregroundStyle(MessagesStyle.secondary).lineLimit(2)
         }
-        if let model { NessaChip(model, symbol: "cpu") }
+        if working || model != nil {
+          HStack(spacing: NessaSpacing.xs) {
+            if working {
+              NessaChip("Working", tint: MessagesStyle.foreground)
+                .transition(.scale.combined(with: .opacity))
+            }
+            if let model { NessaChip(model, symbol: "cpu") }
+          }.padding(.top, NessaSpacing.xxs)
+        }
       }
+      Spacer(minLength: 0)
     }
-    .frame(maxWidth: .infinity)
+    .frame(maxWidth: .infinity, alignment: .leading)
     .accessibilityElement(children: .combine)
   }
 }

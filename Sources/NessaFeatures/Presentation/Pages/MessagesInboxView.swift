@@ -130,6 +130,7 @@ struct MessagesInboxView: View {
           }
         )
         .disabled(deleting)
+        .messagesHeaderGrain()
         .messagesHeaderBlur(scrollOffset: scrollOffset)
       }
       .messagesBar(edge: .bottom) {

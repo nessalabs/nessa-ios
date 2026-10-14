@@ -69,13 +69,32 @@ public enum MessagesStyle {
   public static let followDistance: CGFloat = 100
   /// How long after a layout change a scroll coming to rest is still the system's.
   public static let layoutSettleWindow: TimeInterval = 0.6
+  /// How long a newly opened thread spends settling before growth counts as new messages.
+  public static let openSettleTime: TimeInterval = 1
   public static let typingDotSize: CGFloat = 8
-  /// The dots breathe in turn rather than bounce: a small lift, a deep fade, a slow beat.
-  public static let typingWaveAmplitude: CGFloat = 1.5
-  public static let typingWavePeriod: TimeInterval = 1.2
-  public static let typingWavePhase: Double = .pi * 0.45
-  public static let typingDotMinimumOpacity: Double = 0.3
-  public static let typingDotMinimumScale: CGFloat = 0.8
+  public static let typingDotSpacing: CGFloat = 5
+  /// How bright a dot is between its turns.
+  public static let typingDotRestOpacity: Double = 0.35
+  /// One full pass of the three dots plus the rest after them.
+  public static let typingCycle: TimeInterval = 1.3
+  /// How far into the cycle (as a fraction) each dot starts after the one before it: 0.15 s.
+  public static let typingStep: Double = 0.115
+  /// How long (as a fraction of the cycle) one dot's glow lasts: 0.4 s, leaving a rest.
+  public static let typingPulse: Double = 0.31
+  /// How much a dot grows at the peak of its turn.
+  public static let typingDotPeakScale: CGFloat = 1.15
+  /// The reply's bubble grows out of the typing bubble on this spring.
+  public static let replyMorphAnimation = Animation.spring(duration: 0.4, bounce: 0.2)
+  /// The reply's text fades in while its bubble is still growing.
+  public static var replyMorphInsertion: AnyTransition {
+    .asymmetric(
+      insertion: AnyTransition.opacity.animation(.easeOut(duration: 0.15).delay(0.06)),
+      removal: bubbleRemoval)
+  }
+  public static let typingBubbleHorizontalInset: CGFloat = 14
+  public static let typingBubbleVerticalInset: CGFloat = 13
+  public static let typingTailLarge: CGFloat = 12
+  public static let typingTailSmall: CGFloat = 6
   public static let photoDraftWidth: CGFloat = 96
   public static let photoDraftHeight: CGFloat = 76
   public static let photoDraftRadius: CGFloat = 12
@@ -101,9 +120,7 @@ public enum MessagesStyle {
   public static let control = NessaColor.muted
   /// How far the header's dither reaches down before it is gone.
   public static let ditherHeight: CGFloat = 150
-  public static let emptyDitherSize: CGFloat = 220
-  public static let emptyAvatar: CGFloat = 96
-  public static let emptyDitherVisibleHeight: CGFloat = 165
+  public static let emptyAvatar: CGFloat = 56
   public static let rowSeparator = NessaColor.hairline
   /// A control swapping in place grows from this scale.
   public static let swapScale: CGFloat = 0.5
@@ -150,8 +167,8 @@ public enum MessagesStyle {
   public static let bubbleSpacing: CGFloat = 8
   /// A sent bubble rises out of the composer: it starts this far below its place, small and
   /// tucked into its tail corner, and springs up with a little overshoot.
-  public static let sentEntranceDistance: CGFloat = 28
-  public static let sentEntranceScale: CGFloat = 0.7
+  public static let sentEntranceDistance: CGFloat = 56
+  public static let sentEntranceScale: CGFloat = 0.8
   /// A reply grows out of where the typing dots were, from its own tail corner.
   public static let replyEntranceDistance: CGFloat = 6
   public static let replyEntranceScale: CGFloat = 0.8
@@ -160,7 +177,9 @@ public enum MessagesStyle {
   public static let bubbleEntranceAnimation = Animation.spring(duration: 0.45, bounce: 0.3)
   /// The fade finishes early so the overshoot happens on a solid bubble.
   public static let bubbleFadeAnimation = Animation.easeOut(duration: 0.14)
-  public static let messageFollowAnimation = bubbleEntranceAnimation
+  /// The list follows on the same timing without the overshoot, so the bubble bounces and
+  /// the list doesn't.
+  public static let messageFollowAnimation = Animation.spring(duration: 0.45, bounce: 0)
   public static var bubbleRemoval: AnyTransition { .opacity.combined(with: .scale(scale: 0.9)) }
   /// The typing bubble grows in like a reply and gets out of the way fast when the reply
   /// lands, so the reply reads as taking its place rather than crossing over it.
@@ -270,17 +289,48 @@ extension View {
   public func messagesComposerSurface() -> some View { modifier(MessagesComposerSurface()) }
 }
 
+/// Ties a typing bubble to the reply that replaces it, so the reply's bubble grows out of the
+/// typing bubble's frame instead of the two crossing over.
+public struct MessageMorph: Equatable, @unchecked Sendable {
+  public let id: String
+  public let namespace: Namespace.ID
+  public init(id: String, namespace: Namespace.ID) {
+    self.id = id
+    self.namespace = namespace
+  }
+}
+
+extension EnvironmentValues {
+  @Entry public var messageMorph: MessageMorph? = nil
+}
+
 /// A message bubble's fill: the sent bubble in the lit accent, the received one a raised
 /// card with a hairline so it holds its edge on the near-black ground.
 public struct MessageBubbleSurface: ViewModifier {
   let outgoing: Bool
+  @Environment(\.messageMorph) private var morph
   public func body(content: Content) -> some View {
     let shape = RoundedRectangle(cornerRadius: MessagesStyle.bubbleRadius, style: .continuous)
-    if outgoing {
-      content.background(MessagesStyle.outgoingFill, in: shape)
+    Group {
+      if outgoing {
+        content.background(MessagesStyle.outgoingFill, in: shape)
+      } else {
+        content.background(MessagesStyle.incoming, in: shape)
+          .overlay(shape.strokeBorder(MessagesStyle.incomingBorder, lineWidth: 0.5))
+      }
+    }
+    .modifier(MorphFrame(morph: morph))
+  }
+}
+
+private struct MorphFrame: ViewModifier {
+  let morph: MessageMorph?
+  func body(content: Content) -> some View {
+    if let morph {
+      content.matchedGeometryEffect(
+        id: morph.id, in: morph.namespace, properties: .frame, anchor: .bottomLeading)
     } else {
-      content.background(MessagesStyle.incoming, in: shape)
-        .overlay(shape.strokeBorder(MessagesStyle.incomingBorder, lineWidth: 0.5))
+      content
     }
   }
 }
@@ -291,20 +341,25 @@ extension View {
   }
 }
 
-/// The near-black ground with a dithered grain thinning down from the top edge, mostly
-/// behind the header so it never sits under running text.
+/// The screens' near-black ground.
 public struct MessagesAmbientGround: ViewModifier {
   public func body(content: Content) -> some View {
-    content.background {
-      MessagesStyle.background
-        .overlay(alignment: .top) {
-          NessaDither(.down).frame(height: MessagesStyle.ditherHeight)
-        }
-        .ignoresSafeArea()
+    content.background { MessagesStyle.background.ignoresSafeArea() }
+  }
+}
+
+/// A fine grain thinning down from the top edge behind a header. Drawn as part of the header
+/// rather than the ground, so it sits above the scroll edge effect and stays one even texture.
+public struct MessagesHeaderGrain: ViewModifier {
+  public func body(content: Content) -> some View {
+    content.background(alignment: .top) {
+      NessaDither().frame(height: MessagesStyle.ditherHeight)
+        .ignoresSafeArea(edges: .top)
     }
   }
 }
 
 extension View {
   public func messagesAmbientGround() -> some View { modifier(MessagesAmbientGround()) }
+  public func messagesHeaderGrain() -> some View { modifier(MessagesHeaderGrain()) }
 }

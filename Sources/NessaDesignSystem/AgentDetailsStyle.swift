@@ -1,11 +1,9 @@
 import SwiftUI
 
 public enum AgentDetailsStyle {
-  public static let heroAvatar: CGFloat = 88
-  public static let heroDither: CGFloat = 220
-  public static let heroHeight: CGFloat = 132
+  public static let heroAvatar: CGFloat = 48
   public static let compactAvatar: CGFloat = 28
-  public static let title = Font.system(size: 28, weight: .bold)
+  public static let title = Font.system(size: 22, weight: .semibold)
   public static let subtitle = Font.system(size: 15)
   public static let chip = Font.system(size: 13, weight: .medium)
   public static let chipHeight: CGFloat = 28
@@ -16,8 +14,8 @@ public enum AgentDetailsStyle {
   public static let tabHeight: CGFloat = 40
   public static let tabInset: CGFloat = 3
   public static let tabLabel = Font.system(size: 14, weight: .semibold)
-  public static let collapseDistance: CGFloat = 96
-  public static let collapsedScale: CGFloat = 0.8
+  public static let collapseDistance: CGFloat = 56
+  public static let collapsedScale: CGFloat = 0.92
   public static let timelineDot: CGFloat = 10
   public static let timelineGutter: CGFloat = 22
   public static let timelineLine: CGFloat = 1
