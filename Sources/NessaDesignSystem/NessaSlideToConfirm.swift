@@ -1,13 +1,14 @@
 import SwiftUI
 
 /// A deliberate confirm: pick up the knob and slide it to the end of the track, like the old
-/// slide to unlock. Behind the knob the track fills with dither pixels, sparse at the start
-/// and dense at the knob, warming to the tint over the last stretch. Let go early and the
-/// knob springs back and the pixels drain with it.
+/// slide to unlock. Behind the knob the track fills with a soft wash of Nessa's avatar hues,
+/// warming to the tint over the last stretch. Let go early and the knob springs back and the
+/// wash drains with it.
 public struct NessaSlideToConfirm: View {
   private let label: String
   private let symbol: String
   private let tint: Color
+  private let height: CGFloat
   private let onConfirm: () -> Void
   @Environment(\.isEnabled) private var isEnabled
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -18,19 +19,22 @@ public struct NessaSlideToConfirm: View {
   @GestureState private var holding = false
   @State private var confirmed = false
 
+  /// `height` sizes the track, so it can stand in for a bar of the same height; the knob
+  /// keeps the same inset at any height.
   public init(
     _ label: String, symbol: String = "trash", tint: Color = NessaColor.destructive,
-    onConfirm: @escaping () -> Void
+    height: CGFloat? = nil, onConfirm: @escaping () -> Void
   ) {
     self.label = label
     self.symbol = symbol
     self.tint = tint
+    self.height = height ?? SlideStyle.trackHeight
     self.onConfirm = onConfirm
   }
 
   public var body: some View {
     GeometryReader { geometry in
-      let travel = max(geometry.size.width - SlideStyle.trackHeight, 1)
+      let travel = max(geometry.size.width - height, 1)
       let offset = confirmed ? travel : min(max(drag, 0), travel)
       let progress = offset / travel
       ZStack(alignment: .leading) {
@@ -39,16 +43,16 @@ public struct NessaSlideToConfirm: View {
         Text(label).font(SlideStyle.label)
           .nessaShimmer(active: isEnabled && !holding)
           .frame(maxWidth: .infinity)
-          .padding(.leading, SlideStyle.trackHeight)
+          .padding(.leading, height)
           .opacity(1 - min(progress / SlideStyle.labelFadeEnd, 1))
-        NessaDitherFill(progress: progress, travel: travel, tint: tint)
+        NessaSlideFill(progress: progress, travel: travel, height: height, tint: tint)
         knob
           .offset(x: offset)
           .gesture(dragGesture(travel: travel), including: isEnabled && !confirmed ? .all : .none)
       }
       .sensoryFeedback(.selection, trigger: Int(progress * SlideStyle.ticks))
     }
-    .frame(height: SlideStyle.trackHeight)
+    .frame(height: height)
     .opacity(isEnabled ? 1 : NessaMotion.disabledOpacity)
     .sensoryFeedback(.impact(weight: .heavy), trigger: confirmed) { _, new in new }
     .accessibilityElement(children: .ignore)
@@ -63,9 +67,9 @@ public struct NessaSlideToConfirm: View {
         Image(systemName: symbol).font(SlideStyle.knobIcon)
           .foregroundStyle(confirmed ? tint : NessaColor.background)
       )
-      .frame(width: SlideStyle.knobSize, height: SlideStyle.knobSize)
+      .frame(width: height - SlideStyle.knobInset * 2, height: height - SlideStyle.knobInset * 2)
       .scaleEffect(holding ? SlideStyle.liftScale : 1)
-      .padding((SlideStyle.trackHeight - SlideStyle.knobSize) / 2)
+      .padding(SlideStyle.knobInset)
       .contentShape(Circle())
       .animation(reduceMotion ? nil : NessaMotion.press, value: holding)
   }
@@ -87,13 +91,14 @@ public struct NessaSlideToConfirm: View {
   }
 }
 
-/// Ordered dither, the header grain's family: each 2 pt pixel lights when the fill's local
-/// density passes its place in a 4×4 Bayer matrix, so the fill thickens toward the knob
-/// without noise or banding. Progress is animatable, so on a spring back the width and the
-/// warmth drain together frame by frame.
-private struct NessaDitherFill: View, Animatable {
+/// A soft wash in Nessa's avatar hues, filling the track solidly up to the knob, so the
+/// slide reads as a colour pouring in rather than a pattern. Near the end it warms toward
+/// the tint. Progress is animatable, so on a spring back the width and the warmth drain
+/// together frame by frame.
+private struct NessaSlideFill: View, Animatable {
   var progress: CGFloat
   let travel: CGFloat
+  let height: CGFloat
   let tint: Color
   // Animatable's requirement is nonisolated while View is main-actor; a CGFloat is safe to
   // hand across.
@@ -101,38 +106,27 @@ private struct NessaDitherFill: View, Animatable {
     get { progress }
     set { progress = newValue }
   }
-  private static let bayer: [Double] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
   var body: some View {
     let warmth = max(0, (progress - SlideStyle.warmFrom) / (1 - SlideStyle.warmFrom))
-    Canvas { context, size in
-      let cell = SlideStyle.pixel
-      let columns = Int((size.width / cell).rounded(.up))
-      let rows = Int((size.height / cell).rounded(.up))
-      var path = Path()
-      for column in 0..<columns {
-        let along = Double(column) / Double(max(columns - 1, 1))
-        let density = SlideStyle.peakDensity * pow(along, SlideStyle.rampCurve)
-        for row in 0..<rows {
-          let threshold = (Self.bayer[(row % 4) * 4 + column % 4] + 0.5) / 16
-          if density > threshold {
-            path.addRect(
-              CGRect(x: CGFloat(column) * cell, y: CGFloat(row) * cell, width: cell, height: cell))
-          }
-        }
-      }
-      context.fill(path, with: .color(NessaColor.foreground.mix(with: tint, by: warmth)))
+    let wash = NessaColor.agentHues.map {
+      Color(
+        hue: $0 / 360, saturation: SlideStyle.washSaturation,
+        brightness: SlideStyle.washBrightness)
+        .mix(with: tint, by: warmth)
     }
-    .frame(width: progress * travel + SlideStyle.trackHeight)
-    .clipShape(Capsule())
-    .opacity(SlideStyle.fillOpacity)
-    .allowsHitTesting(false)
-    .accessibilityHidden(true)
+    Capsule()
+      .fill(LinearGradient(colors: wash, startPoint: .leading, endPoint: .trailing))
+      .frame(width: progress * travel + height)
+      .opacity(SlideStyle.washOpacity + (1 - SlideStyle.washOpacity) * warmth * SlideStyle.warmLift)
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
   }
 }
 
 private enum SlideStyle {
   static let trackHeight: CGFloat = 56
-  static let knobSize: CGFloat = 48
+  /// The knob sits this far inside the track on every side, whatever the track's height.
+  static let knobInset: CGFloat = 4
   static let knobIcon = Font.system(size: 18, weight: .semibold)
   static let label = Font.system(size: 17, weight: .medium)
   /// The knob grows this much when picked up.
@@ -144,10 +138,11 @@ private enum SlideStyle {
   /// A selection tick each quarter of the way.
   static let ticks: CGFloat = 4
   static let springBack = Animation.spring(duration: 0.25, bounce: 0.15)
-  static let pixel: CGFloat = 2
-  static let peakDensity: Double = 0.92
-  static let rampCurve: Double = 1.4
-  /// Past this share the pixels warm from white toward the tint.
+  /// The wash: the avatar discs' pastel hues, quiet under the label.
+  static let washSaturation: Double = 0.32
+  static let washBrightness: Double = 0.82
+  static let washOpacity: Double = 0.38
+  /// Past this share the wash warms toward the tint and comes up a little.
   static let warmFrom: CGFloat = 0.7
-  static let fillOpacity: Double = 0.85
+  static let warmLift: Double = 0.4
 }

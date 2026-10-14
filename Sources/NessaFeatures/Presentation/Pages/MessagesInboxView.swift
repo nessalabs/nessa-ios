@@ -12,6 +12,8 @@ struct MessagesInboxView: View {
   @State private var showingArchived = false
   @State private var selected: Set<String> = []
   @State private var pendingDeletion: Set<String> = []
+  /// The selection bar has turned into the slide that deletes what is selected.
+  @State private var confirmingSelection = false
   @State private var deleting = false
   @State private var search = ""
   @State private var pinRefusals = 0
@@ -159,7 +161,32 @@ struct MessagesInboxView: View {
         .messagesHeaderBlur(scrollOffset: scrollOffset)
       }
       .messagesBar(edge: .bottom) {
-        if editing {
+        if editing && confirmingSelection {
+          // The bar itself becomes the slide, so deleting a selection needs no sheet.
+          HStack(spacing: MessagesStyle.toolbarGap) {
+            NessaSlideToConfirm(
+              selected.count == 1 ? "Slide to delete" : "Slide to delete \(selected.count)",
+              tint: MessagesStyle.danger, height: MessagesStyle.composerHeight
+            ) {
+              let ids = selected
+              withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirmingSelection = false }
+              delete(ids)
+            }
+            Button {
+              withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirmingSelection = false }
+            } label: {
+              Image(systemName: "xmark").font(MessagesStyle.icon)
+                .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
+                .messagesGlass()
+            }
+            .buttonStyle(.nessaPress).accessibilityLabel("Keep chats")
+          }
+          .padding(.horizontal, MessagesStyle.horizontal)
+          .padding(.bottom, MessagesStyle.bottomInset)
+          .disabled(deleting || !store.connected)
+          // The bar and the slide swap in place: one fades and settles as the other arrives.
+          .transition(.opacity.combined(with: .scale(scale: MessagesStyle.barSwapScale)))
+        } else if editing {
           HStack {
             Text("\(selected.count) selected").font(MessagesStyle.body)
               .foregroundStyle(MessagesStyle.secondary)
@@ -167,7 +194,7 @@ struct MessagesInboxView: View {
               .animation(reduceMotion ? nil : NessaMotion.morph, value: selected.count)
             Spacer()
             Button(role: .destructive) {
-              pendingDeletion = selected
+              withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirmingSelection = true }
             } label: {
               // Only the icon carries the red, so the bar stays as quiet as the list.
               Label {
@@ -182,6 +209,7 @@ struct MessagesInboxView: View {
             .messagesComposerSurface()
             .padding(.horizontal, MessagesStyle.horizontal).padding(.bottom, MessagesStyle.bottomInset)
             .foregroundStyle(MessagesStyle.foreground)
+            .transition(.opacity.combined(with: .scale(scale: MessagesStyle.barSwapScale)))
         } else {
           HStack(spacing: MessagesStyle.toolbarGap) {
             NessaSearchField(text: $search)
@@ -212,23 +240,30 @@ struct MessagesInboxView: View {
         DeleteChatsConfirmation(count: pendingDeletion.count, onCancel: { pendingDeletion = [] }) {
           let ids = pendingDeletion
           pendingDeletion = []
-          deleting = true
-          Task {
-            await store.deleteConversations(ids)
-            selected.formIntersection(Set(store.conversations.map(\.id)))
-            deleting = false
-          }
+          delete(ids)
         }
       }
       .nessaHideNavigationBar()
       .onChange(of: store.connected) { _, _ in
         selected = []
         pendingDeletion = []
+        confirmingSelection = false
         editing = false
       }
+      // A slide armed for one selection never deletes a different one.
+      .onChange(of: selected) { _, _ in confirmingSelection = false }
+      .onChange(of: editing) { _, _ in confirmingSelection = false }
       .refreshable {
         do { try await store.refreshList() } catch { store.error = error.localizedDescription }
       }
+  }
+  private func delete(_ ids: Set<String>) {
+    deleting = true
+    Task {
+      await store.deleteConversations(ids)
+      selected.formIntersection(Set(store.conversations.map(\.id)))
+      deleting = false
+    }
   }
   /// The pinned chats the grid shows right now, or none while it is hidden.
   private var pinnedShown: [String] {

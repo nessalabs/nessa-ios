@@ -149,6 +149,8 @@ public enum MessagesStyle {
   public static let selectedRowRadius: CGFloat = 14
   /// A control swapping in place grows from this scale.
   public static let swapScale: CGFloat = 0.5
+  /// A full-width bar swapping for another settles from just under its size.
+  public static let barSwapScale: CGFloat = 0.96
   public static let sendPressScale: CGFloat = 0.86
   public static let headerPressScale: CGFloat = 0.97
   public static let emptyTitle = Font.system(size: 22, weight: .semibold)
