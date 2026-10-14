@@ -14,6 +14,7 @@ struct MessagesInboxView: View {
   @State private var pendingDeletion: Set<String> = []
   @State private var deleting = false
   @State private var search = ""
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   var body: some View {
     List {
       Group {
@@ -36,13 +37,10 @@ struct MessagesInboxView: View {
           Button(store.reconnecting ? "Reconnecting…" : "Connect to Nessa", action: onSettings)
             .font(MessagesStyle.body).padding(NessaSpacing.xl)
         } else if store.visibleConversations.isEmpty {
-          VStack(spacing: NessaSpacing.sm) {
-            Text("Your chats, one message away.").font(MessagesStyle.title)
-            Button("New message", action: onCompose).font(MessagesStyle.body)
-              .disabled(
-                !store.conversationAuthorityReady || store.pendingLoadError != nil
-                  || !store.pendingCreations.isEmpty)
-          }.padding(.vertical, NessaSpacing.xl)
+          InboxEmptyState(onCompose: onCompose)
+            .disabled(
+              !store.conversationAuthorityReady || store.pendingLoadError != nil
+                || !store.pendingCreations.isEmpty)
         } else if showingArchived && filtered.isEmpty {
           Text("No archived chats.").font(MessagesStyle.body)
             .foregroundStyle(MessagesStyle.secondary).padding(.vertical, NessaSpacing.xl)
@@ -111,11 +109,12 @@ struct MessagesInboxView: View {
         EdgeInsets(
           top: 0, leading: MessagesStyle.horizontal, bottom: 0, trailing: MessagesStyle.horizontal)
       )
-      .listRowSeparator(.hidden).listRowBackground(MessagesStyle.background)
+      .listRowSeparator(.hidden).listRowBackground(Color.clear)
     }.listStyle(.plain).scrollContentBackground(.hidden)
       .environment(\.defaultMinListRowHeight, 0)
       .messagesTrackScroll(offset: $scrollOffset)
-      .background(MessagesStyle.background)
+      .animation(reduceMotion ? nil : NessaMotion.enter, value: filtered.map(\.id))
+      .messagesAmbientGround()
       .messagesScrollEdges()
       .scrollDismissesKeyboard(.interactively)
       .messagesBar(edge: .top) {
@@ -131,6 +130,7 @@ struct MessagesInboxView: View {
           }
         )
         .disabled(deleting)
+        .messagesHeaderGrain()
         .messagesHeaderBlur(scrollOffset: scrollOffset)
       }
       .messagesBar(edge: .bottom) {
@@ -145,14 +145,13 @@ struct MessagesInboxView: View {
             }
             .font(MessagesStyle.title).foregroundStyle(MessagesStyle.danger)
             .disabled(selected.isEmpty || deleting || !store.connected)
-          }.padding(MessagesStyle.horizontal).foregroundStyle(MessagesStyle.foreground)
+          }.padding(.horizontal, NessaSpacing.lg).frame(height: MessagesStyle.composerHeight)
+            .messagesComposerSurface()
+            .padding(.horizontal, MessagesStyle.horizontal).padding(.bottom, MessagesStyle.bottomInset)
+            .foregroundStyle(MessagesStyle.foreground)
         } else {
           HStack(spacing: MessagesStyle.toolbarGap) {
-            HStack(spacing: NessaSpacing.xs) {
-              Image(systemName: "magnifyingglass").font(MessagesStyle.icon)
-              TextField("Search", text: $search).font(MessagesStyle.body)
-            }.padding(.horizontal, NessaSpacing.md).frame(height: MessagesStyle.composerHeight)
-              .messagesGlass()
+            NessaSearchField(text: $search)
             Button(action: onCompose) {
               Group {
                 if store.busy {
@@ -163,7 +162,7 @@ struct MessagesInboxView: View {
               }
               .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
               .messagesGlass()
-            }.disabled(
+            }.buttonStyle(.nessaPress).disabled(
               !store.connected || !store.conversationAuthorityReady || store.busy
                 || store.pendingLoadError != nil
                 || !store.pendingCreations.isEmpty

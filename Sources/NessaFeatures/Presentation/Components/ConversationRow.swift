@@ -19,11 +19,13 @@ struct ConversationRow: View {
         Text(
           conversation.running ? "Nessa is working…" : conversation.preview ?? "New conversation"
         )
-        .font(MessagesStyle.preview).foregroundStyle(MessagesStyle.secondary)
-        .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+        .font(MessagesStyle.preview).nessaShimmer(active: conversation.running)
+        .contentTransition(.opacity)
+        // Every row keeps two lines, so a one-line preview doesn't shift the rows below it.
+        .lineLimit(2, reservesSpace: true).frame(maxWidth: .infinity, alignment: .leading)
       }.frame(minHeight: MessagesStyle.rowHeight, alignment: .leading)
         .overlay(alignment: .bottom) {
-          Rectangle().fill(MessagesStyle.separator).frame(height: 0.5)
+          Rectangle().fill(MessagesStyle.rowSeparator).frame(height: 0.5)
         }
     }.foregroundStyle(MessagesStyle.foreground)
   }

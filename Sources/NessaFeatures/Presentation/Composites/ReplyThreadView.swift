@@ -34,7 +34,7 @@ struct ReplyThreadView: View {
             store.views[conversationID]?.messages.first(where: { $0.id == lastTurn })?.status
               == "running"
           {
-            TypingIndicator()
+            TypingIndicator().transition(MessagesStyle.typingTransition)
           }
           ForEach(store.views[conversationID]?.messages.filter { turnIDs.contains($0.id) } ?? []) {
             turn in

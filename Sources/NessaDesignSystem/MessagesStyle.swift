@@ -67,12 +67,41 @@ public enum MessagesStyle {
   public static let tapbackMoreTrail: CGFloat = 6
   public static let tapbackMoreDot: CGFloat = 3
   public static let followDistance: CGFloat = 100
+  /// How far from the bottom the thread's own follow may rest before it scrolls again.
+  public static let pinTolerance: CGFloat = 1
+  /// How long a follow scroll may take to come to rest, its spring's settle plus slack.
+  public static let followSettleTime: TimeInterval = 1.2
+  /// How long after a layout change a scroll coming to rest is still the system's.
+  public static let layoutSettleWindow: TimeInterval = 0.6
+  /// How long a newly opened thread spends settling before growth counts as new messages.
+  public static let openSettleTime: TimeInterval = 1
   public static let typingDotSize: CGFloat = 8
-  public static let typingWaveAmplitude: CGFloat = 3.5
-  public static let typingWavePeriod: TimeInterval = 1.3
-  public static let typingWavePhase: Double = .pi / 2
-  public static let typingDotMinimumOpacity: Double = 0.55
-  public static let typingDotMinimumScale: CGFloat = 0.88
+  public static let typingDotSpacing: CGFloat = 5
+  /// How bright a dot is between its turns.
+  public static let typingDotRestOpacity: Double = 0.35
+  /// One full pass of the three dots plus the rest after them.
+  public static let typingCycle: TimeInterval = 1.3
+  /// How far into the cycle (as a fraction) each dot starts after the one before it: 0.15 s.
+  public static let typingStep: Double = 0.115
+  /// How long (as a fraction of the cycle) one dot's glow lasts: 0.4 s, leaving a rest.
+  public static let typingPulse: Double = 0.31
+  /// How much a dot grows at the peak of its turn.
+  public static let typingDotPeakScale: CGFloat = 1.15
+  /// A reply that replaces a typing bubble arrives with its bubble already there, growing out
+  /// of the typing bubble's frame on the list's own spring; only its text fades in.
+  public static var replyMorphInsertion: AnyTransition {
+    .asymmetric(
+      insertion: .modifier(
+        active: MessageContentReveal(shown: false), identity: MessageContentReveal(shown: true)),
+      removal: bubbleRemoval)
+  }
+  /// The text of a growing reply fades in once its bubble is mostly open, so no line shows
+  /// outside the fill while the fill is still small.
+  public static let replyTextReveal = Animation.easeOut(duration: 0.16).delay(0.2)
+  public static let typingBubbleHorizontalInset: CGFloat = 14
+  public static let typingBubbleVerticalInset: CGFloat = 13
+  public static let typingTailLarge: CGFloat = 12
+  public static let typingTailSmall: CGFloat = 6
   public static let photoDraftWidth: CGFloat = 96
   public static let photoDraftHeight: CGFloat = 76
   public static let photoDraftRadius: CGFloat = 12
@@ -83,16 +112,29 @@ public enum MessagesStyle {
   public static let photoRadius: CGFloat = 20
   public static let headerBlurDistance: CGFloat = 24
   public static let headerBlurOpacity: Double = 0.9
-  public static let background = Color.black
-  public static let danger = Color(hex: 0xFF453A)
-  public static let incoming = Color(hex: 0x262628)
-  public static let outgoing = Color(hex: 0x007AFF)
-  public static let secondary = Color(hex: 0x8E8E93)
-  public static let separator = Color(hex: 0x303033)
-  public static let foreground = Color.white
-  public static let avatarTop = Color(hex: 0xFF7580)
-  public static let avatarBottom = Color(hex: 0xE51E2A)
-  public static let control = Color(hex: 0x252527)
+  public static let background = NessaColor.background
+  public static let danger = NessaColor.destructive
+  public static let incoming = NessaColor.card
+  public static let incomingBorder = NessaColor.hairline
+  public static let outgoing = NessaColor.accent
+  /// The sent bubble lit from above: the accent settling into a deeper step at its foot.
+  public static let outgoingFill = LinearGradient(
+    colors: [NessaColor.accent, NessaColor.accentDeep], startPoint: .top, endPoint: .bottom)
+  public static let link = NessaColor.accentInk
+  public static let secondary = NessaColor.mutedForeground
+  public static let separator = NessaColor.muted
+  public static let foreground = NessaColor.foreground
+  public static let control = NessaColor.muted
+  /// How far the header's dither reaches down before it is gone.
+  public static let ditherHeight: CGFloat = 150
+  public static let emptyAvatar: CGFloat = 56
+  public static let rowSeparator = NessaColor.hairline
+  /// A control swapping in place grows from this scale.
+  public static let swapScale: CGFloat = 0.5
+  public static let sendPressScale: CGFloat = 0.86
+  public static let headerPressScale: CGFloat = 0.97
+  public static let emptyTitle = Font.system(size: 22, weight: .semibold)
+  public static let unreadDot: CGFloat = 10
   public static let body = Font.system(size: 17)
   public static let detailsTitle = Font.system(size: 28, weight: .bold)
   public static let headerName = Font.system(size: 15, weight: .semibold)
@@ -100,8 +142,6 @@ public enum MessagesStyle {
   public static let preview = Font.system(size: 15)
   public static let caption = Font.system(size: 12)
   public static let pinLabel = Font.system(size: 12)
-  public static let initial = Font.system(size: 48, weight: .regular, design: .serif)
-  public static let avatarInitial = Font.system(size: 22, weight: .medium)
   public static let icon = Font.system(size: 21, weight: .regular)
   public static let pinControlSize: CGFloat = 32
   public static let pinControlIcon = Font.system(size: 15, weight: .semibold)
@@ -118,7 +158,7 @@ public enum MessagesStyle {
   public static let controlHeight: CGFloat = 44
   public static let jumpToLatestSize: CGFloat = 36
   public static let jumpToLatestIcon = Font.system(size: 16, weight: .semibold)
-  public static let jumpToLatestAnimation = Animation.easeInOut(duration: 0.3)
+  public static let jumpToLatestAnimation = NessaMotion.emphasized(0.36)
   public static let composerHeight: CGFloat = 46
   public static let composerRadius: CGFloat = 23
   public static let replyBackgroundBlur: CGFloat = 14
@@ -132,23 +172,37 @@ public enum MessagesStyle {
   public static let bubbleInset: CGFloat = 12
   public static let bubbleHorizontalInset: CGFloat = 16
   public static let bubbleSpacing: CGFloat = 8
-  public static let bubbleEntranceDistance: CGFloat = 8
-  public static let bubbleEntranceScale: CGFloat = 0.98
-  public static let bubbleEntranceAnimation = Animation.spring(duration: 0.32, bounce: 0.04)
-  public static let messageFollowAnimation = Animation.easeOut(duration: 0.20)
-  public static var messageInsertion: AnyTransition {
+  /// A sent bubble rises out of the composer: it starts this far below its place, small and
+  /// tucked into its tail corner, and springs up with a little overshoot.
+  public static let sentEntranceDistance: CGFloat = 56
+  public static let sentEntranceScale: CGFloat = 0.8
+  /// A reply grows out of where the typing dots were, from its own tail corner.
+  public static let replyEntranceDistance: CGFloat = 6
+  public static let replyEntranceScale: CGFloat = 0.8
+  /// One spring for the bubble and for the scroll that follows it, so the two move as one:
+  /// quick off the mark, a visible but short overshoot, settled in under half a second.
+  public static let bubbleEntranceAnimation = Animation.spring(duration: 0.45, bounce: 0.3)
+  /// The fade finishes early so the overshoot happens on a solid bubble.
+  public static let bubbleFadeAnimation = Animation.easeOut(duration: 0.14)
+  /// The list follows on the same timing without the overshoot, so the bubble bounces and
+  /// the list doesn't.
+  public static let messageFollowAnimation = Animation.spring(duration: 0.45, bounce: 0)
+  public static var bubbleRemoval: AnyTransition { .opacity.combined(with: .scale(scale: 0.9)) }
+  /// The typing bubble grows in like a reply and gets out of the way fast when the reply
+  /// lands, so the reply reads as taking its place rather than crossing over it.
+  public static var typingTransition: AnyTransition {
     .asymmetric(
-      insertion: .opacity.combined(with: .offset(y: bubbleEntranceDistance)),
-      removal: .opacity)
+      insertion: bubbleInsertion(outgoing: false),
+      removal: AnyTransition.opacity.animation(.easeOut(duration: NessaMotion.normal / 2)))
   }
   public static func bubbleInsertion(outgoing: Bool) -> AnyTransition {
-    .asymmetric(
-      insertion: .opacity
-        .combined(with: .offset(y: bubbleEntranceDistance))
-        .combined(
-          with: .scale(
-            scale: bubbleEntranceScale, anchor: outgoing ? .bottomTrailing : .bottomLeading)),
-      removal: .opacity)
+    let anchor: UnitPoint = outgoing ? .bottomTrailing : .bottomLeading
+    let insertion: AnyTransition = AnyTransition.opacity.animation(bubbleFadeAnimation)
+      .combined(
+        with: .offset(y: outgoing ? sentEntranceDistance : replyEntranceDistance))
+      .combined(
+        with: .scale(scale: outgoing ? sentEntranceScale : replyEntranceScale, anchor: anchor))
+    return .asymmetric(insertion: insertion, removal: bubbleRemoval)
   }
   public static let groupSpacing: CGFloat = 28
   public static let pinGap: CGFloat = 18
@@ -224,7 +278,9 @@ extension View {
   }
   @ViewBuilder public func messagesScrollEdges() -> some View {
     if #available(iOS 26.0, macOS 26.0, *) {
-      self.scrollEdgeEffectStyle(.soft, for: .all)
+      // Soft at both ends: content fades out under the header and composer instead of being
+      // cut along a hard line.
+      self.scrollEdgeEffectStyle(.soft, for: .top).scrollEdgeEffectStyle(.soft, for: .bottom)
     } else {
       self
     }
@@ -239,4 +295,98 @@ extension View {
 
   public func messagesGlass() -> some View { modifier(MessagesGlass()) }
   public func messagesComposerSurface() -> some View { modifier(MessagesComposerSurface()) }
+}
+
+/// Ties a typing bubble to the reply that replaces it, so the reply's bubble grows out of the
+/// typing bubble's frame instead of the two crossing over.
+public struct MessageMorph: Equatable, @unchecked Sendable {
+  public let id: String
+  public let namespace: Namespace.ID
+  public init(id: String, namespace: Namespace.ID) {
+    self.id = id
+    self.namespace = namespace
+  }
+}
+
+extension EnvironmentValues {
+  @Entry public var messageMorph: MessageMorph? = nil
+  @Entry public var messageContentShown: Bool = true
+}
+
+/// A message bubble's fill: the sent bubble in the lit accent, the received one a raised
+/// card with a hairline so it holds its edge on the near-black ground.
+///
+/// Only the fill takes part in the reply morph. The text keeps its final layout and fades in, so
+/// it never wraps inside the small typing frame while the bubble grows around it.
+public struct MessageBubbleSurface: ViewModifier {
+  let outgoing: Bool
+  @Environment(\.messageMorph) private var morph
+  @Environment(\.messageContentShown) private var shown
+  public func body(content: Content) -> some View {
+    let shape = RoundedRectangle(cornerRadius: MessagesStyle.bubbleRadius, style: .continuous)
+    content
+      .opacity(shown ? 1 : 0)
+      .animation(MessagesStyle.replyTextReveal, value: shown)
+      .background {
+        Group {
+          if outgoing {
+            shape.fill(MessagesStyle.outgoingFill)
+          } else {
+            shape.fill(MessagesStyle.incoming)
+              .overlay(shape.strokeBorder(MessagesStyle.incomingBorder, lineWidth: 0.5))
+          }
+        }
+        .modifier(MorphFrame(morph: morph))
+      }
+  }
+}
+
+/// The insertion state of a reply growing out of a typing bubble: its text hidden, its fill
+/// shown. A transition can only wrap the whole bubble, so it hands the state down.
+public struct MessageContentReveal: ViewModifier {
+  let shown: Bool
+  public func body(content: Content) -> some View {
+    content.environment(\.messageContentShown, shown)
+  }
+}
+
+private struct MorphFrame: ViewModifier {
+  let morph: MessageMorph?
+  func body(content: Content) -> some View {
+    if let morph {
+      content.matchedGeometryEffect(
+        id: morph.id, in: morph.namespace, properties: .frame, anchor: .bottomLeading)
+    } else {
+      content
+    }
+  }
+}
+
+extension View {
+  public func messageBubbleSurface(outgoing: Bool) -> some View {
+    modifier(MessageBubbleSurface(outgoing: outgoing))
+  }
+}
+
+/// The screens' near-black ground.
+public struct MessagesAmbientGround: ViewModifier {
+  public func body(content: Content) -> some View {
+    content.background { MessagesStyle.background.ignoresSafeArea() }
+  }
+}
+
+/// A fine grain thinning down from the top edge behind a header. Drawn as part of the header
+/// rather than the ground, so it sits above the scroll edge effect and stays one even texture.
+public struct MessagesHeaderGrain: ViewModifier {
+  public func body(content: Content) -> some View {
+    content.background(alignment: .top) {
+      NessaDither().frame(height: MessagesStyle.ditherHeight)
+        .ignoresSafeArea(edges: .top)
+    }
+  }
+}
+
+extension View {
+  public func messagesAmbientGround() -> some View { modifier(MessagesAmbientGround()) }
+  public func messagesHeaderGrain() -> some View { modifier(MessagesHeaderGrain()) }
 }

@@ -50,32 +50,34 @@ private struct TapbackHeart: View {
         startPoint: .top, endPoint: .bottom)
     ).overlay {
       GeometryReader { geometry in
-        Ellipse().fill(MessagesStyle.tapbackHeartHighlight)
-          .frame(width: geometry.size.width * 0.27, height: geometry.size.height * 0.12)
-          .rotationEffect(.degrees(-30))
-          .position(x: geometry.size.width * 0.25, y: geometry.size.height * 0.22)
-          .blur(radius: 1)
-        Ellipse().fill(MessagesStyle.tapbackHeartHighlight.opacity(0.55))
-          .frame(width: geometry.size.width * 0.23, height: geometry.size.height * 0.10)
-          .rotationEffect(.degrees(25))
-          .position(x: geometry.size.width * 0.74, y: geometry.size.height * 0.21)
-          .blur(radius: 1)
+        // Mirrored gloss, so neither lobe reads heavier and pulls the heart off centre.
+        ForEach([-1.0, 1.0], id: \.self) { side in
+          Ellipse().fill(MessagesStyle.tapbackHeartHighlight)
+            .frame(width: geometry.size.width * 0.25, height: geometry.size.height * 0.11)
+            .rotationEffect(.degrees(30 * side))
+            .position(
+              x: geometry.size.width * (0.5 + 0.25 * side), y: geometry.size.height * 0.28)
+            .blur(radius: 1)
+        }
       }.clipShape(HeartShape())
     }.frame(width: MessagesStyle.tapbackHeartSize, height: MessagesStyle.tapbackHeartSize)
   }
 }
 
+/// Drawn so the heart's visual centre, the middle of its area rather than of its box, sits at
+/// the middle of the frame. A heart's weight is in its two lobes, so a box-centred heart reads
+/// as riding high inside its badge.
 private struct HeartShape: Shape {
   func path(in rect: CGRect) -> Path {
     func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
       CGPoint(x: rect.minX + rect.width * x, y: rect.minY + rect.height * y)
     }
     var path = Path()
-    path.move(to: point(0.5, 0.94))
-    path.addCurve(to: point(0.02, 0.32), control1: point(0.36, 0.82), control2: point(0.02, 0.60))
-    path.addCurve(to: point(0.5, 0.20), control1: point(0.02, 0.02), control2: point(0.34, 0.01))
-    path.addCurve(to: point(0.98, 0.32), control1: point(0.66, 0.01), control2: point(0.98, 0.02))
-    path.addCurve(to: point(0.5, 0.94), control1: point(0.98, 0.60), control2: point(0.64, 0.82))
+    path.move(to: point(0.5, 1.0))
+    path.addCurve(to: point(0.02, 0.38), control1: point(0.36, 0.88), control2: point(0.02, 0.66))
+    path.addCurve(to: point(0.5, 0.26), control1: point(0.02, 0.08), control2: point(0.34, 0.07))
+    path.addCurve(to: point(0.98, 0.38), control1: point(0.66, 0.07), control2: point(0.98, 0.08))
+    path.addCurve(to: point(0.5, 1.0), control1: point(0.98, 0.66), control2: point(0.64, 0.88))
     path.closeSubpath()
     return path
   }
@@ -84,7 +86,8 @@ private struct HeartShape: Shape {
 private struct TapbackThoughtShape: Shape {
   func path(in rect: CGRect) -> Path {
     var path = Path()
-    let circle = min(rect.width * 0.81, rect.height * 0.71)
+    // The symbol is centred on this same circle, so both read its size from one token.
+    let circle = MessagesStyle.tapbackBadgeCircle
     path.addEllipse(in: CGRect(x: 0, y: 0, width: circle, height: circle))
     path.addEllipse(
       in: CGRect(x: circle * 0.70, y: circle * 0.80, width: circle * 0.28, height: circle * 0.28))
