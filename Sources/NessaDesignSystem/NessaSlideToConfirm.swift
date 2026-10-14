@@ -11,8 +11,11 @@ public struct NessaSlideToConfirm: View {
   private let onConfirm: () -> Void
   @Environment(\.isEnabled) private var isEnabled
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var offset: CGFloat = 0
-  @State private var holding = false
+  /// The live drag lives in gesture state, so a drag the system cancels (the sheet taking the
+  /// pan, a second touch) springs back just like one let go early, instead of sticking.
+  @GestureState(resetTransaction: Transaction(animation: SlideStyle.springBack))
+  private var drag: CGFloat = 0
+  @GestureState private var holding = false
   @State private var confirmed = false
 
   public init(
@@ -28,7 +31,8 @@ public struct NessaSlideToConfirm: View {
   public var body: some View {
     GeometryReader { geometry in
       let travel = max(geometry.size.width - SlideStyle.trackHeight, 1)
-      let progress = min(max(offset / travel, 0), 1)
+      let offset = confirmed ? travel : min(max(drag, 0), travel)
+      let progress = offset / travel
       ZStack(alignment: .leading) {
         Capsule().fill(NessaColor.muted)
           .overlay(Capsule().strokeBorder(NessaColor.hairline, lineWidth: 1))
@@ -37,12 +41,10 @@ public struct NessaSlideToConfirm: View {
           .frame(maxWidth: .infinity)
           .padding(.leading, SlideStyle.trackHeight)
           .opacity(1 - min(progress / SlideStyle.labelFadeEnd, 1))
-        NessaDitherFill(progress: progress, tint: tint)
-          .frame(width: offset + SlideStyle.trackHeight)
-          .clipShape(Capsule())
+        NessaDitherFill(progress: progress, travel: travel, tint: tint)
         knob
           .offset(x: offset)
-          .gesture(drag(travel: travel), including: isEnabled && !confirmed ? .all : .none)
+          .gesture(dragGesture(travel: travel), including: isEnabled && !confirmed ? .all : .none)
       }
       .sensoryFeedback(.selection, trigger: Int(progress * SlideStyle.ticks))
     }
@@ -68,36 +70,35 @@ public struct NessaSlideToConfirm: View {
       .animation(reduceMotion ? nil : NessaMotion.press, value: holding)
   }
 
-  private func drag(travel: CGFloat) -> some Gesture {
+  private func dragGesture(travel: CGFloat) -> some Gesture {
     DragGesture(minimumDistance: 0)
-      .onChanged { value in
-        holding = true
-        offset = min(max(value.translation.width, 0), travel)
-      }
-      .onEnded { _ in
-        holding = false
-        if offset / travel >= SlideStyle.confirmAt {
-          withAnimation(reduceMotion ? nil : NessaMotion.press) { offset = travel }
-          confirm()
-        } else {
-          withAnimation(reduceMotion ? nil : SlideStyle.springBack) { offset = 0 }
-        }
+      .updating($drag) { value, drag, _ in drag = value.translation.width }
+      .updating($holding) { _, holding, _ in holding = true }
+      .onEnded { value in
+        // Short of the mark, the gesture state resets and the knob springs home on its own.
+        if value.translation.width / travel >= SlideStyle.confirmAt { confirm() }
       }
   }
 
   private func confirm() {
-    guard !confirmed else { return }
-    confirmed = true
+    guard isEnabled, !confirmed else { return }
+    withAnimation(reduceMotion ? nil : NessaMotion.press) { confirmed = true }
     onConfirm()
   }
 }
 
 /// Ordered dither, the header grain's family: each 2 pt pixel lights when the fill's local
 /// density passes its place in a 4×4 Bayer matrix, so the fill thickens toward the knob
-/// without noise or banding.
-private struct NessaDitherFill: View {
-  let progress: CGFloat
+/// without noise or banding. Progress is animatable, so on a spring back the width and the
+/// warmth drain together frame by frame.
+private struct NessaDitherFill: View, Animatable {
+  var progress: CGFloat
+  let travel: CGFloat
   let tint: Color
+  var animatableData: CGFloat {
+    get { progress }
+    set { progress = newValue }
+  }
   private static let bayer: [Double] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
   var body: some View {
     let warmth = max(0, (progress - SlideStyle.warmFrom) / (1 - SlideStyle.warmFrom))
@@ -119,6 +120,8 @@ private struct NessaDitherFill: View {
       }
       context.fill(path, with: .color(NessaColor.foreground.mix(with: tint, by: warmth)))
     }
+    .frame(width: progress * travel + SlideStyle.trackHeight)
+    .clipShape(Capsule())
     .opacity(SlideStyle.fillOpacity)
     .allowsHitTesting(false)
     .accessibilityHidden(true)

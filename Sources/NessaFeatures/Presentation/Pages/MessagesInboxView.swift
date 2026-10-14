@@ -26,9 +26,7 @@ struct MessagesInboxView: View {
         ForEach(store.pendingCreations, id: \.requestID) { command in
           PendingCommandActions(command: command, store: store, onCreated: onOpen)
         }
-        if !editing && !showingArchived
-          && store.pinnedChats.contains(where: { !store.isDeleting($0) }) && search.isEmpty
-        {
+        if !pinnedShown.isEmpty {
           PinnedChatsGrid(
             store: store, onOpen: onOpen, onOpenComposer: onOpenComposer,
             onDelete: { pendingDeletion = [$0] }, enabled: !deleting)
@@ -120,7 +118,11 @@ struct MessagesInboxView: View {
     }.listStyle(.plain).scrollContentBackground(.hidden)
       .environment(\.defaultMinListRowHeight, 0)
       .messagesTrackScroll(offset: $scrollOffset)
-      .animation(reduceMotion ? nil : NessaMotion.enter, value: filtered.map(\.id))
+      // One key for the whole layout. A pin moves a chat out of the list and into the grid
+      // (and can make the grid appear), so both halves move on the same spring; keyed on the
+      // list alone, the grid popped in unanimated and shoved the rows under it.
+      .animation(reduceMotion ? nil : NessaMotion.enter, value: layout)
+      .sensoryFeedback(.impact(flexibility: .soft), trigger: store.pinnedChats)
       .messagesAmbientGround()
       .messagesScrollEdges()
       .scrollDismissesKeyboard(.interactively)
@@ -216,6 +218,12 @@ struct MessagesInboxView: View {
         do { try await store.refreshList() } catch { store.error = error.localizedDescription }
       }
   }
+  /// The pinned chats the grid shows right now, or none while it is hidden.
+  private var pinnedShown: [String] {
+    guard !editing && !showingArchived && search.isEmpty else { return [] }
+    return store.pinnedChats.filter { !store.isDeleting($0) }
+  }
+  private var layout: [String] { pinnedShown.map { "pin:" + $0 } + filtered.map(\.id) }
   private var filtered: [NessaConversation] {
     store.visibleConversations.filter {
       (store.archivedChats.contains($0.id) == showingArchived)

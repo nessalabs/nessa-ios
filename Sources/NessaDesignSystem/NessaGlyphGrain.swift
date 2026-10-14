@@ -12,10 +12,11 @@ public struct NessaGlyphGrain: View {
   public init(lit: Bool = false) { self.lit = lit }
   private static let ramp = [".", "·", ":", "+", "░"]
   public var body: some View {
+    let still = reduceMotion || scenePhase != .active
+    // Paused, the timeline stops ticking altogether, so a still field is drawn once.
     TimelineView(
-      .periodic(from: .distantPast, by: GlyphStyle.driftStep),
+      .animation(minimumInterval: GlyphStyle.driftStep, paused: still),
       content: { context in
-        let still = reduceMotion || scenePhase != .active
         let drift = still ? 0 : Int(context.date.timeIntervalSinceReferenceDate / GlyphStyle.driftStep)
         field(drift: drift)
       })

@@ -2,10 +2,18 @@ import NessaDesignSystem
 import SwiftUI
 
 struct DeleteChatsConfirmation: View {
-  let count: Int
+  /// Held from the moment the sheet opens: the caller clears its pending set as soon as the
+  /// delete is confirmed, and the closing sheet must not re-read that as zero chats.
+  @State private var count: Int
   let onCancel: () -> Void
   let onDelete: () -> Void
   @Environment(\.dynamicTypeSize) private var typeSize
+
+  init(count: Int, onCancel: @escaping () -> Void, onDelete: @escaping () -> Void) {
+    _count = State(initialValue: count)
+    self.onCancel = onCancel
+    self.onDelete = onDelete
+  }
 
   var body: some View {
     VStack(spacing: NessaSpacing.md) {
