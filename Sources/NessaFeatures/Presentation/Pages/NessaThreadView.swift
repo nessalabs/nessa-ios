@@ -117,7 +117,7 @@ struct NessaThreadView: View {
           value: messageStructure
         )
         .padding(.horizontal, NessaSpacing.sm).padding(.top, NessaSpacing.sm).padding(
-          .bottom, NessaSpacing.md)
+          .bottom, NessaSpacing.sm)
         // History can arrive a beat after the thread opens; fade it in rather than pop.
         .animation(reduceMotion ? nil : NessaMotion.standard()) {
           $0.opacity(current == nil ? 0 : 1)
@@ -178,6 +178,27 @@ struct NessaThreadView: View {
           hasLoadedHistory = loaded
         }
         .onAppear { layoutClock.openedAt = Date() }
+        // On the list, inside the safe area the bar below leaves, so it rests just above the
+        // composer without ever changing the bar's height (which would grow the scroll range
+        // and set the thread following itself). It shows only when the reader has left the
+        // newest message, the pin's own state.
+        .overlay(alignment: .bottomTrailing) {
+          ZStack {
+            if readerScrolled && awayFromLatest {
+              MessagesJumpToLatest {
+                readerScrolled = false
+                follow(animated: !reduceMotion, animation: MessagesStyle.jumpToLatestAnimation)
+              }
+              .transition(
+                .scale(scale: MessagesStyle.swapScale, anchor: .trailing)
+                  .combined(with: .opacity))
+            }
+          }
+          .animation(
+            reduceMotion ? nil : NessaMotion.morph, value: readerScrolled && awayFromLatest)
+          .padding(.trailing, MessagesStyle.horizontal)
+          .padding(.bottom, NessaSpacing.xs)
+        }
         .messagesBar(edge: .bottom) {
           if composer.reply == nil {
             VStack(spacing: NessaSpacing.xs) {
@@ -194,27 +215,6 @@ struct NessaThreadView: View {
                 submissionAllowed: store.canSubmit(in: conversationID),
                 submissionUnavailableReason: store.submissionUnavailableReason(in: conversationID),
                 autoFocus: autoFocusComposer, working: working, onSend: send)
-            }
-            // Floats above the bar rather than sitting in it: a control that changed the bar's
-            // height would grow the scroll range and set the thread following itself. It shows
-            // only when the reader has left the newest message, the pin's own state.
-            .overlay(alignment: .topTrailing) {
-              ZStack {
-                if readerScrolled && awayFromLatest {
-                  MessagesJumpToLatest {
-                    readerScrolled = false
-                    follow(animated: !reduceMotion, animation: MessagesStyle.jumpToLatestAnimation)
-                  }
-                  .transition(
-                    .scale(scale: MessagesStyle.swapScale, anchor: .trailing)
-                      .combined(with: .opacity))
-                }
-              }
-              // Only the arrow animates; the composer beside it keeps its own timing.
-              .animation(
-                reduceMotion ? nil : NessaMotion.morph, value: readerScrolled && awayFromLatest)
-              .padding(.trailing, MessagesStyle.horizontal)
-              .alignmentGuide(.top) { $0[.bottom] + NessaSpacing.xs }
             }
           }
         }
