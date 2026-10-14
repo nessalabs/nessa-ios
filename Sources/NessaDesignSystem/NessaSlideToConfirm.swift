@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// A deliberate confirm: pick up the knob and slide it to the end of the track, like the old
-/// slide to unlock. Behind the knob the track fills with a soft wash of Nessa's avatar hues,
+/// slide to unlock. Behind the knob the track fills with a soft wash of the warm avatar hues,
 /// warming to the tint over the last stretch. Let go early and the knob springs back and the
 /// wash drains with it.
 public struct NessaSlideToConfirm: View {
@@ -91,7 +91,7 @@ public struct NessaSlideToConfirm: View {
   }
 }
 
-/// A soft wash in Nessa's avatar hues, filling the track solidly up to the knob, so the
+/// A soft wash in the warm avatar hues, filling the track solidly up to the knob, so the
 /// slide reads as a colour pouring in rather than a pattern. Near the end it warms toward
 /// the tint. Progress is animatable, so on a spring back the width and the warmth drain
 /// together frame by frame.
@@ -108,7 +108,7 @@ private struct NessaSlideFill: View, Animatable {
   }
   var body: some View {
     let warmth = max(0, (progress - SlideStyle.warmFrom) / (1 - SlideStyle.warmFrom))
-    let wash = NessaColor.agentHues.map {
+    let wash = SlideStyle.washHues.map {
       Color(
         hue: $0 / 360, saturation: SlideStyle.washSaturation,
         brightness: SlideStyle.washBrightness)
@@ -138,7 +138,9 @@ private enum SlideStyle {
   /// A selection tick each quarter of the way.
   static let ticks: CGFloat = 4
   static let springBack = Animation.spring(duration: 0.25, bounce: 0.15)
-  /// The wash: the avatar discs' pastel hues, quiet under the label.
+  /// The wash: the avatar discs' warm hues only (rose to peach), quiet under the label; the
+  /// cool ones read as blue against the dark track.
+  static let washHues: [Double] = [340, 10, 25]
   static let washSaturation: Double = 0.32
   static let washBrightness: Double = 0.82
   static let washOpacity: Double = 0.38

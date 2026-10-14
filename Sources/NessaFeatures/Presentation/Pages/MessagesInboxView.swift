@@ -14,6 +14,9 @@ struct MessagesInboxView: View {
   /// The selection bar has turned into the slide that deletes what is selected.
   @State private var confirmingSelection = false
   @State private var deleting = false
+  /// Chats being deleted, taken out of the list at once on the layout spring so they animate
+  /// away; the store's own removal lands later, outside any animation.
+  @State private var leaving: Set<String> = []
   @State private var search = ""
   @State private var pinRefusals = 0
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -31,7 +34,7 @@ struct MessagesInboxView: View {
         if !pinnedShown.isEmpty {
           PinnedChatsGrid(
             store: store, onOpen: onOpen, onOpenComposer: onOpenComposer,
-            onDelete: { pendingDeletion = [$0] }, enabled: !deleting)
+            onDelete: { pendingDeletion = [$0] }, enabled: !deleting, leaving: leaving)
         }
         if !store.connected {
           Button(store.reconnecting ? "Reconnecting…" : "Connect to Nessa", action: onSettings)
@@ -174,7 +177,7 @@ struct MessagesInboxView: View {
           // A tap anywhere else lets it go (see the catcher over the list).
           NessaSlideToConfirm(
             selected.count == 1 ? "Slide to delete" : "Slide to delete \(selected.count)",
-            tint: MessagesStyle.danger, height: MessagesStyle.composerHeight
+            tint: MessagesStyle.danger, height: MessagesStyle.selectionBarHeight
           ) {
             let ids = selected
             withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirmingSelection = false }
@@ -204,7 +207,7 @@ struct MessagesInboxView: View {
             }
             .font(MessagesStyle.title).buttonStyle(.nessaPress)
             .disabled(selected.isEmpty || deleting || !store.connected)
-          }.padding(.horizontal, NessaSpacing.lg).frame(height: MessagesStyle.composerHeight)
+          }.padding(.horizontal, NessaSpacing.lg).frame(height: MessagesStyle.selectionBarHeight)
             .messagesComposerSurface()
             .padding(.horizontal, MessagesStyle.horizontal).padding(.bottom, MessagesStyle.bottomInset)
             .foregroundStyle(MessagesStyle.foreground)
@@ -257,16 +260,19 @@ struct MessagesInboxView: View {
   }
   private func delete(_ ids: Set<String>) {
     deleting = true
+    changeLayout { leaving.formUnion(ids) }
     Task {
       await store.deleteConversations(ids)
       selected.formIntersection(Set(store.conversations.map(\.id)))
       deleting = false
+      // A chat the gateway kept comes back on the same spring.
+      changeLayout { leaving.subtract(ids) }
     }
   }
   /// The pinned chats the grid shows right now, or none while it is hidden.
   private var pinnedShown: [String] {
     guard !editing && !showingArchived && search.isEmpty else { return [] }
-    return store.pinnedChats.filter { !store.isDeleting($0) }
+    return store.pinnedChats.filter { !store.isDeleting($0) && !leaving.contains($0) }
   }
   /// Moves the list and the pinned grid on one spring, from the change itself. The list
   /// carries no implicit animation of its own: an `.animation` on a List mixes SwiftUI's
@@ -277,7 +283,7 @@ struct MessagesInboxView: View {
   }
   private var filtered: [NessaConversation] {
     store.visibleConversations.filter {
-      (store.archivedChats.contains($0.id) == showingArchived)
+      !leaving.contains($0.id) && (store.archivedChats.contains($0.id) == showingArchived)
         && (editing || showingArchived || !store.isPinned($0.id))
         && (search.isEmpty || ($0.title ?? "").localizedCaseInsensitiveContains(search)
           || ($0.preview ?? "").localizedCaseInsensitiveContains(search))

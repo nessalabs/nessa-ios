@@ -150,6 +150,9 @@ public enum MessagesStyle {
   public static let swapScale: CGFloat = 0.5
   /// A full-width bar swapping for another settles from just under its size.
   public static let barSwapScale: CGFloat = 0.96
+  /// The selection bar and the delete slide it turns into: a touch taller than the composer,
+  /// so the slide's knob has room.
+  public static let selectionBarHeight: CGFloat = 49
   public static let sendPressScale: CGFloat = 0.86
   public static let headerPressScale: CGFloat = 0.97
   public static let emptyTitle = Font.system(size: 22, weight: .semibold)

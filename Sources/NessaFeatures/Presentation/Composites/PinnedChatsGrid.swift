@@ -7,12 +7,14 @@ struct PinnedChatsGrid: View {
   let onOpenComposer: (String) -> Void
   let onDelete: (String) -> Void
   var enabled = true
+  /// Chats on their way out, gone from the grid on the inbox's own spring.
+  var leaving: Set<String> = []
   var body: some View {
     LazyVGrid(
       columns: Array(repeating: GridItem(.flexible(), spacing: MessagesStyle.pinGap), count: 3),
       spacing: MessagesStyle.pinRowGap
     ) {
-      let pinned = store.pinnedChats.filter { !store.isDeleting($0) }
+      let pinned = store.pinnedChats.filter { !store.isDeleting($0) && !leaving.contains($0) }
       let running = Set(store.conversations.filter(\.running).map(\.id))
       ForEach(pinned, id: \.self) { agent in
         Button {
