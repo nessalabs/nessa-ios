@@ -3,21 +3,33 @@ import SwiftUI
 
 struct InboxHeader: View {
   let editing: Bool
+  /// Seeds the reader's own disc, so it stays the same face for one gateway.
+  let accountSeed: String
   let onEdit: () -> Void
   let onSettings: () -> Void
   let showingArchived: Bool
   let onToggleArchived: () -> Void
   var body: some View {
     HStack {
-      Button(editing ? "Done" : "Edit", action: onEdit).font(MessagesStyle.body)
-        .padding(.horizontal, NessaSpacing.md).frame(height: MessagesStyle.controlHeight)
-        .messagesGlass().buttonStyle(.nessaPress)
+      // The reader's own disc holds the account's actions; selecting chats lives there too,
+      // and while selecting, Done takes its place.
+      if editing {
+        Button("Done", action: onEdit).font(MessagesStyle.body)
+          .padding(.horizontal, NessaSpacing.md).frame(height: MessagesStyle.controlHeight)
+          .messagesGlass().buttonStyle(.nessaPress)
+      } else {
+        Menu {
+          Button("Select chats", systemImage: "checkmark.circle", action: onEdit)
+          Button("Connection settings", systemImage: "network", action: onSettings)
+        } label: {
+          NessaAvatarDisc(seed: accountSeed, size: MessagesStyle.headerAvatar)
+        }.accessibilityLabel("Account")
+      }
       Spacer()
       Menu {
         Button(
           showingArchived ? "Show messages" : "Archived chats", systemImage: "archivebox",
           action: onToggleArchived)
-        Button("Connection settings", systemImage: "network", action: onSettings)
       } label: {
         Image(systemName: "line.3.horizontal.decrease").font(MessagesStyle.icon)
           .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)

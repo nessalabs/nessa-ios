@@ -20,7 +20,7 @@ struct PinnedChatsGrid: View {
         } label: {
           VStack(spacing: NessaSpacing.xs) {
             AgentAvatar(
-              name: store.agentName(for: agent), size: MessagesStyle.pinnedAvatar,
+              seed: agent, size: MessagesStyle.pinnedAvatar,
               working: running.contains(agent)
             )
               .overlay(alignment: .bottomTrailing) {

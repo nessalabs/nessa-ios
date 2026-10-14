@@ -270,7 +270,8 @@ struct NessaThreadView: View {
     .navigationBarBackButtonHidden(overlayOpen)
     .toolbar {
       ToolbarItem(placement: .principal) {
-        ThreadTitle(name: name, working: working, onDetails: { details = true })
+        ThreadTitle(
+          name: name, seed: conversationID, working: working, onDetails: { details = true })
           .opacity(messageContext.selection == nil ? 1 : 0)
           .disabled(messageContext.selection != nil)
       }

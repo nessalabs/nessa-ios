@@ -4,10 +4,11 @@ import SwiftUI
 /// The agent's disc and name, in the sheet's header row beside the close button.
 struct AgentDetailsIdentity: View {
   let name: String
+  let seed: String
   let working: Bool
   var body: some View {
     HStack(spacing: NessaSpacing.sm) {
-      AgentAvatar(name: name, size: AgentDetailsStyle.heroAvatar, working: working)
+      AgentAvatar(seed: seed, size: AgentDetailsStyle.heroAvatar, working: working)
       Text(name).font(AgentDetailsStyle.title).lineLimit(1).truncationMode(.tail)
     }.accessibilityElement(children: .combine)
   }

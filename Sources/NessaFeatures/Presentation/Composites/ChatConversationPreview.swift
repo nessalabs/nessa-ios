@@ -6,12 +6,10 @@ struct ChatConversationPreview: View {
   @ObservedObject var store: MessagesViewModel
   let selection: ChatMenuSelection
   private let name: String
-  private let title: String
   init(store: MessagesViewModel, selection: ChatMenuSelection) {
     self.store = store
     self.selection = selection
     name = store.agentName(for: selection.identifier)
-    title = store.chatName(selection.identifier)
   }
   private var state: MessagesViewModel.PreviewState {
     selection.isCurrent(in: store) ? store.previewState(for: selection.identifier) : .unavailable
@@ -25,11 +23,9 @@ struct ChatConversationPreview: View {
     }
   }
   var body: some View {
-    VStack(spacing: NessaSpacing.md) {
-      VStack(spacing: NessaSpacing.xs) {
-        AgentAvatar(name: name, size: MessagesStyle.headerAvatar)
-        Text(title).font(MessagesStyle.title)
-      }.padding(.top, NessaSpacing.md)
+    // Just the latest messages and the composer: the row under the finger already names the
+    // chat and shows its disc.
+    VStack(spacing: 0) {
       ScrollView {
         VStack(spacing: MessagesStyle.groupSpacing) {
           if case .available(let conversation) = state {
@@ -48,7 +44,7 @@ struct ChatConversationPreview: View {
               .font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
               .padding(.vertical, NessaSpacing.xl)
           }
-        }.padding(.horizontal, NessaSpacing.sm)
+        }.padding(.horizontal, NessaSpacing.sm).padding(.top, NessaSpacing.sm)
       }
       .defaultScrollAnchor(.bottom)
       HStack {

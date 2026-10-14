@@ -141,7 +141,7 @@ struct MessagesInboxView: View {
       .messagesFooterGrain()
       .messagesBar(edge: .top) {
         InboxHeader(
-          editing: editing,
+          editing: editing, accountSeed: store.currentGatewayAddress ?? "nessa",
           onEdit: {
             // The marks slide in from the edge as the rows make room, on one spring.
             withAnimation(reduceMotion ? nil : NessaMotion.enter) {
