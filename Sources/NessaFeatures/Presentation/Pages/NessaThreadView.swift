@@ -243,6 +243,10 @@ struct NessaThreadView: View {
       }
     }
     .overlay { MessageContextOverlay(controller: messageContext).ignoresSafeArea() }
+    // Closing a message's menu fades the menu and the blur behind it out together, instead of
+    // both vanishing in one frame; opening keeps the menu's own spring.
+    .animation(
+      .easeOut(duration: MessagesStyle.contextFadeDuration), value: messageContext.selection?.id)
     .animation(
       reduceMotion ? nil : MessagesStyle.messageFollowAnimation, value: composer.reply != nil
     )
