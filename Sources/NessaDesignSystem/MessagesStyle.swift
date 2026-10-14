@@ -67,6 +67,10 @@ public enum MessagesStyle {
   public static let tapbackMoreTrail: CGFloat = 6
   public static let tapbackMoreDot: CGFloat = 3
   public static let followDistance: CGFloat = 100
+  /// How far from the bottom the thread's own follow may rest before it scrolls again.
+  public static let pinTolerance: CGFloat = 1
+  /// How long a follow scroll may take to come to rest, its spring's settle plus slack.
+  public static let followSettleTime: TimeInterval = 1.2
   /// How long after a layout change a scroll coming to rest is still the system's.
   public static let layoutSettleWindow: TimeInterval = 0.6
   /// How long a newly opened thread spends settling before growth counts as new messages.
@@ -83,14 +87,17 @@ public enum MessagesStyle {
   public static let typingPulse: Double = 0.31
   /// How much a dot grows at the peak of its turn.
   public static let typingDotPeakScale: CGFloat = 1.15
-  /// The reply's bubble grows out of the typing bubble on this spring.
-  public static let replyMorphAnimation = Animation.spring(duration: 0.4, bounce: 0.2)
-  /// The reply's text fades in while its bubble is still growing.
+  /// A reply that replaces a typing bubble arrives with its bubble already there, growing out
+  /// of the typing bubble's frame on the list's own spring; only its text fades in.
   public static var replyMorphInsertion: AnyTransition {
     .asymmetric(
-      insertion: AnyTransition.opacity.animation(.easeOut(duration: 0.15).delay(0.06)),
+      insertion: .modifier(
+        active: MessageContentReveal(shown: false), identity: MessageContentReveal(shown: true)),
       removal: bubbleRemoval)
   }
+  /// The text of a growing reply fades in once its bubble is mostly open, so no line shows
+  /// outside the fill while the fill is still small.
+  public static let replyTextReveal = Animation.easeOut(duration: 0.16).delay(0.2)
   public static let typingBubbleHorizontalInset: CGFloat = 14
   public static let typingBubbleVerticalInset: CGFloat = 13
   public static let typingTailLarge: CGFloat = 12
@@ -302,24 +309,43 @@ public struct MessageMorph: Equatable, @unchecked Sendable {
 
 extension EnvironmentValues {
   @Entry public var messageMorph: MessageMorph? = nil
+  @Entry public var messageContentShown: Bool = true
 }
 
 /// A message bubble's fill: the sent bubble in the lit accent, the received one a raised
 /// card with a hairline so it holds its edge on the near-black ground.
+///
+/// Only the fill takes part in the reply morph. The text keeps its final layout and fades in, so
+/// it never wraps inside the small typing frame while the bubble grows around it.
 public struct MessageBubbleSurface: ViewModifier {
   let outgoing: Bool
   @Environment(\.messageMorph) private var morph
+  @Environment(\.messageContentShown) private var shown
   public func body(content: Content) -> some View {
     let shape = RoundedRectangle(cornerRadius: MessagesStyle.bubbleRadius, style: .continuous)
-    Group {
-      if outgoing {
-        content.background(MessagesStyle.outgoingFill, in: shape)
-      } else {
-        content.background(MessagesStyle.incoming, in: shape)
-          .overlay(shape.strokeBorder(MessagesStyle.incomingBorder, lineWidth: 0.5))
+    content
+      .opacity(shown ? 1 : 0)
+      .animation(MessagesStyle.replyTextReveal, value: shown)
+      .background {
+        Group {
+          if outgoing {
+            shape.fill(MessagesStyle.outgoingFill)
+          } else {
+            shape.fill(MessagesStyle.incoming)
+              .overlay(shape.strokeBorder(MessagesStyle.incomingBorder, lineWidth: 0.5))
+          }
+        }
+        .modifier(MorphFrame(morph: morph))
       }
-    }
-    .modifier(MorphFrame(morph: morph))
+  }
+}
+
+/// The insertion state of a reply growing out of a typing bubble: its text hidden, its fill
+/// shown. A transition can only wrap the whole bubble, so it hands the state down.
+public struct MessageContentReveal: ViewModifier {
+  let shown: Bool
+  public func body(content: Content) -> some View {
+    content.environment(\.messageContentShown, shown)
   }
 }
 

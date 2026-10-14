@@ -29,17 +29,19 @@ public struct MessagesTypingDots: View {
     .accessibilityHidden(true)
   }
 
-  /// Two small circles trailing off the bubble's lower corner, as in every chat app.
+  /// Two small circles trailing off the bubble's lower corner, as in every chat app. They stay
+  /// inside the thread's side margin, since the bubble lines up with the replies above it.
   private var tail: some View {
     ZStack(alignment: .bottomLeading) {
       Circle().fill(MessagesStyle.incoming)
         .overlay(Circle().strokeBorder(MessagesStyle.incomingBorder, lineWidth: 0.5))
         .frame(width: MessagesStyle.typingTailLarge, height: MessagesStyle.typingTailLarge)
-        .offset(x: -MessagesStyle.typingTailLarge / 3, y: MessagesStyle.typingTailLarge / 3)
+        .offset(x: -MessagesStyle.typingTailLarge / 4, y: MessagesStyle.typingTailLarge / 4)
       Circle().fill(MessagesStyle.incoming)
         .overlay(Circle().strokeBorder(MessagesStyle.incomingBorder, lineWidth: 0.5))
         .frame(width: MessagesStyle.typingTailSmall, height: MessagesStyle.typingTailSmall)
-        .offset(x: -MessagesStyle.typingTailLarge, y: MessagesStyle.typingTailLarge)
+        .offset(
+          x: -MessagesStyle.typingTailLarge * 2 / 3, y: MessagesStyle.typingTailLarge * 3 / 4)
     }
   }
 

@@ -16,7 +16,6 @@ struct NessaThreadView: View {
     _dictation = StateObject(wrappedValue: dictation)
   }
   @StateObject private var messageContext = MessageContextController()
-  @State private var nearBottom = true
   @State private var bottomVisible = true
   @State private var position = ScrollPosition(edge: .bottom)
   @State private var scrollOffset: CGFloat = 0
@@ -26,13 +25,11 @@ struct NessaThreadView: View {
   /// Until the reader scrolls away from the newest message, the thread stays pinned there
   /// as late layout (photos, the composer's height, streamed text) grows the content.
   @State private var readerScrolled = false
-  /// Turns waiting on their first reply behind a typing bubble. When such a turn's reply lands,
-  /// its bubble grows out of the typing bubble. A turn that started streaming text while
-  /// running is dropped, since its reply bubble is already on screen.
-  @State private var morphTurns: Set<String> = []
+  /// Every typing bubble shown so far, keyed by its turn and the reply it stands in for. The
+  /// reply that takes a typing bubble's place grows out of it. Only ever added to, so a reply
+  /// keeps the same look for its whole life on screen.
+  @State private var typingShown: Set<String> = []
   @Namespace private var replyMorph
-  /// Scrolls that settle before this were started by layout, not by the reader. A reference,
-  /// so stamping it on every layout change doesn't re-render the thread.
   @State private var layoutClock = LayoutSettleClock()
   nonisolated private static func scrollRange(_ geometry: ScrollGeometry) -> CGFloat {
     geometry.contentSize.height + geometry.contentInsets.bottom - geometry.containerSize.height
@@ -74,24 +71,27 @@ struct NessaThreadView: View {
           }
           ForEach(current?.messages ?? []) { turn in
             let turnMessages = replies.messages(in: turn.id)
-            let morphing = morphTurns.contains(turn.id)
-            let firstReply = turnMessages.first { !$0.outgoing }?.id
+            let incoming = turnMessages.filter { !$0.outgoing }.map(\.id)
             VStack(spacing: MessagesStyle.bubbleSpacing) {
               ForEach(turnMessages) { message in
-                let grows = morphing && turn.status != "running" && message.id == firstReply
+                let slot = incoming.firstIndex(of: message.id).map { Self.typingSlot(turn.id, $0) }
+                let grows = slot.map { typingShown.contains($0) } ?? false
                 ConversationMessageView(
                   message: message, conversationID: conversationID,
                   store: store, parent: replies.parent(of: message),
                   replyCount: replies.count(for: message.id), arrivesWithTurn: true,
                   growsFromTyping: grows,
                   onReply: { composer.reply = $0 }, onOpenThread: { composer.reply = $0 })
-                .environment(\.messageMorph, grows ? MessageMorph(id: turn.id, namespace: replyMorph) : nil)
+                .environment(
+                  \.messageMorph, grows ? slot.map { MessageMorph(id: $0, namespace: replyMorph) } : nil)
               }
               if turn.status == "running" {
+                // A new typing bubble per reply: the old one becomes the reply that just landed,
+                // and the next one grows in beneath it.
+                let slot = Self.typingSlot(turn.id, incoming.count)
                 TypingIndicator()
-                  .environment(
-                    \.messageMorph,
-                    morphing ? MessageMorph(id: turn.id, namespace: replyMorph) : nil)
+                  .environment(\.messageMorph, MessageMorph(id: slot, namespace: replyMorph))
+                  .id(slot)
                   .transition(MessagesStyle.typingTransition)
               }
               if let error = turn.error {
@@ -126,30 +126,32 @@ struct NessaThreadView: View {
           offset: $scrollOffset
         )
         .messagesScrollEdges().scrollDismissesKeyboard(.interactively)
-        .onScrollGeometryChange(for: Bool.self) { geometry in
-          geometry.contentSize.height - geometry.contentOffset.y - geometry.containerSize.height
-            < MessagesStyle.followDistance
-        } action: { _, value in
-          nearBottom = value
-        }
+        // The pin has one owner, `readerScrolled`, and only the reader moves it. The thread's
+        // own follow scrolls never do, even when content keeps growing under them and they
+        // come to rest short of the bottom.
         .onScrollPhaseChange { _, phase, context in
-          // Only the reader's own scrolls decide it: a drag releases the pin at once, and
-          // any scroll that comes to rest (a drag, a status-bar tap, VoiceOver) settles it
-          // by where it stopped. The system's own scroll after a layout change (the
-          // keyboard rising) is not the reader's, so it re-pins instead of releasing.
-          if phase == .interacting {
+          switch phase {
+          case .interacting:
             readerScrolled = true
-          } else if phase == .idle {
-            let away =
-              Self.scrollRange(context.geometry) - context.geometry.contentOffset.y
-              > MessagesStyle.followDistance
-            if Date() < layoutClock.settlesAt {
-              if !readerScrolled && away && composer.reply == nil {
-                position.scrollTo(edge: .bottom)
-              }
-            } else {
+            layoutClock.readerDriving = true
+          case .idle:
+            let gap = Self.scrollRange(context.geometry) - context.geometry.contentOffset.y
+            let away = gap > MessagesStyle.followDistance
+            let reader = layoutClock.readerDriving
+            let ours = Date() < layoutClock.followUntil
+            layoutClock.readerDriving = false
+            // A drag settles by where it stopped, and so does a scroll the reader asked the
+            // system for (a status-bar tap, VoiceOver) once layout is quiet. The system's own
+            // scroll after a layout change (the keyboard rising) is not the reader's.
+            if reader || (!ours && Date() >= layoutClock.settlesAt) {
               readerScrolled = away
+            } else if !readerScrolled && gap > MessagesStyle.pinTolerance && composer.reply == nil {
+              // Short by any amount: a follow that rests even a few points up leaves the
+              // newest line under the composer.
+              follow(animated: followAnimates)
             }
+          default:
+            break
           }
         }
         .onScrollGeometryChange(for: CGFloat.self, of: Self.scrollRange) { old, new in
@@ -158,29 +160,18 @@ struct NessaThreadView: View {
           guard new > old else { return }
           layoutClock.settlesAt = Date().addingTimeInterval(MessagesStyle.layoutSettleWindow)
           guard !readerScrolled && composer.reply == nil else { return }
-          // While the thread is first settling (photos, the composer) the pin is invisible;
-          // after that, growth is a new message, so follow it on the message timing.
-          let settled = Date() > layoutClock.openedAt.addingTimeInterval(MessagesStyle.openSettleTime)
-          withAnimation(settled && !reduceMotion ? MessagesStyle.messageFollowAnimation : nil) {
-            position.scrollTo(edge: .bottom)
-          }
+          follow(animated: followAnimates)
         }
         .onChange(of: messageStructure, initial: true) { _, _ in
-          var waiting: Set<String> = []
           for turn in current?.messages ?? [] where turn.status == "running" {
-            if !replies.messages(in: turn.id).contains(where: { !$0.outgoing }) {
-              waiting.insert(turn.id)
-            }
+            let replyCount = replies.messages(in: turn.id).filter { !$0.outgoing }.count
+            typingShown.insert(Self.typingSlot(turn.id, replyCount))
           }
-          // Keep a just-finished turn for the frame its reply lands in; drop it after.
-          morphTurns = waiting
         }
         .onChange(of: current != nil, initial: true) { _, loaded in
           hasLoadedHistory = loaded
         }
-        .onChange(of: current?.messages.last) { _, _ in
-          followLatest(animated: animateMessages)
-        }
+        .onAppear { layoutClock.openedAt = Date() }
         .messagesBar(edge: .bottom) {
           if composer.reply == nil {
             VStack(spacing: NessaSpacing.xs) {
@@ -192,9 +183,8 @@ struct NessaThreadView: View {
                 HStack {
                   Spacer()
                   MessagesJumpToLatest {
-                    withAnimation(reduceMotion ? nil : MessagesStyle.jumpToLatestAnimation) {
-                      position.scrollTo(edge: .bottom)
-                    }
+                    readerScrolled = false
+                    follow(animated: !reduceMotion, animation: MessagesStyle.jumpToLatestAnimation)
                   }
                 }.padding(.horizontal, MessagesStyle.horizontal)
                   .transition(
@@ -267,7 +257,8 @@ struct NessaThreadView: View {
   }
 
   private func send() {
-    nearBottom = true
+    // Sending brings the reader back to the newest message; the new turn's growth follows.
+    readerScrolled = false
     let captured = composer.begin(scope: store.deliveryScopeRevision)
     Task {
       let accepted = await store.send(
@@ -283,16 +274,36 @@ struct NessaThreadView: View {
     }
   }
 
-  private func followLatest(animated: Bool) {
-    guard nearBottom, composer.reply == nil else { return }
-    withAnimation(animated ? MessagesStyle.messageFollowAnimation : nil) {
-      position.scrollTo(edge: .bottom)
-    }
+  /// While the thread is first settling (photos, the composer) the pin is invisible; after
+  /// that, growth is a new message, so the list follows it on the message timing.
+  private var followAnimates: Bool {
+    !reduceMotion && hasLoadedHistory
+      && Date() > layoutClock.openedAt.addingTimeInterval(MessagesStyle.openSettleTime)
+  }
+
+  private func follow(
+    animated: Bool, animation: Animation = MessagesStyle.messageFollowAnimation
+  ) {
+    layoutClock.followUntil =
+      animated ? Date().addingTimeInterval(MessagesStyle.followSettleTime) : .distantPast
+    withAnimation(animated ? animation : nil) { position.scrollTo(edge: .bottom) }
+  }
+
+  nonisolated private static func typingSlot(_ turn: String, _ reply: Int) -> String {
+    "\(turn)#\(reply)"
   }
 }
 
-/// When layout last moved the thread; read only when a scroll comes to rest.
+/// What the thread's scroll is doing, read when a scroll comes to rest. A reference, so
+/// stamping it on every layout change doesn't re-render the thread.
 private final class LayoutSettleClock {
+  /// Scrolls that settle before this were started by layout, not by the reader.
   var settlesAt = Date.distantPast
-  let openedAt = Date()
+  var openedAt = Date()
+  /// The reader's finger has moved the list since it last came to rest.
+  var readerDriving = false
+  /// Until then, a scroll that comes to rest is the thread's own animated follow. A deadline,
+  /// not a flag, because a follow with nowhere to go reports no phases and would leave a flag
+  /// set, turning the reader's next status-bar tap into "ours".
+  var followUntil = Date.distantPast
 }

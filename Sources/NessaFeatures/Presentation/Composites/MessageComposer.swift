@@ -73,8 +73,9 @@ struct MessageComposer: View {
           #endif
           Button("Add Files", systemImage: "doc") { filesPresented = true }
         } label: {
+          // As tall as the message field beside it, so the two share a centre line.
           Image(systemName: "plus").font(MessagesStyle.icon)
-            .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
+            .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
             .messagesGlass()
         }.buttonStyle(.nessaPress)
           .disabled(sending || dictation.active || preparing).accessibilityLabel("Message actions")
