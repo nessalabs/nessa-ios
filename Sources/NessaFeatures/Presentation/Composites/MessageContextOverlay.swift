@@ -20,6 +20,7 @@ struct MessageContextOverlay: View {
           dismiss: { controller.selection = nil }
         )
         .id(selected.id)
+        .transition(.asymmetric(insertion: .identity, removal: .opacity))
       }
     }.sheet(item: $emojiRequest) { selected in
       NavigationStack {

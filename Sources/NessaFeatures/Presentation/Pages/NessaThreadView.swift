@@ -31,6 +31,7 @@ struct NessaThreadView: View {
   @State private var typingShown: Set<String> = []
   @Namespace private var replyMorph
   @State private var layoutClock = LayoutSettleClock()
+  private static let bottomMarker = "thread-bottom"
   nonisolated private static func scrollRange(_ geometry: ScrollGeometry) -> CGFloat {
     ThreadScrollMetrics.bottomOffset(
       contentHeight: geometry.contentSize.height, containerHeight: geometry.containerSize.height,
@@ -62,7 +63,10 @@ struct NessaThreadView: View {
     let replies = store.replyProjection(in: conversationID)
     Group {
       ScrollView {
-        LazyVStack(spacing: MessagesStyle.groupSpacing) {
+        // Eager, not lazy: a lazy stack guesses the height of rows off screen, so a scroll to
+        // the newest message landed in one frame and came to rest a few points off. The
+        // gateway sends at most the 24 most recent turns, so laying them all out is cheap.
+        VStack(spacing: MessagesStyle.groupSpacing) {
           if current?.messages.isEmpty == true {
             Text("Message \(name) to get started.").font(MessagesStyle.caption).foregroundStyle(
               MessagesStyle.secondary)
@@ -122,6 +126,11 @@ struct NessaThreadView: View {
         // History can arrive a beat after the thread opens; fade it in rather than pop.
         .animation(reduceMotion ? nil : NessaMotion.standard()) {
           $0.opacity(current == nil ? 0 : 1)
+        }
+        // The thread's last point, as a view the scroll position can move to. On device a
+        // follow to the bottom edge stepped in single frames where a follow to a view eases.
+        .overlay(alignment: .bottom) {
+          Color.clear.frame(height: 0).id(Self.bottomMarker).accessibilityHidden(true)
         }
       }.scrollPosition($position, anchor: .bottom)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
@@ -243,6 +252,10 @@ struct NessaThreadView: View {
       }
     }
     .overlay { MessageContextOverlay(controller: messageContext).ignoresSafeArea() }
+    // Closing a message's menu fades the menu and the blur behind it out together, instead of
+    // both vanishing in one frame; opening keeps the menu's own spring.
+    .animation(
+      .easeOut(duration: MessagesStyle.contextFadeDuration), value: messageContext.selection?.id)
     .animation(
       reduceMotion ? nil : MessagesStyle.messageFollowAnimation, value: composer.reply != nil
     )
@@ -311,7 +324,9 @@ struct NessaThreadView: View {
   ) {
     layoutClock.followUntil =
       animated ? Date().addingTimeInterval(MessagesStyle.followSettleTime) : .distantPast
-    withAnimation(animated ? animation : nil) { position.scrollTo(edge: .bottom) }
+    withAnimation(animated ? animation : nil) {
+      position.scrollTo(id: Self.bottomMarker, anchor: .bottom)
+    }
   }
 
   nonisolated private static func typingSlot(_ turn: String, _ reply: Int) -> String {

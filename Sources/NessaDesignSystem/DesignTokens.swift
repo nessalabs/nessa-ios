@@ -54,6 +54,12 @@ public enum NessaColor {
 }
 
 /// nessa_ui's motion tokens (`--nessa-motion-*`) plus the springs the phone uses for touch.
+///
+/// Every duration sits in one band of the motion guide and stays under 300 ms:
+/// micro-interactions 100–150 ms, standard UI 150–250 ms, sheets and drawers 200–300 ms,
+/// page transitions 300–400 ms (left to the system's navigation). How often a motion is seen
+/// decides its weight: what happens many times a day (a press, a sent message, a selection)
+/// is short and nearly flat; only rare moments (a first empty inbox) get anything playful.
 public enum NessaMotion {
   public static let normal: Double = 0.2
   public static let slow: Double = 0.3
@@ -69,12 +75,13 @@ public enum NessaMotion {
     .timingCurve(0.4, 0, 0.2, 1, duration: duration)
   }
 
-  /// A finger going down and coming back up: quick, with a little give.
-  public static let press = Animation.spring(duration: 0.24, bounce: 0.3)
-  /// Something arriving on screen.
-  public static let enter = Animation.spring(duration: 0.42, bounce: 0.18)
-  /// Something changing shape or swapping in place.
-  public static let morph = Animation.spring(duration: 0.34, bounce: 0.22)
+  /// A finger going down and coming back up. A micro-interaction seen constantly, so short
+  /// and barely springy.
+  public static let press = Animation.spring(duration: 0.12, bounce: 0.15)
+  /// Something arriving on screen: standard UI.
+  public static let enter = Animation.spring(duration: 0.25, bounce: 0.1)
+  /// Something changing shape or swapping in place: standard UI.
+  public static let morph = Animation.spring(duration: 0.22, bounce: 0.12)
   /// How far a pressed control sinks.
   public static let pressScale: CGFloat = 0.94
   /// How far a disabled control dims.

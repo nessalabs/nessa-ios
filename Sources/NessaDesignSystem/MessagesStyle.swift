@@ -60,9 +60,9 @@ public enum MessagesStyle {
   public static let reactionClearance: CGFloat = 42
   public static let contextPopScale: CGFloat = 0.88
   public static let contextActionScale: CGFloat = 0.96
-  public static let contextSpringDuration: Double = 0.3
+  public static let contextSpringDuration: Double = 0.25
   public static let contextSpringBounce: Double = 0.16
-  public static let contextFadeDuration: Double = 0.16
+  public static let contextFadeDuration: Double = 0.15
   public static let tapbackMoreCircle: CGFloat = 40
   public static let tapbackMoreTrail: CGFloat = 6
   public static let tapbackMoreDot: CGFloat = 3
@@ -97,7 +97,7 @@ public enum MessagesStyle {
   }
   /// The text of a growing reply fades in once its bubble is mostly open, so no line shows
   /// outside the fill while the fill is still small.
-  public static let replyTextReveal = Animation.easeOut(duration: 0.16).delay(0.2)
+  public static let replyTextReveal = Animation.easeOut(duration: 0.12).delay(0.14)
   public static let typingBubbleHorizontalInset: CGFloat = 14
   public static let typingBubbleVerticalInset: CGFloat = 13
   public static let typingTailLarge: CGFloat = 12
@@ -138,7 +138,7 @@ public enum MessagesStyle {
   public static let selectionTick = Font.system(size: 11, weight: .bold)
   /// A chosen mark grows from this scale on `selectionPop`.
   public static let selectionPopScale: CGFloat = 0.6
-  public static let selectionPop = Animation.spring(duration: 0.26, bounce: 0.35)
+  public static let selectionPop = Animation.spring(duration: 0.14, bounce: 0.2)
   /// A selected row is lifted this faintly off the ground.
   public static let selectedRowFill = NessaColor.foreground.opacity(0.05)
   public static let selectedRowRadius: CGFloat = 14
@@ -179,7 +179,8 @@ public enum MessagesStyle {
   public static let controlHeight: CGFloat = 44
   public static let jumpToLatestSize: CGFloat = 36
   public static let jumpToLatestIcon = Font.system(size: 16, weight: .semibold)
-  public static let jumpToLatestAnimation = NessaMotion.emphasized(0.36)
+  /// The same spring as the thread's own follow, so a jump and a follow move alike.
+  public static let jumpToLatestAnimation = Animation.spring(duration: 0.25, bounce: 0)
   public static let composerHeight: CGFloat = 46
   public static let composerRadius: CGFloat = 23
   public static let replyBackgroundBlur: CGFloat = 14
@@ -200,14 +201,14 @@ public enum MessagesStyle {
   /// A reply grows out of where the typing dots were, from its own tail corner.
   public static let replyEntranceDistance: CGFloat = 6
   public static let replyEntranceScale: CGFloat = 0.8
-  /// One spring for the bubble and for the scroll that follows it, so the two move as one:
-  /// quick off the mark, a visible but short overshoot, settled in under half a second.
-  public static let bubbleEntranceAnimation = Animation.spring(duration: 0.45, bounce: 0.3)
+  /// One spring for the bubble and for the scroll that follows it, so the two move as one.
+  /// Messages arrive many times a day, so it is short with only a hint of overshoot.
+  public static let bubbleEntranceAnimation = Animation.spring(duration: 0.25, bounce: 0.15)
   /// The fade finishes early so the overshoot happens on a solid bubble.
-  public static let bubbleFadeAnimation = Animation.easeOut(duration: 0.14)
+  public static let bubbleFadeAnimation = Animation.easeOut(duration: 0.1)
   /// The list follows on the same timing without the overshoot, so the bubble bounces and
   /// the list doesn't.
-  public static let messageFollowAnimation = Animation.spring(duration: 0.45, bounce: 0)
+  public static let messageFollowAnimation = Animation.spring(duration: 0.25, bounce: 0)
   public static var bubbleRemoval: AnyTransition { .opacity.combined(with: .scale(scale: 0.9)) }
   /// The typing bubble grows in like a reply and gets out of the way fast when the reply
   /// lands, so the reply reads as taking its place rather than crossing over it.
