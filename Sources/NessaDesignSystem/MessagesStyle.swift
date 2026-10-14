@@ -150,7 +150,7 @@ public enum MessagesStyle {
   public static let swapScale: CGFloat = 0.5
   /// The selection bar and the delete slide it turns into: a touch taller than the composer,
   /// so the slide's knob has room.
-  public static let selectionBarHeight: CGFloat = 49
+  public static let selectionBarHeight: CGFloat = 54
   /// The trash knob's inset at the bar's end, matching the slide's knob inside its track.
   public static let selectionKnobInset: CGFloat = 4
   public static let sendPressScale: CGFloat = 0.86
