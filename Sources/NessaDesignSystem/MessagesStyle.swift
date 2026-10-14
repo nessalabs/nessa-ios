@@ -179,7 +179,7 @@ public enum MessagesStyle {
   public static let controlHeight: CGFloat = 44
   public static let jumpToLatestSize: CGFloat = 36
   public static let jumpToLatestIcon = Font.system(size: 16, weight: .semibold)
-  public static let jumpToLatestAnimation = NessaMotion.emphasized(0.3)
+  public static let jumpToLatestAnimation = NessaMotion.emphasized(0.25)
   public static let composerHeight: CGFloat = 46
   public static let composerRadius: CGFloat = 23
   public static let replyBackgroundBlur: CGFloat = 14
