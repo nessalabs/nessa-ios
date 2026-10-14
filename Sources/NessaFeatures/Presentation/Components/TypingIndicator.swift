@@ -4,10 +4,9 @@ import SwiftUI
 struct TypingIndicator: View {
   var body: some View {
     HStack {
-      MessagesTypingDots().padding(MessagesStyle.bubbleInset)
-        .background(
-          MessagesStyle.incoming,
-          in: RoundedRectangle(cornerRadius: MessagesStyle.bubbleRadius, style: .continuous))
+      MessagesTypingDots().padding(.horizontal, MessagesStyle.bubbleHorizontalInset)
+        .padding(.vertical, MessagesStyle.bubbleInset)
+        .messageBubbleSurface(outgoing: false)
       Spacer()
     }.accessibilityElement(children: .ignore).accessibilityLabel("Agent is typing")
   }

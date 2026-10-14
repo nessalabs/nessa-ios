@@ -17,7 +17,7 @@ struct NessaConnectionView: View {
             Button("Disconnect") { Task { await store.manualDisconnect() } }
               .font(MessagesStyle.title)
               .frame(maxWidth: .infinity, minHeight: MessagesStyle.controlHeight)
-              .messagesGlass().buttonStyle(.plain)
+              .messagesGlass().buttonStyle(.nessaPress)
           }.listRowBackground(Color.clear).listRowInsets(EdgeInsets())
         } else if store.hasSavedConnection {
           connectionStatus("Disconnected")
@@ -27,7 +27,7 @@ struct NessaConnectionView: View {
             }.disabled(store.busy || store.phoneSetupBusy)
               .font(MessagesStyle.title)
               .frame(maxWidth: .infinity, minHeight: MessagesStyle.controlHeight)
-              .messagesGlass().buttonStyle(.plain)
+              .messagesGlass().buttonStyle(.nessaPress)
           }.listRowBackground(Color.clear).listRowInsets(EdgeInsets())
           if let error = store.error ?? store.phoneSyncError {
             Section { Text(error).font(MessagesStyle.caption) }
@@ -51,6 +51,7 @@ struct NessaConnectionView: View {
           }
         }
       }.scrollDismissesKeyboard(.interactively).navigationTitle("Connection")
+        .scrollContentBackground(.hidden).messagesAmbientGround()
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         .onAppear { draftAddress = store.currentGatewayAddress ?? address }
     }

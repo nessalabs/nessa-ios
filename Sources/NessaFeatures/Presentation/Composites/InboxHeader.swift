@@ -11,9 +11,11 @@ struct InboxHeader: View {
     HStack {
       Button(editing ? "Done" : "Edit", action: onEdit).font(MessagesStyle.body)
         .padding(.horizontal, NessaSpacing.md).frame(height: MessagesStyle.controlHeight)
-        .messagesGlass()
+        .messagesGlass().buttonStyle(.nessaPress)
       Spacer()
       Text(showingArchived ? "Archived" : "Messages").font(MessagesStyle.title)
+        .contentTransition(.opacity)
+        .animation(NessaMotion.standard(), value: showingArchived)
       Spacer()
       Menu {
         Button(

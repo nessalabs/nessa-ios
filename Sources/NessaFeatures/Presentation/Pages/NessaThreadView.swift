@@ -29,6 +29,7 @@ struct NessaThreadView: View {
     store.views[conversationID]
   }
   private var name: String { store.agentName(for: conversationID) }
+  private var working: Bool { current?.messages.contains { $0.status == "running" } == true }
   // Content edits keep their identity, so streamed text doesn't replay the entrance.
   private var messageStructure: [String] {
     (current?.messages ?? []).flatMap { turn in
@@ -82,7 +83,9 @@ struct NessaThreadView: View {
             Text(error).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
           }
           Color.clear.frame(height: 1).id("bottom")
-            .onScrollVisibilityChange { bottomVisible = $0 }
+            .onScrollVisibilityChange { visible in
+              withAnimation(reduceMotion ? nil : NessaMotion.morph) { bottomVisible = visible }
+            }
         }
         .animation(
           animateMessages ? MessagesStyle.bubbleEntranceAnimation : nil,
@@ -123,7 +126,7 @@ struct NessaThreadView: View {
                     }
                   }
                 }.padding(.horizontal, MessagesStyle.horizontal)
-                  .transition(.opacity)
+                  .transition(.scale(scale: 0.6, anchor: .trailing).combined(with: .opacity))
               }
               MessageComposer(
                 draft: $composer.text, reply: $composer.reply, attachments: $composer.attachments,
@@ -133,14 +136,15 @@ struct NessaThreadView: View {
                 attachmentPolicy: store.attachmentPolicy,
                 submissionAllowed: store.canSubmit(in: conversationID),
                 submissionUnavailableReason: store.submissionUnavailableReason(in: conversationID),
-                autoFocus: autoFocusComposer, onSend: send)
+                autoFocus: autoFocusComposer, working: working, onSend: send)
             }
           }
         }
     }
-    .background(MessagesStyle.background)
+    .messagesAmbientGround()
     .messagesBar(edge: .top) {
-      ThreadHeader(name: name, onBack: { dismiss() }, onDetails: { details = true })
+      ThreadHeader(
+        name: name, onBack: { dismiss() }, onDetails: { details = true }, working: working)
         .messagesHeaderBlur(scrollOffset: scrollOffset)
     }
     .environment(\.messageContext, messageContext)

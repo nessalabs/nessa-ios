@@ -83,16 +83,27 @@ public enum MessagesStyle {
   public static let photoRadius: CGFloat = 20
   public static let headerBlurDistance: CGFloat = 24
   public static let headerBlurOpacity: Double = 0.9
-  public static let background = Color.black
-  public static let danger = Color(hex: 0xFF453A)
-  public static let incoming = Color(hex: 0x262628)
-  public static let outgoing = Color(hex: 0x007AFF)
-  public static let secondary = Color(hex: 0x8E8E93)
-  public static let separator = Color(hex: 0x303033)
-  public static let foreground = Color.white
-  public static let avatarTop = Color(hex: 0xFF7580)
-  public static let avatarBottom = Color(hex: 0xE51E2A)
-  public static let control = Color(hex: 0x252527)
+  public static let background = NessaColor.background
+  public static let danger = NessaColor.destructive
+  public static let incoming = NessaColor.card
+  public static let incomingBorder = NessaColor.hairline
+  public static let outgoing = NessaColor.accent
+  /// The sent bubble lit from above: the accent settling into a deeper step at its foot.
+  public static let outgoingFill = LinearGradient(
+    colors: [NessaColor.accent, NessaColor.accentDeep], startPoint: .top, endPoint: .bottom)
+  public static let link = NessaColor.accentInk
+  public static let secondary = NessaColor.mutedForeground
+  public static let separator = NessaColor.muted
+  public static let foreground = NessaColor.foreground
+  public static let control = NessaColor.muted
+  /// How far the brand wash reaches down behind the inbox's header before it is gone.
+  public static let washHeight: CGFloat = 260
+  public static let washIntensity: Double = 0.32
+  public static let emptyWashSize: CGFloat = 220
+  public static let emptyAvatar: CGFloat = 96
+  public static let largeTitle = Font.system(size: 34, weight: .bold)
+  public static let emptyTitle = Font.system(size: 22, weight: .semibold)
+  public static let unreadDot: CGFloat = 10
   public static let body = Font.system(size: 17)
   public static let detailsTitle = Font.system(size: 28, weight: .bold)
   public static let headerName = Font.system(size: 15, weight: .semibold)
@@ -100,8 +111,6 @@ public enum MessagesStyle {
   public static let preview = Font.system(size: 15)
   public static let caption = Font.system(size: 12)
   public static let pinLabel = Font.system(size: 12)
-  public static let initial = Font.system(size: 48, weight: .regular, design: .serif)
-  public static let avatarInitial = Font.system(size: 22, weight: .medium)
   public static let icon = Font.system(size: 21, weight: .regular)
   public static let pinControlSize: CGFloat = 32
   public static let pinControlIcon = Font.system(size: 15, weight: .semibold)
@@ -118,7 +127,7 @@ public enum MessagesStyle {
   public static let controlHeight: CGFloat = 44
   public static let jumpToLatestSize: CGFloat = 36
   public static let jumpToLatestIcon = Font.system(size: 16, weight: .semibold)
-  public static let jumpToLatestAnimation = Animation.easeInOut(duration: 0.3)
+  public static let jumpToLatestAnimation = NessaMotion.emphasized(0.36)
   public static let composerHeight: CGFloat = 46
   public static let composerRadius: CGFloat = 23
   public static let replyBackgroundBlur: CGFloat = 14
@@ -132,10 +141,10 @@ public enum MessagesStyle {
   public static let bubbleInset: CGFloat = 12
   public static let bubbleHorizontalInset: CGFloat = 16
   public static let bubbleSpacing: CGFloat = 8
-  public static let bubbleEntranceDistance: CGFloat = 8
-  public static let bubbleEntranceScale: CGFloat = 0.98
-  public static let bubbleEntranceAnimation = Animation.spring(duration: 0.32, bounce: 0.04)
-  public static let messageFollowAnimation = Animation.easeOut(duration: 0.20)
+  public static let bubbleEntranceDistance: CGFloat = 14
+  public static let bubbleEntranceScale: CGFloat = 0.9
+  public static let bubbleEntranceAnimation = Animation.spring(duration: 0.4, bounce: 0.2)
+  public static let messageFollowAnimation = NessaMotion.standard(NessaMotion.slow)
   public static var messageInsertion: AnyTransition {
     .asymmetric(
       insertion: .opacity.combined(with: .offset(y: bubbleEntranceDistance)),
@@ -239,4 +248,45 @@ extension View {
 
   public func messagesGlass() -> some View { modifier(MessagesGlass()) }
   public func messagesComposerSurface() -> some View { modifier(MessagesComposerSurface()) }
+}
+
+/// A message bubble's fill: the sent bubble in the lit accent, the received one a raised
+/// card with a hairline so it holds its edge on the near-black ground.
+public struct MessageBubbleSurface: ViewModifier {
+  let outgoing: Bool
+  public func body(content: Content) -> some View {
+    let shape = RoundedRectangle(cornerRadius: MessagesStyle.bubbleRadius, style: .continuous)
+    if outgoing {
+      content.background(MessagesStyle.outgoingFill, in: shape)
+    } else {
+      content.background(MessagesStyle.incoming, in: shape)
+        .overlay(shape.strokeBorder(MessagesStyle.incomingBorder, lineWidth: 0.5))
+    }
+  }
+}
+
+extension View {
+  public func messageBubbleSurface(outgoing: Bool) -> some View {
+    modifier(MessageBubbleSurface(outgoing: outgoing))
+  }
+}
+
+/// The near-black ground with the brand wash glowing faintly down from the top edge,
+/// mostly behind the header so it never sits under running text.
+public struct MessagesAmbientGround: ViewModifier {
+  public func body(content: Content) -> some View {
+    content.background {
+      MessagesStyle.background
+        .overlay(alignment: .top) {
+          NessaWash(intensity: MessagesStyle.washIntensity)
+            .frame(height: MessagesStyle.washHeight)
+            .offset(y: -MessagesStyle.washHeight * 0.45)
+        }
+        .ignoresSafeArea()
+    }
+  }
+}
+
+extension View {
+  public func messagesAmbientGround() -> some View { modifier(MessagesAmbientGround()) }
 }

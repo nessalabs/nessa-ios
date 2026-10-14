@@ -6,7 +6,7 @@ struct ConversationRow: View {
   let agentName: String
   var body: some View {
     HStack(alignment: .center, spacing: NessaSpacing.sm) {
-      AgentAvatar(name: agentName, size: MessagesStyle.rowAvatar)
+      AgentAvatar(name: agentName, size: MessagesStyle.rowAvatar, working: conversation.running)
       VStack(alignment: .leading, spacing: NessaSpacing.xxs) {
         HStack(spacing: NessaSpacing.xxs) {
           Text(conversation.title ?? agentName).font(MessagesStyle.title).lineLimit(1)
@@ -19,11 +19,12 @@ struct ConversationRow: View {
         Text(
           conversation.running ? "Nessa is working…" : conversation.preview ?? "New conversation"
         )
-        .font(MessagesStyle.preview).foregroundStyle(MessagesStyle.secondary)
+        .font(MessagesStyle.preview).nessaShimmer(active: conversation.running)
+        .contentTransition(.opacity)
         .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
       }.frame(minHeight: MessagesStyle.rowHeight, alignment: .leading)
         .overlay(alignment: .bottom) {
-          Rectangle().fill(MessagesStyle.separator).frame(height: 0.5)
+          Rectangle().fill(MessagesStyle.incomingBorder).frame(height: 0.5)
         }
     }.foregroundStyle(MessagesStyle.foreground)
   }

@@ -33,7 +33,7 @@ public struct MessagesTypingDots: View {
                 - Double(index) * MessagesStyle.typingWavePhase)
           } ?? 0
         let lift = (wave + 1) / 2
-        Circle().fill(MessagesStyle.secondary)
+        Circle().fill(NessaColor.thinking[index % NessaColor.thinking.count])
           .frame(width: MessagesStyle.typingDotSize, height: MessagesStyle.typingDotSize)
           .scaleEffect(
             date == nil
