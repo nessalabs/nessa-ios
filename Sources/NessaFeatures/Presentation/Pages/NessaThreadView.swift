@@ -26,6 +26,8 @@ struct NessaThreadView: View {
   /// Until the reader scrolls away from the newest message, the thread stays pinned there
   /// as late layout (photos, the composer's height, streamed text) grows the content.
   @State private var readerScrolled = false
+  /// Scrolls that settle before this were started by layout, not by the reader.
+  @State private var layoutSettlesAt = Date.distantPast
   nonisolated private static func scrollRange(_ geometry: ScrollGeometry) -> CGFloat {
     geometry.contentSize.height + geometry.contentInsets.bottom - geometry.containerSize.height
   }
@@ -113,17 +115,26 @@ struct NessaThreadView: View {
         .onScrollPhaseChange { _, phase, context in
           // Only the reader's own scrolls decide it: a drag releases the pin at once, and
           // any scroll that comes to rest (a drag, a status-bar tap, VoiceOver) settles it
-          // by where it stopped. Layout growing the content never runs a scroll phase.
+          // by where it stopped. The system's own scroll after a layout change (the
+          // keyboard rising) is not the reader's, so it re-pins instead of releasing.
           if phase == .interacting {
             readerScrolled = true
           } else if phase == .idle {
-            readerScrolled =
+            let away =
               Self.scrollRange(context.geometry) - context.geometry.contentOffset.y
               > MessagesStyle.followDistance
+            if Date() < layoutSettlesAt {
+              if !readerScrolled && away && composer.reply == nil {
+                position.scrollTo(edge: .bottom)
+              }
+            } else {
+              readerScrolled = away
+            }
           }
         }
         .onScrollGeometryChange(for: CGFloat.self, of: Self.scrollRange) { _, _ in
           // Content or container grew under the reader: keep the newest message in place.
+          layoutSettlesAt = Date().addingTimeInterval(MessagesStyle.layoutSettleWindow)
           if !readerScrolled && composer.reply == nil { position.scrollTo(edge: .bottom) }
         }
         .onChange(of: current != nil, initial: true) { _, loaded in

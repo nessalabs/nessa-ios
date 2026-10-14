@@ -67,6 +67,8 @@ public enum MessagesStyle {
   public static let tapbackMoreTrail: CGFloat = 6
   public static let tapbackMoreDot: CGFloat = 3
   public static let followDistance: CGFloat = 100
+  /// How long after a layout change a scroll coming to rest is still the system's.
+  public static let layoutSettleWindow: TimeInterval = 0.6
   public static let typingDotSize: CGFloat = 8
   public static let typingWaveAmplitude: CGFloat = 3.5
   public static let typingWavePeriod: TimeInterval = 1.3
