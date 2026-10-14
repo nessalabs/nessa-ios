@@ -55,15 +55,22 @@ struct MessagesInboxView: View {
           } label: {
             HStack(spacing: NessaSpacing.sm) {
               if editing {
-                Image(
-                  systemName: selected.contains(conversation.id)
-                    ? "checkmark.circle.fill" : "circle"
-                )
-                .font(MessagesStyle.icon).foregroundStyle(MessagesStyle.outgoing)
+                NessaSelectionMark(selected: selected.contains(conversation.id))
+                  .transition(.move(edge: .leading).combined(with: .opacity))
               }
               ConversationRow(
                 conversation: conversation, agentName: store.agentName(for: conversation.id))
-            }.contentShape(Rectangle())
+            }
+            .background {
+              RoundedRectangle(cornerRadius: MessagesStyle.selectedRowRadius, style: .continuous)
+                .fill(
+                  editing && selected.contains(conversation.id)
+                    ? MessagesStyle.selectedRowFill : .clear
+                )
+                .padding(.horizontal, -NessaSpacing.xs)
+                .animation(reduceMotion ? nil : NessaMotion.standard(), value: selected)
+            }
+            .contentShape(Rectangle())
           }.buttonStyle(.plain)
             .disabled(deleting)
             .accessibilityLabel(
@@ -121,8 +128,11 @@ struct MessagesInboxView: View {
         InboxHeader(
           editing: editing,
           onEdit: {
-            editing.toggle()
-            selected = []
+            // The marks slide in from the edge as the rows make room, on one spring.
+            withAnimation(reduceMotion ? nil : NessaMotion.enter) {
+              editing.toggle()
+              selected = []
+            }
           }, onSettings: onSettings, showingArchived: showingArchived,
           onToggleArchived: {
             showingArchived.toggle()
@@ -137,13 +147,21 @@ struct MessagesInboxView: View {
         if editing {
           HStack {
             Text("\(selected.count) selected").font(MessagesStyle.body)
+              .foregroundStyle(MessagesStyle.secondary)
+              .contentTransition(.numericText(value: Double(selected.count)))
+              .animation(reduceMotion ? nil : NessaMotion.morph, value: selected.count)
             Spacer()
             Button(role: .destructive) {
               pendingDeletion = selected
             } label: {
-              Label("Delete", systemImage: "trash")
+              // Only the icon carries the red, so the bar stays as quiet as the list.
+              Label {
+                Text("Delete").foregroundStyle(MessagesStyle.foreground)
+              } icon: {
+                Image(systemName: "trash").foregroundStyle(MessagesStyle.danger)
+              }
             }
-            .font(MessagesStyle.title).foregroundStyle(MessagesStyle.danger)
+            .font(MessagesStyle.title).buttonStyle(.nessaPress)
             .disabled(selected.isEmpty || deleting || !store.connected)
           }.padding(.horizontal, NessaSpacing.lg).frame(height: MessagesStyle.composerHeight)
             .messagesComposerSurface()

@@ -129,6 +129,17 @@ public enum MessagesStyle {
   public static let ditherHeight: CGFloat = 150
   public static let emptyAvatar: CGFloat = 56
   public static let rowSeparator = NessaColor.hairline
+  /// The multi-select mark: a grey ring at rest, a white disc with a dark tick when chosen.
+  public static let selectionMark: CGFloat = 22
+  public static let selectionRingWidth: CGFloat = 1.5
+  public static let selectionRingOpacity: Double = 0.28
+  public static let selectionTick = Font.system(size: 11, weight: .bold)
+  /// A chosen mark grows from this scale on `selectionPop`.
+  public static let selectionPopScale: CGFloat = 0.6
+  public static let selectionPop = Animation.spring(duration: 0.26, bounce: 0.35)
+  /// A selected row is lifted this faintly off the ground.
+  public static let selectedRowFill = NessaColor.foreground.opacity(0.05)
+  public static let selectedRowRadius: CGFloat = 14
   /// A control swapping in place grows from this scale.
   public static let swapScale: CGFloat = 0.5
   public static let sendPressScale: CGFloat = 0.86
