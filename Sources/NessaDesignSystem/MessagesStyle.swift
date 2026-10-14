@@ -63,6 +63,11 @@ public enum MessagesStyle {
   public static let contextSpringDuration: Double = 0.25
   public static let contextSpringBounce: Double = 0.16
   public static let contextFadeDuration: Double = 0.15
+  /// A message too near an edge for its menu first glides to where the menu has room; the
+  /// palette and menu open only once it is there.
+  public static let contextShiftAnimation = Animation.spring(duration: 0.2, bounce: 0)
+  /// A move shorter than this happens with the menu's own spring rather than before it.
+  public static let contextShiftThreshold: CGFloat = 2
   public static let tapbackMoreCircle: CGFloat = 40
   public static let tapbackMoreTrail: CGFloat = 6
   public static let tapbackMoreDot: CGFloat = 3

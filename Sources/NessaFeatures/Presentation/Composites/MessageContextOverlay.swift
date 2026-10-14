@@ -127,6 +127,9 @@ private struct MessageContextStage<Palette: View, Actions: View, Selector: View>
   let selector: Selector
   let dismiss: () -> Void
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  /// The preview has reached its resting place; the dim follows it.
+  @State private var settled = false
+  /// The palette and menu are open.
   @State private var revealed = false
   var body: some View {
     ZStack {
@@ -165,12 +168,13 @@ private struct MessageContextStage<Palette: View, Actions: View, Selector: View>
         selected.outgoing
         ? geometry.size.width - inset - MessagesStyle.actionMenuWidth / 2
         : inset + MessagesStyle.actionMenuWidth / 2
-      MessagesStyle.background.opacity(revealed ? MessagesStyle.messageContextDim : 0)
+      let shift = abs(top - originalTop)
+      MessagesStyle.background.opacity(settled ? MessagesStyle.messageContextDim : 0)
         .contentShape(Rectangle()).onTapGesture { dismiss() }
       selected.image.resizable()
         .frame(width: width, height: selected.imageSize.height * width / selected.imageSize.width)
         .frame(width: width, height: height, alignment: .top).clipped()
-        .position(x: x, y: revealed || reduceMotion ? top + height / 2 : originalTop + height / 2)
+        .position(x: x, y: settled || reduceMotion ? top + height / 2 : originalTop + height / 2)
         .allowsHitTesting(false)
       palette.frame(width: paletteWidth, height: MessagesStyle.reactionPaletteHeight)
         .scaleEffect(revealed || reduceMotion ? 1 : MessagesStyle.contextPopScale, anchor: .bottom)
@@ -201,16 +205,31 @@ private struct MessageContextStage<Palette: View, Actions: View, Selector: View>
           .opacity(revealed ? 1 : 0)
           .position(x: menuX, y: top + height + NessaSpacing.md + menuHeight / 2)
       }
-    }.onAppear {
-      withAnimation(
-        reduceMotion
-          ? .easeOut(duration: MessagesStyle.contextFadeDuration)
-          : .spring(
-            duration: MessagesStyle.contextSpringDuration, bounce: MessagesStyle.contextSpringBounce
-          )
-      ) {
+      Color.clear.allowsHitTesting(false).onAppear {
+        open(shifting: !reduceMotion && shift > MessagesStyle.contextShiftThreshold)
+      }
+    }
+  }
+
+  /// A message near an edge glides to where its menu has room before the menu opens, so the
+  /// two never move at once; anywhere else the preview and menu open together.
+  private func open(shifting: Bool) {
+    let reveal: Animation =
+      reduceMotion
+      ? .easeOut(duration: MessagesStyle.contextFadeDuration)
+      : .spring(
+        duration: MessagesStyle.contextSpringDuration, bounce: MessagesStyle.contextSpringBounce)
+    guard shifting else {
+      withAnimation(reveal) {
+        settled = true
         revealed = true
       }
+      return
+    }
+    withAnimation(MessagesStyle.contextShiftAnimation, completionCriteria: .logicallyComplete) {
+      settled = true
+    } completion: {
+      withAnimation(reveal) { revealed = true }
     }
   }
 }
