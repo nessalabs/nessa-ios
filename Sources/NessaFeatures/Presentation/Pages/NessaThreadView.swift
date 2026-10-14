@@ -23,6 +23,9 @@ struct NessaThreadView: View {
   @StateObject private var composer = ComposerDraftViewModel()
   @State private var details = false
   @State private var hasLoadedHistory = false
+  /// Until the reader touches the scroll view, the thread stays pinned to its newest
+  /// message while late layout (photos, the composer's height) settles.
+  @State private var readerScrolled = false
   @Environment(\.dismiss) private var dismiss
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   private var current: NessaConversationView? {
@@ -103,6 +106,15 @@ struct NessaThreadView: View {
             < MessagesStyle.followDistance
         } action: { _, value in
           nearBottom = value
+        }
+        .onScrollPhaseChange { _, phase in
+          if phase == .interacting { readerScrolled = true }
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+          geometry.contentSize.height + geometry.contentInsets.bottom
+            - geometry.containerSize.height
+        } action: { _, _ in
+          if !readerScrolled { position.scrollTo(edge: .bottom) }
         }
         .onChange(of: current != nil, initial: true) { _, loaded in
           hasLoadedHistory = loaded

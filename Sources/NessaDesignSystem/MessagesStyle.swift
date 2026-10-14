@@ -97,7 +97,7 @@ public enum MessagesStyle {
   public static let foreground = NessaColor.foreground
   public static let control = NessaColor.muted
   /// How far the brand wash reaches down behind the inbox's header before it is gone.
-  public static let washHeight: CGFloat = 260
+  public static let washHeight: CGFloat = 240
   public static let washIntensity: Double = 0.32
   public static let emptyWashSize: CGFloat = 220
   public static let emptyAvatar: CGFloat = 96
@@ -278,9 +278,14 @@ public struct MessagesAmbientGround: ViewModifier {
     content.background {
       MessagesStyle.background
         .overlay(alignment: .top) {
+          // Faded out by a mask rather than cut by the canvas edge, so it ends nowhere.
           NessaWash(intensity: MessagesStyle.washIntensity)
             .frame(height: MessagesStyle.washHeight)
-            .offset(y: -MessagesStyle.washHeight * 0.45)
+            .mask(
+              LinearGradient(
+                stops: [.init(color: .black, location: 0), .init(color: .clear, location: 1)],
+                startPoint: .top, endPoint: .bottom))
+            .offset(y: -MessagesStyle.washHeight * 0.3)
         }
         .ignoresSafeArea()
     }
