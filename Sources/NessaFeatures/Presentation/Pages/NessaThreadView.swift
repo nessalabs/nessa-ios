@@ -61,7 +61,7 @@ struct NessaThreadView: View {
   var body: some View {
     let animateMessages = hasLoadedHistory && !reduceMotion
     let replies = store.replyProjection(in: conversationID)
-    Group {
+    ScrollViewReader { proxy in
       ScrollView {
         LazyVStack(spacing: MessagesStyle.groupSpacing) {
           if current?.messages.isEmpty == true {
@@ -195,7 +195,7 @@ struct NessaThreadView: View {
             if readerScrolled && awayFromLatest {
               MessagesJumpToLatest {
                 readerScrolled = false
-                follow(animated: !reduceMotion, animation: MessagesStyle.jumpToLatestAnimation)
+                jump(proxy)
               }
               .transition(
                 .scale(scale: MessagesStyle.swapScale, anchor: .trailing)
@@ -324,6 +324,17 @@ struct NessaThreadView: View {
       animated ? Date().addingTimeInterval(MessagesStyle.followSettleTime) : .distantPast
     withAnimation(animated ? animation : nil) {
       position.scrollTo(id: Self.bottomMarker, anchor: .bottom)
+    }
+  }
+
+  /// The reader's jump back to the newest message. The scroll position lands it in a single
+  /// frame from a reader-scrolled offset however it is animated; the reader's proxy animates.
+  private func jump(_ proxy: ScrollViewProxy) {
+    let animated = !reduceMotion
+    layoutClock.followUntil =
+      animated ? Date().addingTimeInterval(MessagesStyle.followSettleTime) : .distantPast
+    withAnimation(animated ? MessagesStyle.jumpToLatestAnimation : nil) {
+      proxy.scrollTo(Self.bottomMarker, anchor: .bottom)
     }
   }
 
