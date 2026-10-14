@@ -95,7 +95,9 @@ private struct NessaDitherFill: View, Animatable {
   var progress: CGFloat
   let travel: CGFloat
   let tint: Color
-  var animatableData: CGFloat {
+  // Animatable's requirement is nonisolated while View is main-actor; a CGFloat is safe to
+  // hand across.
+  nonisolated var animatableData: CGFloat {
     get { progress }
     set { progress = newValue }
   }
