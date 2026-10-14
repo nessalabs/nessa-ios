@@ -100,6 +100,9 @@ private struct ChatMenuModifier: ViewModifier {
   let onTap: () -> Void
   let onCommit: (String) -> Void
   let onDelete: (String) -> Void
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  /// Pinning or archiving from the menu moves the inbox's list and grid on one spring.
+  private var layoutAnimation: Animation? { reduceMotion ? nil : NessaMotion.enter }
   private func configurationSelection() -> ChatMenuSelection {
     .init(identifier: identifier, store: store)
   }
@@ -111,7 +114,8 @@ private struct ChatMenuModifier: ViewModifier {
           Button("Open conversation") {
             if selected.isCurrent(in: store), let id = selected.conversationID { onCommit(id) }
           }.disabled(selected.conversationID == nil)
-          ForEach(chatMenuActions(selection: selected, store: store, onDelete: onDelete)) {
+          ForEach(chatMenuActions(
+            selection: selected, store: store, layoutAnimation: layoutAnimation, onDelete: onDelete)) {
             action in
             Button(action.title, action: action.perform).disabled(!action.enabled)
           }
@@ -123,7 +127,8 @@ private struct ChatMenuModifier: ViewModifier {
             let selected = configurationSelection()
             return .init(
               preview: AnyView(ChatConversationPreview(store: store, selection: selected)),
-              actions: chatMenuActions(selection: selected, store: store, onDelete: onDelete),
+              actions: chatMenuActions(
+            selection: selected, store: store, layoutAnimation: layoutAnimation, onDelete: onDelete),
               prepare: {
                 Task {
                   if selected.isCurrent(in: store) { await store.loadPreview(selected.identifier) }
@@ -144,7 +149,8 @@ private struct ChatMenuModifier: ViewModifier {
           Button("Open conversation") {
             if selected.isCurrent(in: store), let id = selected.conversationID { onCommit(id) }
           }.disabled(selected.conversationID == nil)
-          ForEach(chatMenuActions(selection: selected, store: store, onDelete: onDelete)) {
+          ForEach(chatMenuActions(
+            selection: selected, store: store, layoutAnimation: layoutAnimation, onDelete: onDelete)) {
             action in
             Button(
               action.title, systemImage: action.symbol,

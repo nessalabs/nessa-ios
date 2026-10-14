@@ -92,7 +92,7 @@ struct MessagesInboxView: View {
                   store.isPinned(conversation.id) ? "Unpin" : "Pin",
                   systemImage: store.isPinned(conversation.id) ? "pin.slash.fill" : "pin.fill"
                 ) {
-                  store.togglePin(conversation.id)
+                  changeLayout { store.togglePin(conversation.id) }
                 }.tint(MessagesStyle.pinAction).disabled(!store.canTogglePin(conversation.id))
               }
             }
@@ -105,7 +105,9 @@ struct MessagesInboxView: View {
                 }.tint(MessagesStyle.danger).disabled(
                   !store.connected || !store.conversationAuthorityReady)
                 Button(showingArchived ? "Unarchive" : "Archive", systemImage: "archivebox") {
-                  store.setArchived(!showingArchived, conversationID: conversation.id)
+                  changeLayout {
+                    store.setArchived(!showingArchived, conversationID: conversation.id)
+                  }
                 }.tint(MessagesStyle.archiveAction)
               }
             }
@@ -122,10 +124,6 @@ struct MessagesInboxView: View {
     }.listStyle(.plain).scrollContentBackground(.hidden)
       .environment(\.defaultMinListRowHeight, 0)
       .messagesTrackScroll(offset: $scrollOffset)
-      // One key for the whole layout. A pin moves a chat out of the list and into the grid
-      // (and can make the grid appear), so both halves move on the same spring; keyed on the
-      // list alone, the grid popped in unanimated and shoved the rows under it.
-      .animation(reduceMotion ? nil : NessaMotion.enter, value: layout)
       .sensoryFeedback(.impact(flexibility: .soft), trigger: store.pinnedChats)
       .messagesAmbientGround()
       .messagesScrollEdges()
@@ -227,7 +225,13 @@ struct MessagesInboxView: View {
     guard !editing && !showingArchived && search.isEmpty else { return [] }
     return store.pinnedChats.filter { !store.isDeleting($0) }
   }
-  private var layout: [String] { pinnedShown.map { "pin:" + $0 } + filtered.map(\.id) }
+  /// Moves the list and the pinned grid on one spring, from the change itself. The list
+  /// carries no implicit animation of its own: an `.animation` on a List mixes SwiftUI's
+  /// animation into the collection view's own row updates, and a row inserted while the grid
+  /// resizes could be left drawn over its neighbour.
+  private func changeLayout(_ change: () -> Void) {
+    withAnimation(reduceMotion ? nil : NessaMotion.enter, change)
+  }
   private var filtered: [NessaConversation] {
     store.visibleConversations.filter {
       (store.archivedChats.contains($0.id) == showingArchived)
