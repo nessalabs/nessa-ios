@@ -23,12 +23,11 @@ struct NessaThreadView: View {
   @StateObject private var composer = ComposerDraftViewModel()
   @State private var details = false
   @State private var hasLoadedHistory = false
-  /// While the reader is at the newest message, the thread stays pinned there as late
-  /// layout (photos, the composer's height, streamed text) grows the content.
+  /// Until the reader scrolls away from the newest message, the thread stays pinned there
+  /// as late layout (photos, the composer's height, streamed text) grows the content.
   @State private var readerScrolled = false
-  private struct ScrollExtent: Equatable {
-    var range: CGFloat
-    var offset: CGFloat
+  nonisolated private static func scrollRange(_ geometry: ScrollGeometry) -> CGFloat {
+    geometry.contentSize.height + geometry.contentInsets.bottom - geometry.containerSize.height
   }
   @Environment(\.dismiss) private var dismiss
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -111,19 +110,21 @@ struct NessaThreadView: View {
         } action: { _, value in
           nearBottom = value
         }
-        .onScrollGeometryChange(for: ScrollExtent.self) { geometry in
-          ScrollExtent(
-            range: geometry.contentSize.height + geometry.contentInsets.bottom
-              - geometry.containerSize.height,
-            offset: geometry.contentOffset.y)
-        } action: { old, new in
-          if new.range != old.range {
-            // Content or container grew under the reader: keep the newest message in place.
-            if !readerScrolled && composer.reply == nil { position.scrollTo(edge: .bottom) }
-          } else {
-            // Any scroll, by drag, status-bar tap or assistive technology, decides it.
-            readerScrolled = new.range - new.offset > MessagesStyle.followDistance
+        .onScrollPhaseChange { _, phase, context in
+          // Only the reader's own scrolls decide it: a drag releases the pin at once, and
+          // any scroll that comes to rest (a drag, a status-bar tap, VoiceOver) settles it
+          // by where it stopped. Layout growing the content never runs a scroll phase.
+          if phase == .interacting {
+            readerScrolled = true
+          } else if phase == .idle {
+            readerScrolled =
+              Self.scrollRange(context.geometry) - context.geometry.contentOffset.y
+              > MessagesStyle.followDistance
           }
+        }
+        .onScrollGeometryChange(for: CGFloat.self, of: Self.scrollRange) { _, _ in
+          // Content or container grew under the reader: keep the newest message in place.
+          if !readerScrolled && composer.reply == nil { position.scrollTo(edge: .bottom) }
         }
         .onChange(of: current != nil, initial: true) { _, loaded in
           hasLoadedHistory = loaded
