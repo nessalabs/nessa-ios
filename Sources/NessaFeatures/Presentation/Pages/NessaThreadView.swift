@@ -254,8 +254,6 @@ struct NessaThreadView: View {
     // While a reply thread or a message's menu covers the screen, the bar's controls step
     // aside rather than the bar itself, so the layout under it never moves.
     .nessaInlineNavigationTitle()
-    // A bare chevron back, with no "Back" word beside it, as in Messages.
-    .toolbarRole(.editor)
     .navigationBarBackButtonHidden(overlayOpen)
     .toolbar {
       ToolbarItem(placement: .principal) {
