@@ -63,6 +63,9 @@ struct NessaThreadView: View {
     let replies = store.replyProjection(in: conversationID)
     Group {
       ScrollView {
+        // Eager, not lazy: a lazy stack guesses the height of rows off screen, so a scroll to
+        // the newest message landed in one frame and came to rest a few points off. The
+        // gateway sends at most the 24 most recent turns, so laying them all out is cheap.
         VStack(spacing: MessagesStyle.groupSpacing) {
           if current?.messages.isEmpty == true {
             Text("Message \(name) to get started.").font(MessagesStyle.caption).foregroundStyle(
@@ -124,9 +127,8 @@ struct NessaThreadView: View {
         .animation(reduceMotion ? nil : NessaMotion.standard()) {
           $0.opacity(current == nil ? 0 : 1)
         }
-        // The thread's last point, as a view the scroll position can move to. A scroll to the
-        // bottom edge lands in a single frame however it is animated; a scroll to a view
-        // animates.
+        // The thread's last point, as a view the scroll position can move to. On device a
+        // follow to the bottom edge stepped in single frames where a follow to a view eases.
         .overlay(alignment: .bottom) {
           Color.clear.frame(height: 0).id(Self.bottomMarker).accessibilityHidden(true)
         }
