@@ -111,7 +111,8 @@ private func fields(_ value: Any, path: String = "") -> [String: String] {
   for value: NativeAttemptState in [.pending, .failed, .claimed, .superseded] {
     #expect(NativeRetainedCapture.capture(value).rawValue == String(describing: value))
   }
-  for value: NativeConsentClass in [.deviceRead, .peerRead, .peerEnvironment] {
+  for value: NativeConsentClass in [.deviceRead, .peerRead, .peerEnvironment, .ownerPhoneReadWrite]
+  {
     #expect(NativeRetainedCapture.capture(value).rawValue == String(describing: value))
   }
   for value: NativeCryptoFailure in [
@@ -155,13 +156,15 @@ private func fields(_ value: Any, path: String = "") -> [String: String] {
     #expect(NativeRetainedCapture.capture(value).rawValue == String(describing: value))
   }
   for value: NativeReadFailure in [
-    .refused, .unreachable, .resetRequired, .`protocol`, .cache, .cacheDamaged, .cacheUncertain,
+    .refused, .unreachable, .away, .resetRequired, .`protocol`, .cache, .cacheDamaged,
+    .cacheUncertain,
     .quota, .stopped,
   ] {
     #expect(NativeRetainedCapture.capture(value).rawValue == String(describing: value))
   }
   for value: NativeSessionFailureKind in [
     .busy, .closed, .damaged, .runtime, .privateState, .cache, .enrollment, .noCredential, .stopped,
+    .owner, .product,
   ] {
     #expect(NativeRetainedCapture.capture(value).rawValue == String(describing: value))
   }

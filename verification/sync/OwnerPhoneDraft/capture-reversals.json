@@ -1,0 +1,14 @@
+{
+  "drop-owner": {
+    "compiled": true,
+    "exit": -5
+  },
+  "flatten-copy-refusal": {
+    "compiled": true,
+    "exit": -5
+  },
+  "restored": {
+    "compiled": true,
+    "exit": 0
+  }
+}

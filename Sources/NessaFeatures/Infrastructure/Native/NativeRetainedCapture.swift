@@ -26,6 +26,7 @@ enum NativeRetainedCapture {
     case .deviceRead: return .deviceRead
     case .peerRead: return .peerRead
     case .peerEnvironment: return .peerEnvironment
+    case .ownerPhoneReadWrite: return .ownerPhoneReadWrite
     }
   }
 
@@ -130,6 +131,7 @@ enum NativeRetainedCapture {
     switch value {
     case .refused: return .refused
     case .unreachable: return .unreachable
+    case .away: return .away
     case .resetRequired: return .resetRequired
     case .`protocol`: return .`protocol`
     case .cache: return .cache
@@ -151,6 +153,8 @@ enum NativeRetainedCapture {
     case .enrollment: return .enrollment
     case .noCredential: return .noCredential
     case .stopped: return .stopped
+    case .product: return .product
+    case .owner: return .owner
     }
   }
 
@@ -351,7 +355,10 @@ enum NativeRetainedCapture {
       enrollment: value.enrollment().map { capture($0) },
       kind: capture(value.kind()),
       privateState: value.privateState().map { capture($0) },
-      runtimeDiagnostic: value.runtimeDiagnostic()
+      runtimeDiagnostic: value.runtimeDiagnostic(),
+      ownerStatus: value.ownerStatus().map { capture($0) },
+      ownerSelection: value.ownerSelection().map { capture($0) },
+      product: value.product().map { capture($0) }
     )
   }
 
@@ -362,7 +369,8 @@ enum NativeRetainedCapture {
       purge: value.purge().map { capture($0) },
       purgeAttempted: value.purgeAttempted(),
       purgeFailure: value.purgeFailure().map { capture($0) },
-      receipt: value.receipt().map { capture($0) }
+      receipt: value.receipt().map { capture($0) },
+      owner: value.owner().map { capture($0) }
     )
   }
 

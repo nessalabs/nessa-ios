@@ -1,0 +1,24 @@
+{
+  "commit": "c1a2ab2b5477b536b2a44c9fc4ffd92c4eecb9cf",
+  "main": "66dae526c3407c242f76caa7874646c4e2333602",
+  "snapshot": "c6f3c3f53c854fefbbddf4306894e956c2d66edc",
+  "sourceBrief": "work/owner-phone-66dae-server-source-brief.json",
+  "serverPaths": 70,
+  "documentationPaths": 2,
+  "serverTests": {
+    "passed": 2881,
+    "failed": 0,
+    "ignored": 12,
+    "log": "work/owner-phone-66dae-server-full-restored.log"
+  },
+  "semanticProbes": 17,
+  "strictClippy": "PASS",
+  "format": "PASS",
+  "productProtocol": 61,
+  "architecture": "PASS",
+  "excluded": [
+    "Root SDK Swift workers/build script",
+    "live gateway changes",
+    "actual Apple/phone first Send proof"
+  ]
+}

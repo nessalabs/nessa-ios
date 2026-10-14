@@ -616,11 +616,11 @@ public final class MessagesViewModel: ObservableObject {
           await loadNativeDisplay([id])
           return
         }
-        do { _ = try await service.read(id) } catch NessaGatewayError.conversationNotFound {
-          if generation == currentGeneration {
+        do { _ = try await service.read(id) } catch {
+          let behavior = (error as? GatewayProductRejection)?.behavior ?? error as? NessaGatewayError
+          if case .conversationNotFound = behavior, generation == currentGeneration {
             await removeDeletedConversation(id, identifier: agent)
           }
-        } catch {
           // An uncertain read preserves the cached chat and preferences.
         }
       }
