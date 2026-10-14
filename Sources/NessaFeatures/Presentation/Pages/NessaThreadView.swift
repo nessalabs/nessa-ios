@@ -31,6 +31,7 @@ struct NessaThreadView: View {
   @State private var typingShown: Set<String> = []
   @Namespace private var replyMorph
   @State private var layoutClock = LayoutSettleClock()
+  private static let bottomMarker = "thread-bottom"
   nonisolated private static func scrollRange(_ geometry: ScrollGeometry) -> CGFloat {
     ThreadScrollMetrics.bottomOffset(
       contentHeight: geometry.contentSize.height, containerHeight: geometry.containerSize.height,
@@ -122,6 +123,12 @@ struct NessaThreadView: View {
         // History can arrive a beat after the thread opens; fade it in rather than pop.
         .animation(reduceMotion ? nil : NessaMotion.standard()) {
           $0.opacity(current == nil ? 0 : 1)
+        }
+        // The thread's last point, as a view the scroll position can move to. A scroll to the
+        // bottom edge lands in a single frame however it is animated; a scroll to a view
+        // animates.
+        .overlay(alignment: .bottom) {
+          Color.clear.frame(height: 0).id(Self.bottomMarker).accessibilityHidden(true)
         }
       }.scrollPosition($position, anchor: .bottom)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
@@ -315,7 +322,9 @@ struct NessaThreadView: View {
   ) {
     layoutClock.followUntil =
       animated ? Date().addingTimeInterval(MessagesStyle.followSettleTime) : .distantPast
-    withAnimation(animated ? animation : nil) { position.scrollTo(edge: .bottom) }
+    withAnimation(animated ? animation : nil) {
+      position.scrollTo(id: Self.bottomMarker, anchor: .bottom)
+    }
   }
 
   nonisolated private static func typingSlot(_ turn: String, _ reply: Int) -> String {
