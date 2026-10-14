@@ -143,6 +143,7 @@ enum AgentActivityState: Equatable {
       switch status {
       case "running": self = .working
       case "completed", "complete", "done", "succeeded": self = .done
+      case "failed", "error", "errored": self = .failed
       default: self = .other(status.capitalized)
       }
     }
@@ -181,8 +182,12 @@ private struct AgentActivityRow: View {
       VStack(alignment: .leading, spacing: NessaSpacing.xxs) {
         HStack(alignment: .firstTextBaseline, spacing: NessaSpacing.sm) {
           Text(title).font(MessagesStyle.body).lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
-          NessaChip(state.label, tint: state.tint).fixedSize()
+            .frame(
+              minWidth: AgentDetailsStyle.activityTitleMinWidth, maxWidth: .infinity,
+              alignment: .leading)
+          // Sized to its label, but an unexpected long status truncates rather than pushing the
+          // title out of the card.
+          NessaChip(state.label, tint: state.tint).lineLimit(1).layoutPriority(1)
         }
         if let detail {
           Text(detail).font(MessagesStyle.caption).lineLimit(state == .failed ? 2 : 1)

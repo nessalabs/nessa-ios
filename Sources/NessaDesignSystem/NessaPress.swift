@@ -72,6 +72,7 @@ extension ButtonStyle where Self == NessaPrimaryButtonStyle {
 public struct NessaSearchField: View {
   @Binding private var text: String
   private let prompt: String
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   public init(_ prompt: String = "Search", text: Binding<String>) {
     self.prompt = prompt
     self._text = text
@@ -95,6 +96,6 @@ public struct NessaSearchField: View {
     .padding(.horizontal, NessaSpacing.md)
     .frame(height: MessagesStyle.composerHeight)
     .messagesGlass()
-    .animation(NessaMotion.morph, value: text.isEmpty)
+    .animation(reduceMotion ? nil : NessaMotion.morph, value: text.isEmpty)
   }
 }

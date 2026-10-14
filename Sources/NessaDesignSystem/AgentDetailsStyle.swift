@@ -19,6 +19,8 @@ public enum AgentDetailsStyle {
   public static let tabLabel = Font.system(size: 14, weight: .semibold)
   public static let timelineDot: CGFloat = 10
   public static let timelineGutter: CGFloat = 22
+  /// An activity row's title keeps at least this much room beside its status chip.
+  public static let activityTitleMinWidth: CGFloat = 96
   public static let timelineLine: CGFloat = 1
   public static let statusPillHeight: CGFloat = 22
   public static let fileIcon: CGFloat = 40
