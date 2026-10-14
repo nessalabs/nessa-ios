@@ -4,6 +4,9 @@ import SwiftUI
 /// A screen-level highlight keeps the selected message between two separate surfaces.
 struct MessageContextOverlay: View {
   @ObservedObject var controller: MessageContextController
+  /// How far down the screen the navigation bar reaches, so a message's reactions rest below
+  /// it rather than over the bar the blur has hidden.
+  var topClearance: CGFloat = 0
   @State private var emojiRequest: MessageContextSelection?
   private let favorites = ["❤️", "👍", "👎", "😂", "‼️", "❓", "💀", "😁"]
   private let more = [
@@ -14,7 +17,9 @@ struct MessageContextOverlay: View {
     GeometryReader { geometry in
       if let selected = controller.selection {
         MessageContextStage(
-          selected: selected, geometry: geometry, palette: palette(selected),
+          selected: selected, geometry: geometry,
+          topInset: max(MessagesStyle.messageContextTopInset, topClearance + NessaSpacing.sm),
+          palette: palette(selected),
           paletteCount: favorites.count,
           actions: actions(selected), selector: selector(selected),
           dismiss: { controller.selection = nil }
@@ -121,6 +126,7 @@ struct MessageContextOverlay: View {
 private struct MessageContextStage<Palette: View, Actions: View, Selector: View>: View {
   let selected: MessageContextSelection
   let geometry: GeometryProxy
+  let topInset: CGFloat
   let palette: Palette
   let paletteCount: Int
   let actions: Actions
@@ -142,14 +148,14 @@ private struct MessageContextStage<Palette: View, Actions: View, Selector: View>
       let bottomRoom = menuHeight + NessaSpacing.md
       let maxHeight = max(
         MessagesStyle.controlHeight,
-        geometry.size.height - MessagesStyle.messageContextTopInset
+        geometry.size.height - topInset
           - MessagesStyle.messageContextBottomInset - topRoom - bottomRoom)
       let height = min(selected.imageSize.height, maxHeight)
       let width = min(selected.frame.width, geometry.size.width - inset * 2)
       let originalTop = selected.frame.minY - geometry.frame(in: .global).minY
       let originalX = selected.frame.midX - geometry.frame(in: .global).minX
       let top = min(
-        max(originalTop, MessagesStyle.messageContextTopInset + topRoom),
+        max(originalTop, topInset + topRoom),
         geometry.size.height - MessagesStyle.messageContextBottomInset - height - bottomRoom)
       let x = min(max(originalX, inset + width / 2), geometry.size.width - inset - width / 2)
       // As wide as a whole number of reactions, so none rests cut in half at the edge.
