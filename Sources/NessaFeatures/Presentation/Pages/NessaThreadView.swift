@@ -17,7 +17,6 @@ struct NessaThreadView: View {
   }
   @StateObject private var messageContext = MessageContextController()
   @State private var position = ScrollPosition(edge: .bottom)
-  @State private var scrollOffset: CGFloat = 0
   @StateObject private var composer = ComposerDraftViewModel()
   @State private var details = false
   @State private var hasLoadedHistory = false
@@ -37,7 +36,6 @@ struct NessaThreadView: View {
       contentHeight: geometry.contentSize.height, containerHeight: geometry.containerSize.height,
       topInset: geometry.contentInsets.top)
   }
-  @Environment(\.dismiss) private var dismiss
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   private var current: NessaConversationView? {
     store.views[conversationID]
@@ -55,6 +53,7 @@ struct NessaThreadView: View {
       return ids
     }
   }
+  private var overlayOpen: Bool { composer.reply != nil || messageContext.selection != nil }
   private var replyBubbleCount: Int {
     (current?.messages ?? []).reduce(0) { $0 + $1.displayBubbles.count }
   }
@@ -125,9 +124,7 @@ struct NessaThreadView: View {
           $0.opacity(current == nil ? 0 : 1)
         }
       }.scrollPosition($position, anchor: .bottom)
-        .defaultScrollAnchor(.bottom, for: .initialOffset).messagesTrackScroll(
-          offset: $scrollOffset
-        )
+        .defaultScrollAnchor(.bottom, for: .initialOffset)
         .messagesScrollEdges().scrollDismissesKeyboard(.interactively)
         // The pin has one owner, `readerScrolled`, and only the reader moves it. The thread's
         // own follow scrolls never do, even when content keeps growing under them and they
@@ -184,6 +181,8 @@ struct NessaThreadView: View {
         // composer without ever changing the bar's height (which would grow the scroll range
         // and set the thread following itself). It shows only when the reader has left the
         // newest message, the pin's own state.
+        .messagesTopGrain()
+        .messagesFooterGrain(lit: working)
         .overlay(alignment: .bottomTrailing) {
           ZStack {
             if readerScrolled && awayFromLatest {
@@ -222,12 +221,6 @@ struct NessaThreadView: View {
         }
     }
     .messagesAmbientGround()
-    .messagesBar(edge: .top) {
-      ThreadHeader(
-        name: name, onBack: { dismiss() }, onDetails: { details = true }, working: working)
-        .messagesHeaderGrain()
-        .messagesHeaderBlur(scrollOffset: scrollOffset)
-    }
     .environment(\.messageContext, messageContext)
     .blur(
       radius: composer.reply != nil
@@ -242,7 +235,7 @@ struct NessaThreadView: View {
           store: store, selection: $composer.reply, draft: $composer.text,
           attachments: $composer.attachments,
           dictation: dictation,
-          onDetails: { details = true }, onSend: send
+          onSend: send
         )
         .blur(radius: messageContext.selection == nil ? 0 : MessagesStyle.contextBackgroundBlur)
         .accessibilityHidden(messageContext.selection != nil)
@@ -257,8 +250,23 @@ struct NessaThreadView: View {
       old, new in
       hasLoadedHistory && old > 0 && new > old
     }
-    .nessaHideNavigationBar()
-    .nessaNativeBackSwipe()
+    // The system's own navigation bar, so its back button and edge swipe are the real ones.
+    // While a reply thread or a message's menu covers the screen, the bar's controls step
+    // aside rather than the bar itself, so the layout under it never moves.
+    .nessaInlineNavigationTitle()
+    .navigationBarBackButtonHidden(overlayOpen)
+    .toolbar {
+      ToolbarItem(placement: .principal) {
+        ThreadTitle(name: name, working: working, onDetails: { details = true })
+          .opacity(messageContext.selection == nil ? 1 : 0)
+          .disabled(messageContext.selection != nil)
+      }
+      if composer.reply != nil && messageContext.selection == nil {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Close replies", systemImage: "xmark") { composer.reply = nil }
+        }
+      }
+    }
     .sheet(isPresented: $details) {
       AgentDetailsView(name: name, conversationID: conversationID, store: store)
     }

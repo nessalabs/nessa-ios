@@ -127,14 +127,31 @@ public enum MessagesStyle {
   public static let control = NessaColor.muted
   /// How far the header's dither reaches down before it is gone.
   public static let ditherHeight: CGFloat = 150
+  /// The bottom bar's ground reaches this far above the bar.
+  public static let footerRise: CGFloat = 40
   public static let emptyAvatar: CGFloat = 56
   public static let rowSeparator = NessaColor.hairline
+  /// The multi-select mark: a grey ring at rest, a white disc with a dark tick when chosen.
+  public static let selectionMark: CGFloat = 22
+  public static let selectionRingWidth: CGFloat = 1.5
+  public static let selectionRingOpacity: Double = 0.28
+  public static let selectionTick = Font.system(size: 11, weight: .bold)
+  /// A chosen mark grows from this scale on `selectionPop`.
+  public static let selectionPopScale: CGFloat = 0.6
+  public static let selectionPop = Animation.spring(duration: 0.26, bounce: 0.35)
+  /// A selected row is lifted this faintly off the ground.
+  public static let selectedRowFill = NessaColor.foreground.opacity(0.05)
+  public static let selectedRowRadius: CGFloat = 14
   /// A control swapping in place grows from this scale.
   public static let swapScale: CGFloat = 0.5
   public static let sendPressScale: CGFloat = 0.86
   public static let headerPressScale: CGFloat = 0.97
   public static let emptyTitle = Font.system(size: 22, weight: .semibold)
   public static let unreadDot: CGFloat = 10
+  /// The connection's live dot, beside its status word.
+  public static let statusDot: CGFloat = 8
+  /// A hairline between the rows of one card.
+  public static let rowDivider: CGFloat = 0.5
   public static let body = Font.system(size: 17)
   public static let detailsTitle = Font.system(size: 28, weight: .bold)
   public static let headerName = Font.system(size: 15, weight: .semibold)
@@ -150,11 +167,15 @@ public enum MessagesStyle {
   public static let previewWidth: CGFloat = 340
   public static let previewHeight: CGFloat = 480
   public static let pinnedAvatar: CGFloat = 82
+  /// A chat pinned or unpinned grows from, or shrinks to, this scale in the grid.
+  public static let pinEnterScale: CGFloat = 0.6
   public static let detailsAvatar: CGFloat = 64
   public static let sendButton: CGFloat = 30
   public static let bubbleGutter: CGFloat = 70
   public static let rowAvatar: CGFloat = 45
   public static let headerAvatar: CGFloat = 44
+  /// The agent's disc in the thread's navigation bar title.
+  public static let titleAvatar: CGFloat = 28
   public static let controlHeight: CGFloat = 44
   public static let jumpToLatestSize: CGFloat = 36
   public static let jumpToLatestIcon = Font.system(size: 16, weight: .semibold)
@@ -386,7 +407,61 @@ public struct MessagesHeaderGrain: ViewModifier {
   }
 }
 
+/// The ground under the bottom bar: solid from the screen's edge to the middle of the composer,
+/// so nothing scrolling beneath reads through or pokes out beside it, then fading upward while
+/// a faint glyph grain thins out above the bar, mirroring the header's grain.
+///
+/// Applied to the scrolling content, not the bar: it then sits under the bar's glass and under
+/// any control floated on the content (the jump arrow), instead of veiling them.
+public struct MessagesFooterGrain: ViewModifier {
+  let lit: Bool
+  public func body(content: Content) -> some View {
+    content.overlay {
+      GeometryReader { geometry in
+        // The bottom inset here is the bar plus the home indicator. The solid ground stops
+        // half a composer below the bar's top: mid-composer for a one-line bar. A taller bar
+        // (a multi-line draft, rows stacked above the composer) only covers more, never less.
+        let below = geometry.safeAreaInsets.bottom
+        let height = below + MessagesStyle.footerRise
+        let solid = max(0, below - MessagesStyle.composerHeight / 2) / max(height, 1)
+        ZStack {
+          LinearGradient(
+            stops: [
+              .init(color: MessagesStyle.background, location: 0),
+              .init(color: MessagesStyle.background, location: solid),
+              .init(color: MessagesStyle.background.opacity(0), location: 1),
+            ], startPoint: .bottom, endPoint: .top)
+          NessaGlyphGrain(lit: lit)
+        }
+        .frame(height: height)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .offset(y: below)
+      }
+      .allowsHitTesting(false)
+    }
+  }
+}
+
+/// The header grain for a screen under the system navigation bar: drawn on the content, from
+/// the very top of the screen, so it sits under the bar's own controls.
+public struct MessagesTopGrain: ViewModifier {
+  public func body(content: Content) -> some View {
+    content.overlay {
+      GeometryReader { geometry in
+        NessaDither().frame(height: MessagesStyle.ditherHeight)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+          .offset(y: -geometry.safeAreaInsets.top)
+      }
+      .allowsHitTesting(false)
+    }
+  }
+}
+
 extension View {
+  public func messagesTopGrain() -> some View { modifier(MessagesTopGrain()) }
   public func messagesAmbientGround() -> some View { modifier(MessagesAmbientGround()) }
+  public func messagesFooterGrain(lit: Bool = false) -> some View {
+    modifier(MessagesFooterGrain(lit: lit))
+  }
   public func messagesHeaderGrain() -> some View { modifier(MessagesHeaderGrain()) }
 }

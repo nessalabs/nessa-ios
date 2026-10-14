@@ -26,7 +26,8 @@ struct ChatMenuAction: Identifiable {
 }
 
 @MainActor func chatMenuActions(
-  selection: ChatMenuSelection, store: MessagesViewModel, onDelete: @escaping (String) -> Void
+  selection: ChatMenuSelection, store: MessagesViewModel, layoutAnimation: Animation? = nil,
+  onDelete: @escaping (String) -> Void
 ) -> [ChatMenuAction] {
   let id = selection.identifier
   func action(
@@ -42,7 +43,7 @@ struct ChatMenuAction: Identifiable {
     action(
       "pin", store.isPinned(id) ? "Unpin" : "Pin", store.isPinned(id) ? "pin.slash" : "pin",
       enabled: store.canTogglePin(id)
-    ) { store.togglePin(id) },
+    ) { withAnimation(layoutAnimation) { store.togglePin(id) } },
     action("unread", "Mark as Unread", "bubble") { store.markUnread(id) },
     action(
       "alerts", store.mutedChats.contains(id) ? "Show Alerts" : "Hide Alerts",
@@ -53,7 +54,7 @@ struct ChatMenuAction: Identifiable {
       enabled: selection.conversationID != nil
     ) {
       if let conversation = selection.conversationID {
-        store.setArchived(!archived, conversationID: conversation)
+        withAnimation(layoutAnimation) { store.setArchived(!archived, conversationID: conversation) }
       }
     },
     action(

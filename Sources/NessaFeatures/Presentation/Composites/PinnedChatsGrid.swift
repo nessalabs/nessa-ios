@@ -39,6 +39,9 @@ struct PinnedChatsGrid: View {
               .foregroundStyle(MessagesStyle.secondary).lineLimit(1)
           }.frame(maxWidth: .infinity)
         }.buttonStyle(.plain).disabled(!enabled)
+          // A new pin grows into its cell while the list closes up under the grid.
+          .transition(
+            .scale(scale: MessagesStyle.pinEnterScale).combined(with: .opacity))
           .accessibilityLabel("Open pinned chat \(store.chatName(agent))")
           .chatContextMenu(
             store: store, identifier: agent, enabled: enabled,

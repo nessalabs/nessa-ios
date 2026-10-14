@@ -2,10 +2,18 @@ import NessaDesignSystem
 import SwiftUI
 
 struct DeleteChatsConfirmation: View {
-  let count: Int
+  /// Held from the moment the sheet opens: the caller clears its pending set as soon as the
+  /// delete is confirmed, and the closing sheet must not re-read that as zero chats.
+  @State private var count: Int
   let onCancel: () -> Void
   let onDelete: () -> Void
   @Environment(\.dynamicTypeSize) private var typeSize
+
+  init(count: Int, onCancel: @escaping () -> Void, onDelete: @escaping () -> Void) {
+    _count = State(initialValue: count)
+    self.onCancel = onCancel
+    self.onDelete = onDelete
+  }
 
   var body: some View {
     VStack(spacing: NessaSpacing.md) {
@@ -14,13 +22,15 @@ struct DeleteChatsConfirmation: View {
       Text("This permanently removes the selected conversations and their history from Nessa.")
         .font(MessagesStyle.body).foregroundStyle(MessagesStyle.secondary)
         .multilineTextAlignment(.center)
-      Button(role: .destructive, action: onDelete) {
-        Label(count == 1 ? "Delete chat" : "Delete \(count) chats", systemImage: "trash")
-          .frame(maxWidth: .infinity, minHeight: MessagesStyle.controlHeight)
-      }.buttonStyle(.borderedProminent).tint(MessagesStyle.danger)
+      // A slide rather than a button, so deleting is deliberate and can't happen by a stray tap.
+      NessaSlideToConfirm(
+        count == 1 ? "Slide to delete" : "Slide to delete \(count)", tint: MessagesStyle.danger,
+        onConfirm: onDelete)
       Button(action: onCancel) {
-        Text("Cancel").frame(maxWidth: .infinity, minHeight: MessagesStyle.controlHeight)
-      }.buttonStyle(.bordered).tint(MessagesStyle.foreground)
+        Text("Cancel").foregroundStyle(MessagesStyle.secondary)
+          .frame(maxWidth: .infinity, minHeight: MessagesStyle.controlHeight)
+          .contentShape(Rectangle())
+      }.buttonStyle(.nessaPress)
     }.font(MessagesStyle.body).foregroundStyle(MessagesStyle.foreground)
       .padding(NessaSpacing.lg).frame(maxWidth: .infinity)
       .presentationDetents(
