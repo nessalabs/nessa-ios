@@ -1,14 +1,15 @@
 import SwiftUI
 
 /// A deliberate confirm: pick up the knob and slide it to the end of the track, like the old
-/// slide to unlock. Behind the knob the track fills with a soft wash of the warm avatar hues,
-/// warming to the tint over the last stretch. Let go early and the knob springs back and the
-/// wash drains with it.
+/// slide to unlock. The knob is the tint, and behind it the track fills with the tint, faint
+/// at the start and deepening toward the knob and toward the end. Let go early and the knob
+/// springs back and the fill drains with it.
 public struct NessaSlideToConfirm: View {
   private let label: String
   private let symbol: String
   private let tint: Color
   private let height: CGFloat
+  private let knobMatch: NessaMatch?
   private let onConfirm: () -> Void
   @Environment(\.isEnabled) private var isEnabled
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -20,15 +21,17 @@ public struct NessaSlideToConfirm: View {
   @State private var confirmed = false
 
   /// `height` sizes the track, so it can stand in for a bar of the same height; the knob
-  /// keeps the same inset at any height.
+  /// keeps the same inset at any height. `knobMatch` lets a button elsewhere turn into the
+  /// knob: give that button the same match and swap the two in one animation.
   public init(
     _ label: String, symbol: String = "trash", tint: Color = NessaColor.destructive,
-    height: CGFloat? = nil, onConfirm: @escaping () -> Void
+    height: CGFloat? = nil, knobMatch: NessaMatch? = nil, onConfirm: @escaping () -> Void
   ) {
     self.label = label
     self.symbol = symbol
     self.tint = tint
     self.height = height ?? SlideStyle.trackHeight
+    self.knobMatch = knobMatch
     self.onConfirm = onConfirm
   }
 
@@ -62,12 +65,8 @@ public struct NessaSlideToConfirm: View {
   }
 
   private var knob: some View {
-    Circle().fill(NessaColor.foreground)
-      .overlay(
-        Image(systemName: symbol).font(SlideStyle.knobIcon)
-          .foregroundStyle(confirmed ? tint : NessaColor.background)
-      )
-      .frame(width: height - SlideStyle.knobInset * 2, height: height - SlideStyle.knobInset * 2)
+    NessaSlideKnob(symbol: symbol, tint: tint, diameter: height - SlideStyle.knobInset * 2)
+      .nessaMatched(knobMatch)
       .scaleEffect(holding ? SlideStyle.liftScale : 1)
       .padding(SlideStyle.knobInset)
       .contentShape(Circle())
@@ -91,10 +90,9 @@ public struct NessaSlideToConfirm: View {
   }
 }
 
-/// A soft wash in the warm avatar hues, filling the track solidly up to the knob, so the
-/// slide reads as a colour pouring in rather than a pattern. Near the end it warms toward
-/// the tint. Progress is animatable, so on a spring back the width and the warmth drain
-/// together frame by frame.
+/// The tint pouring in behind the knob: solid up to it, deepening along its length and as
+/// the knob nears the end. Progress is animatable, so on a spring back the width and the
+/// depth drain together frame by frame.
 private struct NessaSlideFill: View, Animatable {
   var progress: CGFloat
   let travel: CGFloat
@@ -107,17 +105,14 @@ private struct NessaSlideFill: View, Animatable {
     set { progress = newValue }
   }
   var body: some View {
-    let warmth = max(0, (progress - SlideStyle.warmFrom) / (1 - SlideStyle.warmFrom))
-    let wash = SlideStyle.washHues.map {
-      Color(
-        hue: $0 / 360, saturation: SlideStyle.washSaturation,
-        brightness: SlideStyle.washBrightness)
-        .mix(with: tint, by: warmth)
-    }
+    let depth = SlideStyle.fillStart + (SlideStyle.fillEnd - SlideStyle.fillStart) * progress
     Capsule()
-      .fill(LinearGradient(colors: wash, startPoint: .leading, endPoint: .trailing))
+      .fill(
+        LinearGradient(
+          colors: [tint.opacity(SlideStyle.fillStart), tint.opacity(depth)],
+          startPoint: .leading, endPoint: .trailing)
+      )
       .frame(width: progress * travel + height)
-      .opacity(SlideStyle.washOpacity + (1 - SlideStyle.washOpacity) * warmth * SlideStyle.warmLift)
       .allowsHitTesting(false)
       .accessibilityHidden(true)
   }
@@ -138,13 +133,47 @@ private enum SlideStyle {
   /// A selection tick each quarter of the way.
   static let ticks: CGFloat = 4
   static let springBack = Animation.spring(duration: 0.25, bounce: 0.15)
-  /// The wash: the avatar discs' warm hues only (rose to peach), quiet under the label; the
-  /// cool ones read as blue against the dark track.
-  static let washHues: [Double] = [340, 10, 25]
-  static let washSaturation: Double = 0.32
-  static let washBrightness: Double = 0.82
-  static let washOpacity: Double = 0.38
-  /// Past this share the wash warms toward the tint and comes up a little.
-  static let warmFrom: CGFloat = 0.7
-  static let warmLift: Double = 0.4
+  /// The fill's tint strength at the track's start, and at the knob once it reaches the end.
+  static let fillStart: Double = 0.25
+  static let fillEnd: Double = 0.85
+}
+
+/// The knob: the tint with the symbol in white. Public so a button can wear the same face
+/// before it turns into the knob.
+public struct NessaSlideKnob: View {
+  private let symbol: String
+  private let tint: Color
+  private let diameter: CGFloat
+  public init(symbol: String = "trash", tint: Color = NessaColor.destructive, diameter: CGFloat) {
+    self.symbol = symbol
+    self.tint = tint
+    self.diameter = diameter
+  }
+  public var body: some View {
+    Circle().fill(tint)
+      .overlay(
+        Image(systemName: symbol).font(SlideStyle.knobIcon).foregroundStyle(NessaColor.foreground)
+      )
+      .frame(width: diameter, height: diameter)
+  }
+}
+
+/// One shared geometry: the same id in the same namespace on two views that swap.
+public struct NessaMatch {
+  public let id: String
+  public let namespace: Namespace.ID
+  public init(id: String, in namespace: Namespace.ID) {
+    self.id = id
+    self.namespace = namespace
+  }
+}
+
+extension View {
+  @ViewBuilder public func nessaMatched(_ match: NessaMatch?) -> some View {
+    if let match {
+      matchedGeometryEffect(id: match.id, in: match.namespace)
+    } else {
+      self
+    }
+  }
 }

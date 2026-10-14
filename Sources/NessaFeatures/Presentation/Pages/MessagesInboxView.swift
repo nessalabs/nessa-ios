@@ -20,6 +20,9 @@ struct MessagesInboxView: View {
   @State private var search = ""
   @State private var pinRefusals = 0
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  /// The bar's trash button and the slide's knob are one object that moves between them.
+  @Namespace private var deleteMorph
+  private var deleteKnob: NessaMatch { NessaMatch(id: "delete-knob", in: deleteMorph) }
   var body: some View {
     List {
       Group {
@@ -177,7 +180,8 @@ struct MessagesInboxView: View {
           // A tap anywhere else lets it go (see the catcher over the list).
           NessaSlideToConfirm(
             selected.count == 1 ? "Slide to delete" : "Slide to delete \(selected.count)",
-            tint: MessagesStyle.danger, height: MessagesStyle.selectionBarHeight
+            tint: MessagesStyle.danger, height: MessagesStyle.selectionBarHeight,
+            knobMatch: deleteKnob
           ) {
             let ids = selected
             withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirmingSelection = false }
@@ -186,8 +190,8 @@ struct MessagesInboxView: View {
           .padding(.horizontal, MessagesStyle.horizontal)
           .padding(.bottom, MessagesStyle.bottomInset)
           .disabled(deleting || !store.connected)
-          // The bar and the slide swap in place: one fades and settles as the other arrives.
-          .transition(.opacity.combined(with: .scale(scale: MessagesStyle.barSwapScale)))
+          // The track fades in around the knob, which arrives from the bar's trash button.
+          .transition(.opacity)
         } else if editing {
           HStack {
             Text("\(selected.count) selected").font(MessagesStyle.body)
@@ -195,23 +199,25 @@ struct MessagesInboxView: View {
               .contentTransition(.numericText(value: Double(selected.count)))
               .animation(reduceMotion ? nil : NessaMotion.morph, value: selected.count)
             Spacer()
+            // The slide's own knob, waiting at the bar's end; tapped, it travels to the start
+            // of the track the bar becomes.
             Button(role: .destructive) {
               withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirmingSelection = true }
             } label: {
-              // Only the icon carries the red, so the bar stays as quiet as the list.
-              Label {
-                Text("Delete").foregroundStyle(MessagesStyle.foreground)
-              } icon: {
-                Image(systemName: "trash").foregroundStyle(MessagesStyle.danger)
-              }
+              NessaSlideKnob(
+                tint: MessagesStyle.danger,
+                diameter: MessagesStyle.selectionBarHeight - MessagesStyle.selectionKnobInset * 2)
+                .nessaMatched(deleteKnob)
             }
-            .font(MessagesStyle.title).buttonStyle(.nessaPress)
+            .buttonStyle(.nessaPress).accessibilityLabel("Delete")
             .disabled(selected.isEmpty || deleting || !store.connected)
-          }.padding(.horizontal, NessaSpacing.lg).frame(height: MessagesStyle.selectionBarHeight)
+          }
+          .padding(.leading, NessaSpacing.lg).padding(.trailing, MessagesStyle.selectionKnobInset)
+          .frame(height: MessagesStyle.selectionBarHeight)
             .messagesComposerSurface()
             .padding(.horizontal, MessagesStyle.horizontal).padding(.bottom, MessagesStyle.bottomInset)
             .foregroundStyle(MessagesStyle.foreground)
-            .transition(.opacity.combined(with: .scale(scale: MessagesStyle.barSwapScale)))
+            .transition(.opacity)
         } else {
           HStack(spacing: MessagesStyle.toolbarGap) {
             NessaSearchField(text: $search)
