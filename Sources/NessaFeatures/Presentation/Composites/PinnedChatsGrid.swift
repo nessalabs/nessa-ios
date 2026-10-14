@@ -14,7 +14,7 @@ struct PinnedChatsGrid: View {
     ) {
       let pinned = store.pinnedChats.filter { !store.isDeleting($0) }
       let running = Set(store.conversations.filter(\.running).map(\.id))
-      ForEach(Array(pinned.enumerated()), id: \.element) { index, agent in
+      ForEach(pinned, id: \.self) { agent in
         Button {
           onOpen(agent)
         } label: {
@@ -38,7 +38,6 @@ struct PinnedChatsGrid: View {
             Text(store.chatName(agent)).font(MessagesStyle.pinLabel)
               .foregroundStyle(MessagesStyle.secondary).lineLimit(1)
           }.frame(maxWidth: .infinity)
-            .nessaEntrance(delay: Double(index) * 0.04)
         }.buttonStyle(.plain).disabled(!enabled)
           .accessibilityLabel("Open pinned chat \(store.chatName(agent))")
           .chatContextMenu(

@@ -10,7 +10,7 @@ public struct NessaPressStyle: ButtonStyle {
     let pressed = configuration.isPressed && isEnabled
     configuration.label
       .scaleEffect(pressed && !reduceMotion ? scale : 1)
-      .opacity(pressed ? NessaMotion.pressOpacity : 1)
+      .opacity(isEnabled ? (pressed ? NessaMotion.pressOpacity : 1) : NessaMotion.disabledOpacity)
       .animation(reduceMotion ? nil : NessaMotion.press, value: pressed)
   }
 }

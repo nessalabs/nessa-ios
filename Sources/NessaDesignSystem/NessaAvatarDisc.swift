@@ -106,8 +106,25 @@ struct SeededRandom {
 /// For grounds, empty states and brand surfaces, never behind running text.
 public struct NessaWash: View {
   private let intensity: Double
-  public init(intensity: Double = 1) { self.intensity = intensity }
+  private let feathered: Bool
+  /// `feathered` fades the wash out to a circle, for a wash standing on its own.
+  public init(intensity: Double = 1, feathered: Bool = false) {
+    self.intensity = intensity
+    self.feathered = feathered
+  }
   public var body: some View {
+    if feathered {
+      canvas.mask(
+        GeometryReader { proxy in
+          RadialGradient(
+            colors: [.black, .clear], center: .center, startRadius: 0,
+            endRadius: min(proxy.size.width, proxy.size.height) / 2)
+        })
+    } else {
+      canvas
+    }
+  }
+  private var canvas: some View {
     Canvas { context, canvas in
       context.addFilter(.blur(radius: max(canvas.width, canvas.height) * 0.14))
       let w = canvas.width

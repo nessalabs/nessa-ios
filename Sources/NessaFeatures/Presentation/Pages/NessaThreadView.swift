@@ -23,9 +23,13 @@ struct NessaThreadView: View {
   @StateObject private var composer = ComposerDraftViewModel()
   @State private var details = false
   @State private var hasLoadedHistory = false
-  /// Until the reader touches the scroll view, the thread stays pinned to its newest
-  /// message while late layout (photos, the composer's height) settles.
+  /// While the reader is at the newest message, the thread stays pinned there as late
+  /// layout (photos, the composer's height, streamed text) grows the content.
   @State private var readerScrolled = false
+  private struct ScrollExtent: Equatable {
+    var range: CGFloat
+    var offset: CGFloat
+  }
   @Environment(\.dismiss) private var dismiss
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   private var current: NessaConversationView? {
@@ -107,14 +111,19 @@ struct NessaThreadView: View {
         } action: { _, value in
           nearBottom = value
         }
-        .onScrollPhaseChange { _, phase in
-          if phase == .interacting { readerScrolled = true }
-        }
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-          geometry.contentSize.height + geometry.contentInsets.bottom
-            - geometry.containerSize.height
-        } action: { _, _ in
-          if !readerScrolled { position.scrollTo(edge: .bottom) }
+        .onScrollGeometryChange(for: ScrollExtent.self) { geometry in
+          ScrollExtent(
+            range: geometry.contentSize.height + geometry.contentInsets.bottom
+              - geometry.containerSize.height,
+            offset: geometry.contentOffset.y)
+        } action: { old, new in
+          if new.range != old.range {
+            // Content or container grew under the reader: keep the newest message in place.
+            if !readerScrolled && composer.reply == nil { position.scrollTo(edge: .bottom) }
+          } else {
+            // Any scroll, by drag, status-bar tap or assistive technology, decides it.
+            readerScrolled = new.range - new.offset > MessagesStyle.followDistance
+          }
         }
         .onChange(of: current != nil, initial: true) { _, loaded in
           hasLoadedHistory = loaded
@@ -138,7 +147,9 @@ struct NessaThreadView: View {
                     }
                   }
                 }.padding(.horizontal, MessagesStyle.horizontal)
-                  .transition(.scale(scale: 0.6, anchor: .trailing).combined(with: .opacity))
+                  .transition(
+                    .scale(scale: MessagesStyle.swapScale, anchor: .trailing)
+                      .combined(with: .opacity))
               }
               MessageComposer(
                 draft: $composer.text, reply: $composer.reply, attachments: $composer.attachments,

@@ -89,7 +89,7 @@ struct MessageComposer: View {
             case .busy:
               ProgressView().accessibilityLabel(
                 preparing ? "Preparing photos" : "Finishing dictation")
-                .transition(.scale(scale: 0.5).combined(with: .opacity))
+                .transition(.scale(scale: MessagesStyle.swapScale).combined(with: .opacity))
             case .dictate:
               Button {
                 dictation.toggle()
@@ -106,7 +106,7 @@ struct MessageComposer: View {
               .buttonStyle(.nessaPress)
               .disabled(sending || dictation.state == .finishing)
               .accessibilityLabel(dictation.active ? "Stop dictation" : "Dictate message")
-              .transition(.scale(scale: 0.5).combined(with: .opacity))
+              .transition(.scale(scale: MessagesStyle.swapScale).combined(with: .opacity))
             case .send:
               Button(action: onSend) {
                 Image(systemName: "arrow.up").font(MessagesStyle.title)
@@ -116,10 +116,10 @@ struct MessageComposer: View {
                       ? AnyShapeStyle(MessagesStyle.outgoingFill)
                       : AnyShapeStyle(MessagesStyle.control),
                     in: Circle())
-              }.buttonStyle(NessaPressStyle(scale: 0.86)).disabled(!sendAvailable)
+              }.buttonStyle(NessaPressStyle(scale: MessagesStyle.sendPressScale)).disabled(!sendAvailable)
                 .accessibilityLabel("Send message")
                 .accessibilityHint(submissionUnavailableReason ?? "")
-                .transition(.scale(scale: 0.4).combined(with: .opacity))
+                .transition(.scale(scale: MessagesStyle.swapScale).combined(with: .opacity))
             }
           }
           .frame(height: MessagesStyle.composerHeight)

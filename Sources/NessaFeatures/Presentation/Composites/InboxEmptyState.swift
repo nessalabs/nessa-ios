@@ -7,14 +7,11 @@ struct InboxEmptyState: View {
   var body: some View {
     VStack(spacing: NessaSpacing.md) {
       ZStack {
-        NessaWash().frame(width: MessagesStyle.emptyWashSize, height: MessagesStyle.emptyWashSize)
-          .mask(
-            RadialGradient(
-              colors: [.black, .clear], center: .center, startRadius: 0,
-              endRadius: MessagesStyle.emptyWashSize / 2))
+        NessaWash(feathered: true)
+          .frame(width: MessagesStyle.emptyWashSize, height: MessagesStyle.emptyWashSize)
         NessaAvatarDisc(seed: "Nessa", size: MessagesStyle.emptyAvatar)
       }
-      .frame(height: MessagesStyle.emptyWashSize * 0.75)
+      .frame(height: MessagesStyle.emptyWashVisibleHeight)
       Text("Your chats, one message away.").font(MessagesStyle.emptyTitle)
         .multilineTextAlignment(.center)
       Button(action: onCompose) {

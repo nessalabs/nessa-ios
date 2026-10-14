@@ -28,7 +28,7 @@ struct ThreadHeader: View {
           }.padding(.horizontal, NessaSpacing.sm).padding(.vertical, NessaSpacing.xxs)
             .messagesGlass()
         }.frame(maxWidth: .infinity)
-      }.buttonStyle(NessaPressStyle(scale: 0.97)).accessibilityLabel("\(name) agent details")
+      }.buttonStyle(NessaPressStyle(scale: MessagesStyle.headerPressScale)).accessibilityLabel("\(name) agent details")
     }.foregroundStyle(MessagesStyle.foreground).padding(.vertical, NessaSpacing.xxs)
   }
 }

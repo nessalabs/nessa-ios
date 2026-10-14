@@ -33,8 +33,6 @@ public enum NessaColor {
   public static let mutedForeground = Color(hex: 0xA1A1A1)
   /// A hairline drawn on top of a surface, as the foreground's ink.
   public static let hairline = Color.white.opacity(0.08)
-  /// A hairline that has to read as a boundary.
-  public static let border = Color.white.opacity(0.14)
   /// `--nessa-chat-accent`: the sent bubble, the live dot, the send button.
   public static let accent = Color(hex: 0x0071E3)
   /// A deeper step of the accent, for the foot of the sent bubble's gradient.
@@ -43,8 +41,6 @@ public enum NessaColor {
   public static let accentInk = Color(hex: 0x5AAAFF)
   /// `--destructive` (dark), oklch(0.704 0.187 22.216).
   public static let destructive = Color(hex: 0xFF6668)
-  /// `--nessa-notification-success` (dark).
-  public static let success = Color(hex: 0x74C692)
 
   /// The `--nessa-thinking-fill-*` trio: base, current and highlight.
   public static let thinkingBase = Color(hex: 0x3364DB)
@@ -70,7 +66,6 @@ public enum NessaColor {
 
 /// nessa_ui's motion tokens (`--nessa-motion-*`) plus the springs the phone uses for touch.
 public enum NessaMotion {
-  public static let fast: Double = 0.12
   public static let normal: Double = 0.2
   public static let slow: Double = 0.3
   /// One revolution of an ambient effect such as the composer rim.
@@ -84,10 +79,6 @@ public enum NessaMotion {
   public static func emphasized(_ duration: Double = slow) -> Animation {
     .timingCurve(0.4, 0, 0.2, 1, duration: duration)
   }
-  /// `--nessa-motion-easing-arrival`: a value settling onto a target.
-  public static func arrival(_ duration: Double = slow) -> Animation {
-    .timingCurve(0.4, 0, 0.15, 1, duration: duration)
-  }
 
   /// A finger going down and coming back up: quick, with a little give.
   public static let press = Animation.spring(duration: 0.24, bounce: 0.3)
@@ -97,6 +88,8 @@ public enum NessaMotion {
   public static let morph = Animation.spring(duration: 0.34, bounce: 0.22)
   /// How far a pressed control sinks.
   public static let pressScale: CGFloat = 0.94
+  /// How far a disabled control dims.
+  public static let disabledOpacity: Double = 0.45
   /// How far a pressed control dims.
   public static let pressOpacity: Double = 0.82
   /// `nessa-enter`: an entering element starts this much smaller.

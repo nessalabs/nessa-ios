@@ -101,7 +101,12 @@ public enum MessagesStyle {
   public static let washIntensity: Double = 0.32
   public static let emptyWashSize: CGFloat = 220
   public static let emptyAvatar: CGFloat = 96
-  public static let largeTitle = Font.system(size: 34, weight: .bold)
+  public static let emptyWashVisibleHeight: CGFloat = 165
+  public static let rowSeparator = NessaColor.hairline
+  /// A control swapping in place grows from this scale.
+  public static let swapScale: CGFloat = 0.5
+  public static let sendPressScale: CGFloat = 0.86
+  public static let headerPressScale: CGFloat = 0.97
   public static let emptyTitle = Font.system(size: 22, weight: .semibold)
   public static let unreadDot: CGFloat = 10
   public static let body = Font.system(size: 17)
