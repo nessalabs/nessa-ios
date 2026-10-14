@@ -148,23 +148,28 @@ public enum MessagesStyle {
   public static let bubbleInset: CGFloat = 12
   public static let bubbleHorizontalInset: CGFloat = 16
   public static let bubbleSpacing: CGFloat = 8
-  public static let bubbleEntranceDistance: CGFloat = 14
-  public static let bubbleEntranceScale: CGFloat = 0.9
-  public static let bubbleEntranceAnimation = Animation.spring(duration: 0.4, bounce: 0.2)
-  public static let messageFollowAnimation = NessaMotion.standard(NessaMotion.slow)
-  public static var messageInsertion: AnyTransition {
-    .asymmetric(
-      insertion: .opacity.combined(with: .offset(y: bubbleEntranceDistance)),
-      removal: .opacity)
-  }
+  /// A sent bubble rises out of the composer: it starts this far below its place, small and
+  /// tucked into its tail corner, and springs up with a little overshoot.
+  public static let sentEntranceDistance: CGFloat = 28
+  public static let sentEntranceScale: CGFloat = 0.7
+  /// A reply grows out of where the typing dots were, from its own tail corner.
+  public static let replyEntranceDistance: CGFloat = 6
+  public static let replyEntranceScale: CGFloat = 0.8
+  /// One spring for the bubble and for the scroll that follows it, so the two move as one:
+  /// quick off the mark, a visible but short overshoot, settled in under half a second.
+  public static let bubbleEntranceAnimation = Animation.spring(duration: 0.45, bounce: 0.3)
+  /// The fade finishes early so the overshoot happens on a solid bubble.
+  public static let bubbleFadeAnimation = Animation.easeOut(duration: 0.14)
+  public static let messageFollowAnimation = bubbleEntranceAnimation
+  public static let bubbleRemoval = AnyTransition.opacity.combined(with: .scale(scale: 0.9))
   public static func bubbleInsertion(outgoing: Bool) -> AnyTransition {
-    .asymmetric(
-      insertion: .opacity
-        .combined(with: .offset(y: bubbleEntranceDistance))
-        .combined(
-          with: .scale(
-            scale: bubbleEntranceScale, anchor: outgoing ? .bottomTrailing : .bottomLeading)),
-      removal: .opacity)
+    let anchor: UnitPoint = outgoing ? .bottomTrailing : .bottomLeading
+    let insertion: AnyTransition = AnyTransition.opacity.animation(bubbleFadeAnimation)
+      .combined(
+        with: .offset(y: outgoing ? sentEntranceDistance : replyEntranceDistance))
+      .combined(
+        with: .scale(scale: outgoing ? sentEntranceScale : replyEntranceScale, anchor: anchor))
+    return .asymmetric(insertion: insertion, removal: bubbleRemoval)
   }
   public static let groupSpacing: CGFloat = 28
   public static let pinGap: CGFloat = 18
@@ -240,7 +245,8 @@ extension View {
   }
   @ViewBuilder public func messagesScrollEdges() -> some View {
     if #available(iOS 26.0, macOS 26.0, *) {
-      self.scrollEdgeEffectStyle(.soft, for: .all)
+      // Hard at the top so text never reads through behind the header's glass.
+      self.scrollEdgeEffectStyle(.hard, for: .top).scrollEdgeEffectStyle(.soft, for: .bottom)
     } else {
       self
     }

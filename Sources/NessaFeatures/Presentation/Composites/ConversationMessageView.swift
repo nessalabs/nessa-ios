@@ -7,6 +7,8 @@ struct ConversationMessageView: View {
   @ObservedObject var store: MessagesViewModel
   var parent: ConversationMessage? = nil
   var replyCount = 0
+  /// The main thread wraps each turn in its own entrance, which a sent message rides.
+  var arrivesWithTurn = false
   let onReply: (MessageReply) -> Void
   let onOpenThread: (MessageReply) -> Void
 
@@ -24,7 +26,11 @@ struct ConversationMessageView: View {
           .frame(maxWidth: .infinity, alignment: message.outgoing ? .trailing : .leading)
       }
     }
-    .transition(MessagesStyle.bubbleInsertion(outgoing: message.outgoing))
+    // A sent message that arrives with its new turn rides the turn's rise; a second entrance
+    // here would stack two. Replies arrive inside an existing turn and grow in.
+    .transition(
+      message.outgoing && arrivesWithTurn
+        ? .identity : MessagesStyle.bubbleInsertion(outgoing: message.outgoing))
   }
 
   @ViewBuilder private var content: some View {

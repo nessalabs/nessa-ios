@@ -144,14 +144,13 @@ struct MessagesInboxView: View {
             }
             .font(MessagesStyle.title).foregroundStyle(MessagesStyle.danger)
             .disabled(selected.isEmpty || deleting || !store.connected)
-          }.padding(MessagesStyle.horizontal).foregroundStyle(MessagesStyle.foreground)
+          }.padding(.horizontal, NessaSpacing.lg).frame(height: MessagesStyle.composerHeight)
+            .messagesComposerSurface()
+            .padding(.horizontal, MessagesStyle.horizontal).padding(.bottom, MessagesStyle.bottomInset)
+            .foregroundStyle(MessagesStyle.foreground)
         } else {
           HStack(spacing: MessagesStyle.toolbarGap) {
-            HStack(spacing: NessaSpacing.xs) {
-              Image(systemName: "magnifyingglass").font(MessagesStyle.icon)
-              TextField("Search", text: $search).font(MessagesStyle.body)
-            }.padding(.horizontal, NessaSpacing.md).frame(height: MessagesStyle.composerHeight)
-              .messagesGlass()
+            NessaSearchField(text: $search)
             Button(action: onCompose) {
               Group {
                 if store.busy {

@@ -62,6 +62,18 @@ import SwiftUI
       }
       override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        // An interactive pop calls this as the swipe begins. Restoring the recognizers then
+        // would change them under the running gesture, and a cancelled swipe would leave
+        // back-swipe off, so restore only once the screen has really gone.
+        guard let coordinator = transitionCoordinator else {
+          restore()
+          return
+        }
+        coordinator.animate(alongsideTransition: nil) { [weak self] context in
+          if !context.isCancelled { self?.restore() }
+        }
+      }
+      private func restore() {
         active = false
         for binding in bindings where binding.recognizer?.delegate === self {
           binding.recognizer?.delegate = binding.delegate

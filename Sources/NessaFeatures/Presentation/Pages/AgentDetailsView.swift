@@ -15,49 +15,69 @@ struct AgentDetailsView: View {
     return store.agentProfiles.first { $0.id == id }
   }
 
+  private var working: Bool {
+    conversation?.messages.contains { $0.status == "running" } == true
+  }
+
   var body: some View {
-    VStack(spacing: NessaSpacing.xs) {
-      header
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: NessaSpacing.md, pinnedViews: [.sectionHeaders]) {
-          AgentDetailsIdentity(name: name, compact: false)
-            .scaleEffect(
-              reduceMotion ? 1 : 1 - collapse * (1 - AgentDetailsStyle.collapsedScale),
-              anchor: .leading
-            )
-            .opacity(1 - collapse)
-            .accessibilityHidden(collapse >= 1)
-          Section {
-            content
-          } header: {
-            AgentDetailsTabs(selection: $tab)
-              .padding(.bottom, NessaSpacing.sm)
-              .background(MessagesStyle.background)
-          }
-        }.padding(.bottom, NessaSpacing.md)
+    ScrollView {
+      LazyVStack(alignment: .leading, spacing: NessaSpacing.lg, pinnedViews: [.sectionHeaders]) {
+        AgentDetailsHero(name: name, profile: profile, working: working)
+          .opacity(1 - collapse)
+          .scaleEffect(
+            reduceMotion ? 1 : 1 - collapse * (1 - AgentDetailsStyle.collapsedScale),
+            anchor: .top
+          )
+          .accessibilityHidden(collapse >= 1)
+        Section {
+          content
+            .id(tab)
+            .transition(
+              .asymmetric(
+                insertion: .opacity.combined(with: .offset(y: AgentDetailsStyle.tabSwapDistance)),
+                removal: .opacity))
+        } header: {
+          AgentDetailsTabs(selection: $tab)
+            .padding(.vertical, NessaSpacing.xs)
+        }
       }
-      .onScrollGeometryChange(for: CGFloat.self) { geometry in
-        min(1, max(0, geometry.contentOffset.y + geometry.contentInsets.top)
-          / AgentDetailsStyle.collapseDistance)
-      } action: { _, progress in
-        collapse = progress
-      }
-    }.padding(.horizontal, MessagesStyle.horizontal)
-      .padding(.top, NessaSpacing.sm)
-      .foregroundStyle(MessagesStyle.foreground).background(MessagesStyle.background)
-      .presentationDragIndicator(.hidden)
+      .padding(.horizontal, MessagesStyle.horizontal)
+      .padding(.bottom, NessaSpacing.xl)
+      .animation(reduceMotion ? nil : NessaMotion.morph, value: tab)
+      .animation(reduceMotion ? nil : NessaMotion.morph, value: working)
+    }
+    .onScrollGeometryChange(for: CGFloat.self) { geometry in
+      min(1, max(0, geometry.contentOffset.y + geometry.contentInsets.top)
+        / AgentDetailsStyle.collapseDistance)
+    } action: { _, progress in
+      collapse = progress
+    }
+    .messagesScrollEdges()
+    .messagesBar(edge: .top) { header }
+    .foregroundStyle(MessagesStyle.foreground)
+    .messagesAmbientGround()
+    .presentationDragIndicator(.visible)
+    .presentationBackground(MessagesStyle.background)
+    .presentationCornerRadius(AgentDetailsStyle.cardRadius * 2)
   }
 
   private var header: some View {
     HStack(spacing: NessaSpacing.sm) {
-      AgentDetailsIdentity(name: name, compact: true)
+      AgentDetailsIdentity(name: name)
         .opacity(collapse)
         .accessibilityHidden(collapse < 1)
       Spacer(minLength: NessaSpacing.xs)
-      Button("Done") { dismiss() }
-        .font(MessagesStyle.title).padding(.horizontal, NessaSpacing.md)
-        .frame(minHeight: MessagesStyle.controlHeight).messagesGlass()
-    }.frame(minHeight: MessagesStyle.controlHeight)
+      Button { dismiss() } label: {
+        Image(systemName: "xmark").font(MessagesStyle.icon)
+          .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
+          .messagesGlass()
+      }
+      .buttonStyle(.nessaPress)
+      .accessibilityLabel("Close details")
+    }
+    .frame(minHeight: MessagesStyle.controlHeight)
+    .padding(.horizontal, MessagesStyle.horizontal)
+    .padding(.top, NessaSpacing.sm)
   }
 
   private var content: some View {

@@ -26,8 +26,9 @@ struct NessaThreadView: View {
   /// Until the reader scrolls away from the newest message, the thread stays pinned there
   /// as late layout (photos, the composer's height, streamed text) grows the content.
   @State private var readerScrolled = false
-  /// Scrolls that settle before this were started by layout, not by the reader.
-  @State private var layoutSettlesAt = Date.distantPast
+  /// Scrolls that settle before this were started by layout, not by the reader. A reference,
+  /// so stamping it on every layout change doesn't re-render the thread.
+  @State private var layoutClock = LayoutSettleClock()
   nonisolated private static func scrollRange(_ geometry: ScrollGeometry) -> CGFloat {
     geometry.contentSize.height + geometry.contentInsets.bottom - geometry.containerSize.height
   }
@@ -49,6 +50,9 @@ struct NessaThreadView: View {
       return ids
     }
   }
+  private var replyBubbleCount: Int {
+    (current?.messages ?? []).reduce(0) { $0 + $1.displayBubbles.count }
+  }
   var body: some View {
     let animateMessages = hasLoadedHistory && !reduceMotion
     let replies = store.replyProjection(in: conversationID)
@@ -69,7 +73,7 @@ struct NessaThreadView: View {
                 ConversationMessageView(
                   message: message, conversationID: conversationID,
                   store: store, parent: replies.parent(of: message),
-                  replyCount: replies.count(for: message.id),
+                  replyCount: replies.count(for: message.id), arrivesWithTurn: true,
                   onReply: { composer.reply = $0 }, onOpenThread: { composer.reply = $0 })
               }
               if turn.status == "running" {
@@ -80,7 +84,9 @@ struct NessaThreadView: View {
                 Text(error).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.danger)
               }
             }
-            .transition(MessagesStyle.messageInsertion)
+            // A new turn arrives as the reader's own sent bubble, so the whole turn rises
+            // out of the composer; replies inside it then grow in on their own.
+            .transition(MessagesStyle.bubbleInsertion(outgoing: true))
           }
           ForEach(current?.permissions ?? []) { permission in
             PermissionReview(permission: permission) { option in
@@ -123,7 +129,7 @@ struct NessaThreadView: View {
             let away =
               Self.scrollRange(context.geometry) - context.geometry.contentOffset.y
               > MessagesStyle.followDistance
-            if Date() < layoutSettlesAt {
+            if Date() < layoutClock.settlesAt {
               if !readerScrolled && away && composer.reply == nil {
                 position.scrollTo(edge: .bottom)
               }
@@ -132,9 +138,11 @@ struct NessaThreadView: View {
             }
           }
         }
-        .onScrollGeometryChange(for: CGFloat.self, of: Self.scrollRange) { _, _ in
+        .onScrollGeometryChange(for: CGFloat.self, of: Self.scrollRange) { old, new in
           // Content or container grew under the reader: keep the newest message in place.
-          layoutSettlesAt = Date().addingTimeInterval(MessagesStyle.layoutSettleWindow)
+          // Shrinking never hides the newest message, so it needs nothing.
+          guard new > old else { return }
+          layoutClock.settlesAt = Date().addingTimeInterval(MessagesStyle.layoutSettleWindow)
           if !readerScrolled && composer.reply == nil { position.scrollTo(edge: .bottom) }
         }
         .onChange(of: current != nil, initial: true) { _, loaded in
@@ -207,6 +215,10 @@ struct NessaThreadView: View {
     .animation(
       reduceMotion ? nil : MessagesStyle.messageFollowAnimation, value: composer.reply != nil
     )
+    .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.5), trigger: replyBubbleCount) {
+      old, new in
+      hasLoadedHistory && old > 0 && new > old
+    }
     .nessaHideNavigationBar()
     .nessaNativeBackSwipe()
     .sheet(isPresented: $details) {
@@ -246,4 +258,9 @@ struct NessaThreadView: View {
       position.scrollTo(edge: .bottom)
     }
   }
+}
+
+/// When layout last moved the thread; read only when a scroll comes to rest.
+private final class LayoutSettleClock {
+  var settlesAt = Date.distantPast
 }

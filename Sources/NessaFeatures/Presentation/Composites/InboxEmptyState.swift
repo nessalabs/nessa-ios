@@ -15,11 +15,8 @@ struct InboxEmptyState: View {
       Text("Your chats, one message away.").font(MessagesStyle.emptyTitle)
         .multilineTextAlignment(.center)
       Button(action: onCompose) {
-        Label("New message", systemImage: "square.and.pencil").font(MessagesStyle.title)
-          .padding(.horizontal, NessaSpacing.lg)
-          .frame(height: MessagesStyle.controlHeight)
-          .background(MessagesStyle.outgoingFill, in: Capsule())
-      }.buttonStyle(.nessaPress)
+        Label("New message", systemImage: "square.and.pencil")
+      }.buttonStyle(.nessaPrimary)
     }
     .foregroundStyle(MessagesStyle.foreground)
     .frame(maxWidth: .infinity)
