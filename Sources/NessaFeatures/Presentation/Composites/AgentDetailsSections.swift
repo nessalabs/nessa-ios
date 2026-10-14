@@ -8,10 +8,8 @@ struct AgentDetailsSection<Content: View>: View {
   @ViewBuilder let content: () -> Content
   var body: some View {
     VStack(alignment: .leading, spacing: NessaSpacing.sm) {
-      Label {
+      AgentDetailsLine(symbol: symbol) {
         Text(title.uppercased()).tracking(AgentDetailsStyle.sectionLabelTracking)
-      } icon: {
-        Image(systemName: symbol)
       }
       .font(AgentDetailsStyle.sectionLabel).foregroundStyle(MessagesStyle.secondary)
       .accessibilityAddTraits(.isHeader)
@@ -19,6 +17,21 @@ struct AgentDetailsSection<Content: View>: View {
     }.frame(maxWidth: .infinity, alignment: .leading)
       .padding(NessaSpacing.md)
       .nessaCard()
+  }
+}
+
+/// An icon and its text, the icon in a fixed-width slot. A card's heading and its rows use the
+/// same slot, so their text starts on one line however wide each glyph is.
+struct AgentDetailsLine<Title: View>: View {
+  let symbol: String
+  @ViewBuilder let title: () -> Title
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: NessaSpacing.xs) {
+      Image(systemName: symbol).font(AgentDetailsStyle.sectionLabel)
+        .foregroundStyle(MessagesStyle.secondary)
+        .frame(width: AgentDetailsStyle.sectionIconWidth)
+      title()
+    }
   }
 }
 
@@ -46,11 +59,7 @@ struct AgentOverview: View {
         } else {
           VStack(alignment: .leading, spacing: NessaSpacing.xs) {
             ForEach(Array(access.enumerated()), id: \.offset) { _, item in
-              Label {
-                Text(item)
-              } icon: {
-                Image(systemName: "checkmark").foregroundStyle(MessagesStyle.secondary)
-              }
+              AgentDetailsLine(symbol: "checkmark") { Text(item) }
             }
           }
         }

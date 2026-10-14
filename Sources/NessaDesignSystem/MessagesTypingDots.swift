@@ -41,7 +41,7 @@ public struct MessagesTypingDots: View {
         .overlay(Circle().strokeBorder(MessagesStyle.incomingBorder, lineWidth: 0.5))
         .frame(width: MessagesStyle.typingTailSmall, height: MessagesStyle.typingTailSmall)
         .offset(
-          x: -MessagesStyle.typingTailLarge * 2 / 3, y: MessagesStyle.typingTailLarge * 3 / 4)
+          x: -MessagesStyle.typingTailLarge / 2, y: MessagesStyle.typingTailLarge * 3 / 4)
     }
   }
 

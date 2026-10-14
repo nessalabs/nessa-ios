@@ -1,21 +1,22 @@
 import SwiftUI
 
 public enum AgentDetailsStyle {
-  public static let heroAvatar: CGFloat = 48
-  public static let compactAvatar: CGFloat = 28
+  /// The agent's disc in the sheet's header row, a little smaller than the 44 pt close button
+  /// it shares a centre line with.
+  public static let heroAvatar: CGFloat = 36
   public static let title = Font.system(size: 22, weight: .semibold)
   public static let subtitle = Font.system(size: 15)
   public static let chip = Font.system(size: 13, weight: .medium)
   public static let chipHeight: CGFloat = 28
   public static let sectionLabel = Font.system(size: 12, weight: .semibold)
   public static let sectionLabelTracking: CGFloat = 0.6
-  public static let sectionIcon = Font.system(size: 13, weight: .semibold)
+  /// Every icon at the start of a card heading or card row sits in this width, so the text
+  /// after it starts at the same x whatever the glyph's own width.
+  public static let sectionIconWidth: CGFloat = 16
   public static let cardRadius: CGFloat = 20
   public static let tabHeight: CGFloat = 40
   public static let tabInset: CGFloat = 3
   public static let tabLabel = Font.system(size: 14, weight: .semibold)
-  public static let collapseDistance: CGFloat = 56
-  public static let collapsedScale: CGFloat = 0.92
   public static let timelineDot: CGFloat = 10
   public static let timelineGutter: CGFloat = 22
   public static let timelineLine: CGFloat = 1

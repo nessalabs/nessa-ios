@@ -278,8 +278,9 @@ extension View {
   }
   @ViewBuilder public func messagesScrollEdges() -> some View {
     if #available(iOS 26.0, macOS 26.0, *) {
-      // Hard at the top so text never reads through behind the header's glass.
-      self.scrollEdgeEffectStyle(.hard, for: .top).scrollEdgeEffectStyle(.soft, for: .bottom)
+      // Soft at both ends: content fades out under the header and composer instead of being
+      // cut along a hard line.
+      self.scrollEdgeEffectStyle(.soft, for: .top).scrollEdgeEffectStyle(.soft, for: .bottom)
     } else {
       self
     }

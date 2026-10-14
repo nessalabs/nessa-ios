@@ -16,7 +16,6 @@ struct NessaThreadView: View {
     _dictation = StateObject(wrappedValue: dictation)
   }
   @StateObject private var messageContext = MessageContextController()
-  @State private var bottomVisible = true
   @State private var position = ScrollPosition(edge: .bottom)
   @State private var scrollOffset: CGFloat = 0
   @StateObject private var composer = ComposerDraftViewModel()
@@ -25,6 +24,8 @@ struct NessaThreadView: View {
   /// Until the reader scrolls away from the newest message, the thread stays pinned there
   /// as late layout (photos, the composer's height, streamed text) grows the content.
   @State private var readerScrolled = false
+  /// Whether the newest message is out of reach, so a nudge at the bottom shows no arrow.
+  @State private var awayFromLatest = false
   /// Every typing bubble shown so far, keyed by its turn and the reply it stands in for. The
   /// reply that takes a typing bubble's place grows out of it. Only ever added to, so a reply
   /// keeps the same look for its whole life on screen.
@@ -110,10 +111,6 @@ struct NessaThreadView: View {
           if let error = current?.interactionViewError {
             Text(error).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
           }
-          Color.clear.frame(height: 1).id("bottom")
-            .onScrollVisibilityChange { visible in
-              withAnimation(reduceMotion ? nil : NessaMotion.morph) { bottomVisible = visible }
-            }
         }
         .animation(
           animateMessages ? MessagesStyle.bubbleEntranceAnimation : nil,
@@ -121,6 +118,10 @@ struct NessaThreadView: View {
         )
         .padding(.horizontal, NessaSpacing.sm).padding(.top, NessaSpacing.sm).padding(
           .bottom, NessaSpacing.md)
+        // History can arrive a beat after the thread opens; fade it in rather than pop.
+        .animation(reduceMotion ? nil : NessaMotion.standard()) {
+          $0.opacity(current == nil ? 0 : 1)
+        }
       }.scrollPosition($position, anchor: .bottom)
         .defaultScrollAnchor(.bottom, for: .initialOffset).messagesTrackScroll(
           offset: $scrollOffset
@@ -154,6 +155,11 @@ struct NessaThreadView: View {
             break
           }
         }
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+          Self.scrollRange(geometry) - geometry.contentOffset.y > MessagesStyle.followDistance
+        } action: { _, away in
+          awayFromLatest = away
+        }
         .onScrollGeometryChange(for: CGFloat.self, of: Self.scrollRange) { old, new in
           // Content or container grew under the reader: keep the newest message in place.
           // Shrinking never hides the newest message, so it needs nothing.
@@ -179,18 +185,6 @@ struct NessaThreadView: View {
               ForEach(store.pendingSubmissions(in: conversationID), id: \.requestID) { command in
                 PendingCommandActions(command: command, store: store)
               }
-              if !bottomVisible {
-                HStack {
-                  Spacer()
-                  MessagesJumpToLatest {
-                    readerScrolled = false
-                    follow(animated: !reduceMotion, animation: MessagesStyle.jumpToLatestAnimation)
-                  }
-                }.padding(.horizontal, MessagesStyle.horizontal)
-                  .transition(
-                    .scale(scale: MessagesStyle.swapScale, anchor: .trailing)
-                      .combined(with: .opacity))
-              }
               MessageComposer(
                 draft: $composer.text, reply: $composer.reply, attachments: $composer.attachments,
                 recipient: name,
@@ -200,6 +194,27 @@ struct NessaThreadView: View {
                 submissionAllowed: store.canSubmit(in: conversationID),
                 submissionUnavailableReason: store.submissionUnavailableReason(in: conversationID),
                 autoFocus: autoFocusComposer, working: working, onSend: send)
+            }
+            // Floats above the bar rather than sitting in it: a control that changed the bar's
+            // height would grow the scroll range and set the thread following itself. It shows
+            // only when the reader has left the newest message, the pin's own state.
+            .overlay(alignment: .topTrailing) {
+              ZStack {
+                if readerScrolled && awayFromLatest {
+                  MessagesJumpToLatest {
+                    readerScrolled = false
+                    follow(animated: !reduceMotion, animation: MessagesStyle.jumpToLatestAnimation)
+                  }
+                  .transition(
+                    .scale(scale: MessagesStyle.swapScale, anchor: .trailing)
+                      .combined(with: .opacity))
+                }
+              }
+              // Only the arrow animates; the composer beside it keeps its own timing.
+              .animation(
+                reduceMotion ? nil : NessaMotion.morph, value: readerScrolled && awayFromLatest)
+              .padding(.trailing, MessagesStyle.horizontal)
+              .alignmentGuide(.top) { $0[.bottom] + NessaSpacing.xs }
             }
           }
         }

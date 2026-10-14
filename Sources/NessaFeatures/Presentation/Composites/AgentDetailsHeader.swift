@@ -1,47 +1,45 @@
 import NessaDesignSystem
 import SwiftUI
 
-/// The agent's face and name in one line, for the collapsed header.
+/// The agent's disc and name, in the sheet's header row beside the close button.
 struct AgentDetailsIdentity: View {
   let name: String
+  let working: Bool
   var body: some View {
-    HStack(spacing: NessaSpacing.xs) {
-      AgentAvatar(name: name, size: AgentDetailsStyle.compactAvatar)
-      Text(name).font(MessagesStyle.title).lineLimit(1).truncationMode(.tail)
+    HStack(spacing: NessaSpacing.sm) {
+      AgentAvatar(name: name, size: AgentDetailsStyle.heroAvatar, working: working)
+      Text(name).font(AgentDetailsStyle.title).lineLimit(1).truncationMode(.tail)
     }.accessibilityElement(children: .combine)
   }
 }
 
-/// The top of the details sheet: one quiet row with the agent's disc, its name, what it is
-/// for, and the model it answers with. Sized like a list header, not a profile page.
-struct AgentDetailsHero: View {
-  let name: String
+/// Under the header row: what the agent is for and the model it answers with.
+struct AgentDetailsSummary: View {
   let profile: AgentProfile?
   let working: Bool
   private var model: String? {
     guard let profile, let id = profile.defaultModel else { return nil }
     return profile.models.first { $0.id == id }?.displayName ?? id
   }
+  /// False when there is nothing to show, so the sheet leaves no empty gap for it.
+  var hasContent: Bool {
+    profile?.description?.isEmpty == false || working || model != nil
+  }
   var body: some View {
-    HStack(alignment: .center, spacing: NessaSpacing.sm) {
-      AgentAvatar(name: name, size: AgentDetailsStyle.heroAvatar, working: working)
-      VStack(alignment: .leading, spacing: NessaSpacing.xxs) {
-        Text(name).font(AgentDetailsStyle.title).lineLimit(1)
-        if let description = profile?.description, !description.isEmpty {
-          Text(description).font(AgentDetailsStyle.subtitle)
-            .foregroundStyle(MessagesStyle.secondary).lineLimit(2)
-        }
-        if working || model != nil {
-          HStack(spacing: NessaSpacing.xs) {
-            if working {
-              NessaChip("Working", tint: MessagesStyle.foreground)
-                .transition(.scale.combined(with: .opacity))
-            }
-            if let model { NessaChip(model, symbol: "cpu") }
-          }.padding(.top, NessaSpacing.xxs)
+    VStack(alignment: .leading, spacing: NessaSpacing.xs) {
+      if let description = profile?.description, !description.isEmpty {
+        Text(description).font(AgentDetailsStyle.subtitle)
+          .foregroundStyle(MessagesStyle.secondary).lineLimit(2)
+      }
+      if working || model != nil {
+        HStack(spacing: NessaSpacing.xs) {
+          if working {
+            NessaChip("Working", tint: MessagesStyle.foreground)
+              .transition(.scale.combined(with: .opacity))
+          }
+          if let model { NessaChip(model, symbol: "cpu") }
         }
       }
-      Spacer(minLength: 0)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .accessibilityElement(children: .combine)

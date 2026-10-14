@@ -21,7 +21,8 @@ struct ConversationRow: View {
         )
         .font(MessagesStyle.preview).nessaShimmer(active: conversation.running)
         .contentTransition(.opacity)
-        .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+        // Every row keeps two lines, so a one-line preview doesn't shift the rows below it.
+        .lineLimit(2, reservesSpace: true).frame(maxWidth: .infinity, alignment: .leading)
       }.frame(minHeight: MessagesStyle.rowHeight, alignment: .leading)
         .overlay(alignment: .bottom) {
           Rectangle().fill(MessagesStyle.rowSeparator).frame(height: 0.5)

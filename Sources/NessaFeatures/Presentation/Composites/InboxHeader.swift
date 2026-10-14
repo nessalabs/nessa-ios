@@ -13,10 +13,6 @@ struct InboxHeader: View {
         .padding(.horizontal, NessaSpacing.md).frame(height: MessagesStyle.controlHeight)
         .messagesGlass().buttonStyle(.nessaPress)
       Spacer()
-      Text(showingArchived ? "Archived" : "Messages").font(MessagesStyle.title)
-        .contentTransition(.opacity)
-        .animation(NessaMotion.standard(), value: showingArchived)
-      Spacer()
       Menu {
         Button(
           showingArchived ? "Show messages" : "Archived chats", systemImage: "archivebox",
@@ -27,6 +23,16 @@ struct InboxHeader: View {
           .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
           .messagesGlass()
       }.accessibilityLabel("Messages options")
-    }.padding(.horizontal, MessagesStyle.horizontal).padding(.vertical, NessaSpacing.xxs)
+    }
+    // Centred on the screen, not between two buttons of different widths.
+    .overlay {
+      Text(showingArchived ? "Archived" : "Messages").font(MessagesStyle.title)
+        .lineLimit(1).minimumScaleFactor(0.8)
+        // Clear of the wider of the two buttons at large text sizes.
+        .padding(.horizontal, NessaSpacing.xl * 2)
+        .contentTransition(.opacity)
+        .animation(NessaMotion.standard(), value: showingArchived)
+    }
+    .padding(.horizontal, MessagesStyle.horizontal).padding(.vertical, NessaSpacing.xxs)
   }
 }

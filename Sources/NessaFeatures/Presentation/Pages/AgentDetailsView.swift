@@ -8,7 +8,6 @@ struct AgentDetailsView: View {
   @Environment(\.dismiss) private var dismiss
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var tab = AgentDetailsTab.overview
-  @State private var collapse: CGFloat = 0
   private var conversation: NessaConversationView? { store.views[conversationID] }
   private var profile: AgentProfile? {
     let id = conversation?.runtime?.agent ?? store.agentID(for: conversationID)
@@ -22,13 +21,8 @@ struct AgentDetailsView: View {
   var body: some View {
     ScrollView {
       LazyVStack(alignment: .leading, spacing: NessaSpacing.lg, pinnedViews: [.sectionHeaders]) {
-        AgentDetailsHero(name: name, profile: profile, working: working)
-          .opacity(1 - collapse)
-          .scaleEffect(
-            reduceMotion ? 1 : 1 - collapse * (1 - AgentDetailsStyle.collapsedScale),
-            anchor: .leading
-          )
-          .accessibilityHidden(collapse >= 1)
+        let summary = AgentDetailsSummary(profile: profile, working: working)
+        if summary.hasContent { summary }
         Section {
           content
             .id(tab)
@@ -46,12 +40,6 @@ struct AgentDetailsView: View {
       .animation(reduceMotion ? nil : NessaMotion.morph, value: tab)
       .animation(reduceMotion ? nil : NessaMotion.morph, value: working)
     }
-    .onScrollGeometryChange(for: CGFloat.self) { geometry in
-      min(1, max(0, geometry.contentOffset.y + geometry.contentInsets.top)
-        / AgentDetailsStyle.collapseDistance)
-    } action: { _, progress in
-      collapse = progress
-    }
     .messagesScrollEdges()
     .messagesBar(edge: .top) { header.messagesHeaderGrain() }
     .foregroundStyle(MessagesStyle.foreground)
@@ -63,9 +51,8 @@ struct AgentDetailsView: View {
 
   private var header: some View {
     HStack(spacing: NessaSpacing.sm) {
-      AgentDetailsIdentity(name: name)
-        .opacity(collapse)
-        .accessibilityHidden(collapse < 1)
+      // The agent and the close button share one row and one centre line.
+      AgentDetailsIdentity(name: name, working: working)
       Spacer(minLength: NessaSpacing.xs)
       Button { dismiss() } label: {
         Image(systemName: "xmark").font(MessagesStyle.icon)
