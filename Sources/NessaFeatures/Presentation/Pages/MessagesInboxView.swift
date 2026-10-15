@@ -11,13 +11,12 @@ struct MessagesInboxView: View {
   @State private var showingArchived = false
   @State private var selected: Set<String> = []
   @State private var pendingDeletion: Set<String> = []
-  /// The selection bar's slide is armed to delete what is selected.
-  @State private var confirmingSelection = false
   @State private var deleting = false
-  /// Chats being deleted. Their list rows fold shut where they stand (`collapsing`) and their
-  /// pinned discs leave the grid (`leaving`); the store's own removal lands later, outside
-  /// any animation, once there is nothing left to see go.
-  @State private var collapsing: Set<String> = []
+  /// Chats being deleted. Their rows first fade out where they stand (`fading`), then leave
+  /// the list and the pinned grid on the layout spring (`leaving`), so the rows below close
+  /// the gap through empty space rather than through fading text. The store's own removal
+  /// lands later, outside any animation, once there is nothing left to see go.
+  @State private var fading: Set<String> = []
   @State private var leaving: Set<String> = []
   @State private var search = ""
   @State private var pinRefusals = 0
@@ -53,7 +52,10 @@ struct MessagesInboxView: View {
         ForEach(filtered) { conversation in
           Button {
             if editing {
-              if !selected.insert(conversation.id).inserted { selected.remove(conversation.id) }
+              // Animated, so the delete bar rises with the first pick and sinks with the last.
+              withAnimation(reduceMotion ? nil : NessaMotion.enter) {
+                if !selected.insert(conversation.id).inserted { selected.remove(conversation.id) }
+              }
             } else {
               onOpen(conversation.id)
             }
@@ -76,14 +78,14 @@ struct MessagesInboxView: View {
                 .animation(reduceMotion ? nil : NessaMotion.standard(), value: selected)
             }
             .contentShape(Rectangle())
-            // A deleted row folds shut before it goes.
-            .nessaCollapsed(collapsing.contains(conversation.id))
+            .opacity(fading.contains(conversation.id) ? 0 : 1)
             // A row leaving (pinned, archived, deleted) collapses inside its own bounds, so
             // its text never slides over the row moving up into its place. The mask is
             // widened sideways only, to keep the selected fill's overhang.
             .mask { Rectangle().padding(.horizontal, -NessaSpacing.xs) }
           }.buttonStyle(.plain)
-            .disabled(deleting)
+            // Rows wait out a deletion without dimming: the list stays as it looks.
+            .allowsHitTesting(!deleting)
             .accessibilityLabel(
               editing
                 ? "Select \(store.chatName(conversation.id))" : store.chatName(conversation.id)
@@ -139,16 +141,6 @@ struct MessagesInboxView: View {
       )
       .listRowSeparator(.hidden).listRowBackground(Color.clear)
     }.listStyle(.plain).scrollContentBackground(.hidden)
-      // While the bar's slide is armed, a tap anywhere on the list disarms it.
-      .overlay {
-        if confirmingSelection {
-          Color.clear.contentShape(Rectangle())
-            .onTapGesture {
-              withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirmingSelection = false }
-            }
-            .accessibilityAddTraits(.isButton).accessibilityLabel("Keep chats")
-        }
-      }
       .environment(\.defaultMinListRowHeight, 0)
       .sensoryFeedback(.impact(flexibility: .soft), trigger: store.pinnedChats)
       .sensoryFeedback(.warning, trigger: pinRefusals)
@@ -177,28 +169,22 @@ struct MessagesInboxView: View {
       }
       .messagesBar(edge: .bottom) {
         if editing {
-          // The bar is the slide itself: at rest it counts the selection, a tap on its knob
-          // arms it, and only then does it delete, so no sheet is needed. A tap anywhere else
-          // disarms it (see the catcher over the list).
-          NessaSlideToConfirm(
-            selected.count == 1 ? "Slide to delete" : "Slide to delete \(selected.count)",
-            restingLabel: selected.isEmpty ? "Select chats" : "\(selected.count) selected",
-            armed: $confirmingSelection,
-            tint: MessagesStyle.danger, height: MessagesStyle.selectionBarHeight
-          ) {
-            let ids = selected
-            // The chats are on their way out, so the bar goes straight back to its empty
-            // state rather than counting them on the way.
-            withAnimation(reduceMotion ? nil : NessaMotion.morph) {
-              selected = []
-              confirmingSelection = false
+          // The bar is the slide itself, so deleting a selection needs no sheet. It is there
+          // only while something is selected, and goes with what it deleted.
+          if !selected.isEmpty {
+            NessaSlideToConfirm(
+              "Slide to delete \(selected.count)",
+              tint: MessagesStyle.danger, height: MessagesStyle.selectionBarHeight
+            ) {
+              let ids = selected
+              withAnimation(reduceMotion ? nil : NessaMotion.enter) { selected = [] }
+              delete(ids)
             }
-            delete(ids)
+            .padding(.horizontal, MessagesStyle.horizontal)
+            .padding(.bottom, MessagesStyle.bottomInset)
+            .disabled(deleting || !store.connected)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
           }
-          .padding(.horizontal, MessagesStyle.horizontal)
-          .padding(.bottom, MessagesStyle.bottomInset)
-          .disabled(selected.isEmpty || deleting || !store.connected)
-          .transition(.opacity)
         } else {
           HStack(spacing: MessagesStyle.toolbarGap) {
             NessaSearchField(text: $search)
@@ -235,33 +221,31 @@ struct MessagesInboxView: View {
       .onChange(of: store.connected) { _, _ in
         selected = []
         pendingDeletion = []
-        confirmingSelection = false
         editing = false
       }
-      // A slide armed for one selection never deletes a different one.
-      .onChange(of: selected) { _, _ in confirmingSelection = false }
-      .onChange(of: editing) { _, _ in confirmingSelection = false }
       .refreshable {
         do { try await store.refreshList() } catch { store.error = error.localizedDescription }
       }
   }
   private func delete(_ ids: Set<String>) {
     deleting = true
-    // The store hides a chat the moment its deletion starts, so the rows fold shut first and
-    // the deletion starts after; by then a row has no height left to take away. The pinned
-    // grid lets its discs go on the same spring.
-    withAnimation(reduceMotion ? nil : NessaMotion.enter, completionCriteria: .logicallyComplete) {
-      collapsing.formUnion(ids)
-      leaving.formUnion(ids)
+    // The store hides a chat the moment its deletion starts, so the rows go first and the
+    // deletion starts after.
+    withAnimation(
+      reduceMotion ? nil : NessaMotion.standard(MessagesStyle.rowFadeOut),
+      completionCriteria: .logicallyComplete
+    ) {
+      fading.formUnion(ids)
     } completion: {
+      changeLayout { leaving.formUnion(ids) }
       Task {
         await store.deleteConversations(ids)
         selected.formIntersection(Set(store.conversations.map(\.id)))
         deleting = false
-        // A chat the gateway kept opens back up on the same spring.
+        // A chat the gateway kept comes back on the same spring.
         changeLayout {
-          collapsing.subtract(ids)
           leaving.subtract(ids)
+          fading.subtract(ids)
         }
       }
     }
@@ -280,7 +264,7 @@ struct MessagesInboxView: View {
   }
   private var filtered: [NessaConversation] {
     store.visibleConversations.filter {
-      (store.archivedChats.contains($0.id) == showingArchived)
+      !leaving.contains($0.id) && (store.archivedChats.contains($0.id) == showingArchived)
         && (editing || showingArchived || !store.isPinned($0.id))
         && (search.isEmpty || ($0.title ?? "").localizedCaseInsensitiveContains(search)
           || ($0.preview ?? "").localizedCaseInsensitiveContains(search))

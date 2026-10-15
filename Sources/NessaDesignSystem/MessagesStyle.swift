@@ -148,11 +148,11 @@ public enum MessagesStyle {
   public static let selectedRowRadius: CGFloat = 14
   /// A control swapping in place grows from this scale.
   public static let swapScale: CGFloat = 0.5
-  /// The selection bar and the delete slide it turns into: a touch taller than the composer,
-  /// so the slide's knob has room.
+  /// The delete slide that stands in for the bar while chats are selected: a touch taller
+  /// than the composer, so the slide's knob has room.
   public static let selectionBarHeight: CGFloat = 54
-  /// The trash knob's inset at the bar's end, matching the slide's knob inside its track.
-  public static let selectionKnobInset: CGFloat = 4
+  /// A deleted row fading out before the rows below close up: a micro-interaction.
+  public static let rowFadeOut: Double = 0.12
   public static let sendPressScale: CGFloat = 0.86
   public static let headerPressScale: CGFloat = 0.97
   public static let emptyTitle = Font.system(size: 22, weight: .semibold)
