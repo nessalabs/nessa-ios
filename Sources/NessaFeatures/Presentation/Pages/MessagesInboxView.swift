@@ -10,7 +10,8 @@ struct MessagesInboxView: View {
   @State private var editing = false
   @State private var showingArchived = false
   @State private var selected: Set<String> = []
-  @State private var pendingDeletion: Set<String> = []
+  /// Select mode was opened by a single chat's Delete, so it closes again after the delete.
+  @State private var selectingToDelete = false
   @State private var deleting = false
   /// Chats being deleted. Their rows first fade out where they stand (`fading`), then leave
   /// the list and the pinned grid on the layout spring (`leaving`), so the rows below close
@@ -35,7 +36,7 @@ struct MessagesInboxView: View {
         if !pinnedShown.isEmpty {
           PinnedChatsGrid(
             store: store, onOpen: onOpen, onOpenComposer: onOpenComposer,
-            onDelete: { pendingDeletion = [$0] }, enabled: !deleting, leaving: leaving)
+            onDelete: selectToDelete, enabled: !deleting, leaving: leaving)
         }
         if !store.connected {
           Button(store.reconnecting ? "Reconnecting…" : "Connect to Nessa", action: onSettings)
@@ -95,7 +96,7 @@ struct MessagesInboxView: View {
               store: store, identifier: conversation.id,
               enabled: !editing && !deleting,
               onTap: { onOpen(conversation.id) }, onCommit: onOpenComposer,
-              onDelete: { pendingDeletion = [$0] }
+              onDelete: selectToDelete
             )
             .swipeActions(edge: .leading, allowsFullSwipe: false) {
               if !editing && !showingArchived {
@@ -118,7 +119,7 @@ struct MessagesInboxView: View {
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
               if !editing {
                 Button {
-                  pendingDeletion = [conversation.id]
+                  selectToDelete(conversation.id)
                 } label: {
                   Label("Delete", systemImage: "trash")
                 }.tint(MessagesStyle.danger).disabled(
@@ -141,6 +142,15 @@ struct MessagesInboxView: View {
       )
       .listRowSeparator(.hidden).listRowBackground(Color.clear)
     }.listStyle(.plain).scrollContentBackground(.hidden)
+      // A single chat's Delete backs out with a tap anywhere on the list, as the slide did
+      // before it became the bar.
+      .overlay {
+        if selectingToDelete && !deleting {
+          Color.clear.contentShape(Rectangle())
+            .onTapGesture { cancelDelete() }
+            .accessibilityAddTraits(.isButton).accessibilityLabel("Keep chat")
+        }
+      }
       .environment(\.defaultMinListRowHeight, 0)
       .sensoryFeedback(.impact(flexibility: .soft), trigger: store.pinnedChats)
       .sensoryFeedback(.warning, trigger: pinRefusals)
@@ -153,12 +163,14 @@ struct MessagesInboxView: View {
       .nessaInlineNavigationTitle()
       .toolbar {
         InboxToolbar(
-          editing: editing, accountSeed: store.currentGatewayAddress ?? "nessa",
+          editing: editing, cancelsDelete: selectingToDelete,
+          accountSeed: store.currentGatewayAddress ?? "nessa",
           onEdit: {
             // The marks slide in from the edge as the rows make room, on one spring.
             withAnimation(reduceMotion ? nil : NessaMotion.enter) {
               editing.toggle()
               selected = []
+              selectingToDelete = false
             }
           }, onSettings: onSettings, showingArchived: showingArchived,
           onToggleArchived: {
@@ -177,7 +189,13 @@ struct MessagesInboxView: View {
               tint: MessagesStyle.danger, height: MessagesStyle.selectionBarHeight
             ) {
               let ids = selected
-              withAnimation(reduceMotion ? nil : NessaMotion.enter) { selected = [] }
+              withAnimation(reduceMotion ? nil : NessaMotion.enter) {
+                selected = []
+                if selectingToDelete {
+                  editing = false
+                  selectingToDelete = false
+                }
+              }
               delete(ids)
             }
             .padding(.horizontal, MessagesStyle.horizontal)
@@ -208,45 +226,50 @@ struct MessagesInboxView: View {
             .bottom, MessagesStyle.bottomInset)
         }
       }
-      .sheet(
-        isPresented: Binding(
-          get: { !pendingDeletion.isEmpty }, set: { if !$0 { pendingDeletion = [] } })
-      ) {
-        DeleteChatsConfirmation(count: pendingDeletion.count, onCancel: { pendingDeletion = [] }) {
-          let ids = pendingDeletion
-          pendingDeletion = []
-          delete(ids)
-        }
-      }
       .onChange(of: store.connected) { _, _ in
         selected = []
-        pendingDeletion = []
         editing = false
+        selectingToDelete = false
       }
       .refreshable {
         do { try await store.refreshList() } catch { store.error = error.localizedDescription }
       }
   }
+  /// A single chat's Delete (from its menu or a swipe) uses the same slide as a selection:
+  /// select mode opens with just that chat picked, so the slide rises, with no sheet.
+  private func selectToDelete(_ id: String) {
+    withAnimation(reduceMotion ? nil : NessaMotion.enter) {
+      selectingToDelete = !editing
+      editing = true
+      selected = [id]
+    }
+  }
+  private func cancelDelete() {
+    withAnimation(reduceMotion ? nil : NessaMotion.enter) {
+      editing = false
+      selected = []
+      selectingToDelete = false
+    }
+  }
   private func delete(_ ids: Set<String>) {
     deleting = true
-    // The store hides a chat the moment its deletion starts, so the rows go first and the
-    // deletion starts after.
-    withAnimation(
-      reduceMotion ? nil : NessaMotion.standard(MessagesStyle.rowFadeOut),
-      completionCriteria: .logicallyComplete
-    ) {
+    withAnimation(reduceMotion ? nil : NessaMotion.standard(MessagesStyle.rowFadeOut)) {
       fading.formUnion(ids)
-    } completion: {
+    }
+    Task {
+      // The gap closes only once the rows have faded: timed rather than waiting on the
+      // fade's completion, which can fire at once when the list redraws the rows in the same
+      // update (the selection clearing and the bar sinking). The store hides a chat the
+      // moment its deletion starts, so the rows leave first, on the layout spring.
+      if !reduceMotion { try? await Task.sleep(for: .seconds(MessagesStyle.rowFadeOut)) }
       changeLayout { leaving.formUnion(ids) }
-      Task {
-        await store.deleteConversations(ids)
-        selected.formIntersection(Set(store.conversations.map(\.id)))
-        deleting = false
-        // A chat the gateway kept comes back on the same spring.
-        changeLayout {
-          leaving.subtract(ids)
-          fading.subtract(ids)
-        }
+      await store.deleteConversations(ids)
+      selected.formIntersection(Set(store.conversations.map(\.id)))
+      deleting = false
+      // A chat the gateway kept comes back on the same spring.
+      changeLayout {
+        leaving.subtract(ids)
+        fading.subtract(ids)
       }
     }
   }
