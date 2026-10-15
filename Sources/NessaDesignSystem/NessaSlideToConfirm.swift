@@ -24,8 +24,9 @@ public struct NessaSlideToConfirm: View {
   private var drag: CGFloat = 0
   @GestureState private var holding = false
   @State private var confirmed = false
-  /// The hint that the armed knob now moves: a short push toward the end and back.
-  @State private var nudge: CGFloat = 0
+  /// Counts arms; each one plays the hint that the knob now moves, a short push toward the
+  /// end and back.
+  @State private var nudges = 0
 
   /// `height` sizes the track, so it can stand in for a bar of the same height; the knob
   /// keeps the same inset at any height.
@@ -62,7 +63,13 @@ public struct NessaSlideToConfirm: View {
           .opacity(1 - min(progress / SlideStyle.labelFadeEnd, 1))
         NessaSlideFill(progress: progress, travel: travel, height: height, tint: tint)
         knob
-          .offset(x: offset + nudge)
+          .keyframeAnimator(initialValue: CGFloat(0), trigger: nudges) { knob, push in
+            knob.offset(x: push)
+          } keyframes: { _ in
+            CubicKeyframe(SlideStyle.nudgeDistance, duration: SlideStyle.nudgeOut)
+            SpringKeyframe(0, duration: SlideStyle.nudgeBack, spring: .smooth)
+          }
+          .offset(x: offset)
           .gesture(dragGesture(travel: travel), including: isEnabled && !confirmed ? .all : .none)
       }
       .sensoryFeedback(.selection, trigger: Int(progress * SlideStyle.ticks))
@@ -74,7 +81,7 @@ public struct NessaSlideToConfirm: View {
     // Disarmed (after a confirm too), the knob goes home so the slide is ready to use again.
     .onChange(of: isArmed) { _, new in
       if new {
-        hint()
+        if !reduceMotion { nudges += 1 }
       } else if confirmed {
         withAnimation(reduceMotion ? nil : SlideStyle.springBack) { confirmed = false }
       }
@@ -116,15 +123,6 @@ public struct NessaSlideToConfirm: View {
   private func arm() {
     guard isEnabled, let armed, !armed.wrappedValue else { return }
     withAnimation(reduceMotion ? nil : NessaMotion.morph) { armed.wrappedValue = true }
-  }
-
-  private func hint() {
-    guard !reduceMotion else { return }
-    withAnimation(SlideStyle.nudgeOut) {
-      nudge = SlideStyle.nudgeDistance
-    } completion: {
-      withAnimation(SlideStyle.springBack) { nudge = 0 }
-    }
   }
 
   private func confirm() {
@@ -177,9 +175,11 @@ private enum SlideStyle {
   /// A selection tick each quarter of the way.
   static let ticks: CGFloat = 4
   static let springBack = Animation.spring(duration: 0.25, bounce: 0.15)
-  /// How far the knob pushes toward the end when the slide arms, and how fast it gets there.
+  /// How far the knob pushes toward the end when the slide arms, and how long it takes out
+  /// and back.
   static let nudgeDistance: CGFloat = 10
-  static let nudgeOut = Animation.easeOut(duration: 0.12)
+  static let nudgeOut: TimeInterval = 0.1
+  static let nudgeBack: TimeInterval = 0.18
   /// A press that moves less than this is a tap on the knob, not a drag.
   static let tapSlop: CGFloat = 10
   /// The fill's tint strength at the track's start, and at the knob once it reaches the end.

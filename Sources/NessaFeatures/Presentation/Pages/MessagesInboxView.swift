@@ -14,8 +14,10 @@ struct MessagesInboxView: View {
   /// The selection bar's slide is armed to delete what is selected.
   @State private var confirmingSelection = false
   @State private var deleting = false
-  /// Chats being deleted, taken out of the list at once on the layout spring so they animate
-  /// away; the store's own removal lands later, outside any animation.
+  /// Chats being deleted. Their list rows fold shut where they stand (`collapsing`) and their
+  /// pinned discs leave the grid (`leaving`); the store's own removal lands later, outside
+  /// any animation, once there is nothing left to see go.
+  @State private var collapsing: Set<String> = []
   @State private var leaving: Set<String> = []
   @State private var search = ""
   @State private var pinRefusals = 0
@@ -74,6 +76,8 @@ struct MessagesInboxView: View {
                 .animation(reduceMotion ? nil : NessaMotion.standard(), value: selected)
             }
             .contentShape(Rectangle())
+            // A deleted row folds shut before it goes.
+            .nessaCollapsed(collapsing.contains(conversation.id))
             // A row leaving (pinned, archived, deleted) collapses inside its own bounds, so
             // its text never slides over the row moving up into its place. The mask is
             // widened sideways only, to keep the selected fill's overhang.
@@ -183,7 +187,12 @@ struct MessagesInboxView: View {
             tint: MessagesStyle.danger, height: MessagesStyle.selectionBarHeight
           ) {
             let ids = selected
-            withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirmingSelection = false }
+            // The chats are on their way out, so the bar goes straight back to its empty
+            // state rather than counting them on the way.
+            withAnimation(reduceMotion ? nil : NessaMotion.morph) {
+              selected = []
+              confirmingSelection = false
+            }
             delete(ids)
           }
           .padding(.horizontal, MessagesStyle.horizontal)
@@ -238,13 +247,23 @@ struct MessagesInboxView: View {
   }
   private func delete(_ ids: Set<String>) {
     deleting = true
-    changeLayout { leaving.formUnion(ids) }
-    Task {
-      await store.deleteConversations(ids)
-      selected.formIntersection(Set(store.conversations.map(\.id)))
-      deleting = false
-      // A chat the gateway kept comes back on the same spring.
-      changeLayout { leaving.subtract(ids) }
+    // The store hides a chat the moment its deletion starts, so the rows fold shut first and
+    // the deletion starts after; by then a row has no height left to take away. The pinned
+    // grid lets its discs go on the same spring.
+    withAnimation(reduceMotion ? nil : NessaMotion.enter, completionCriteria: .logicallyComplete) {
+      collapsing.formUnion(ids)
+      leaving.formUnion(ids)
+    } completion: {
+      Task {
+        await store.deleteConversations(ids)
+        selected.formIntersection(Set(store.conversations.map(\.id)))
+        deleting = false
+        // A chat the gateway kept opens back up on the same spring.
+        changeLayout {
+          collapsing.subtract(ids)
+          leaving.subtract(ids)
+        }
+      }
     }
   }
   /// The pinned chats the grid shows right now, or none while it is hidden.
@@ -261,7 +280,7 @@ struct MessagesInboxView: View {
   }
   private var filtered: [NessaConversation] {
     store.visibleConversations.filter {
-      !leaving.contains($0.id) && (store.archivedChats.contains($0.id) == showingArchived)
+      (store.archivedChats.contains($0.id) == showingArchived)
         && (editing || showingArchived || !store.isPinned($0.id))
         && (search.isEmpty || ($0.title ?? "").localizedCaseInsensitiveContains(search)
           || ($0.preview ?? "").localizedCaseInsensitiveContains(search))
