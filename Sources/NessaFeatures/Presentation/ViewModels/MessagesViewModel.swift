@@ -954,6 +954,8 @@ public final class MessagesViewModel: ObservableObject {
       deliveryScopeRevision += 1
       acknowledgedCommands = []
       acknowledgmentOrder = []
+      accessRevoked = false
+      phoneDeliveries = []
     }
     profile = next
     cancelPreviews()
@@ -1324,7 +1326,9 @@ public final class MessagesViewModel: ObservableObject {
       connected = true
       if let phoneChat {
         do {
-          phoneDeliveries = try await phoneChat.recover()
+          await phoneChat.activate(cacheScope(profile))
+          _ = try await phoneChat.recover()
+          phoneDeliveries = try await phoneChat.list()
           noteRevokedDeliveries()
         } catch {
           self.error = "Saved sends could not be read."
@@ -1673,7 +1677,8 @@ public final class MessagesViewModel: ObservableObject {
     }
   }
   public func stopTurn(_ executionID: String, in conversationID: String) async {
-    guard let phoneChat, connected, !accessRevoked else { return }
+    guard let phoneChat, let profile, connected, !accessRevoked else { return }
+    await phoneChat.activate(cacheScope(profile))
     do {
       let outcome = try await phoneChat.stop(
         conversationID: conversationID, executionID: executionID)
@@ -1687,7 +1692,8 @@ public final class MessagesViewModel: ObservableObject {
     }
   }
   public func retryPhoneDelivery(_ commandID: String) async {
-    guard let phoneChat, connected, !accessRevoked else { return }
+    guard let phoneChat, let profile, connected, !accessRevoked else { return }
+    await phoneChat.activate(cacheScope(profile))
     do {
       _ = try await phoneChat.retry(commandID)
       phoneDeliveries = try await phoneChat.list()
@@ -1696,6 +1702,11 @@ public final class MessagesViewModel: ObservableObject {
       self.error = error.localizedDescription
     }
   }
+  private func cacheScope(_ profile: Profile) -> PhoneCacheScope {
+    PhoneCacheScope(
+      address: profile.address, credential: profile.credential, instance: profile.instance)
+  }
+
   private func noteRevokedDeliveries() {
     let revoked = phoneDeliveries.contains { view in
       if case .failed(let code) = view.outcome { return PhoneAccess.revoked(code) }
@@ -1713,6 +1724,7 @@ public final class MessagesViewModel: ObservableObject {
     chat: PhoneProductChat
   ) async -> Bool {
     let contextual = reply?.contextualizing(text) ?? text
+    if let currentProfile { await chat.activate(cacheScope(currentProfile)) }
     do {
       let view = try await chat.deliver(
         text: contextual, attachments: attachments, conversationID: id, identity: identity)

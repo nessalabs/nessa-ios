@@ -27,6 +27,14 @@ public enum PhoneSendOutcome: Equatable, Sendable, Codable {
     case .draft, .failed, .unknown: false
     }
   }
+
+  /// A person can ask again only when the effect may not have been admitted.
+  public var admitsRetry: Bool {
+    switch self {
+    case .unknown(.notAdmitted), .unknown(.lookupFailed): true
+    default: false
+    }
+  }
 }
 
 public enum PhoneDelivery: String, Equatable, Sendable {

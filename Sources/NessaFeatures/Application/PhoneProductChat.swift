@@ -39,15 +39,37 @@ enum PhoneAccess {
 /// Chat over the ordinary product socket: subscribe for the list and for replies,
 /// and send text or images through the outbox.
 public actor PhoneProductChat {
-  private let outbox: PhoneOutbox
+  private var outbox: PhoneOutbox
   private let transport: any PhoneProductTransport
-  private let stops: any PhoneStopStoring
+  private var stops: any PhoneStopStoring
+  /// When set, each `PhoneCacheScope` gets its own directory. Injected stores ignore it.
+  private let root: URL?
+  private var boundScope: String?
   public init(
     outbox: PhoneOutbox, transport: any PhoneProductTransport, stops: any PhoneStopStoring
   ) {
     self.outbox = outbox
     self.transport = transport
     self.stops = stops
+    root = nil
+  }
+
+  /// Live wiring. Records stay partitioned by the same connection scope as snapshots and commands.
+  public init(root: URL, transport: any PhoneProductTransport) {
+    self.root = root
+    self.transport = transport
+    let idle = root.appendingPathComponent("unbound", isDirectory: true)
+    outbox = PhoneOutbox(store: PhoneOutboxFileStore(directory: idle), gateway: transport)
+    stops = PhoneStopFileStore(directory: idle)
+  }
+
+  /// Point later sends, lookups, and Stop at this connection. A different scope does not see the previous one.
+  public func activate(_ scope: PhoneCacheScope) {
+    guard let root, boundScope != scope.key else { return }
+    boundScope = scope.key
+    let directory = root.appendingPathComponent(scope.key, isDirectory: true)
+    outbox = PhoneOutbox(store: PhoneOutboxFileStore(directory: directory), gateway: transport)
+    stops = PhoneStopFileStore(directory: directory)
   }
 
   /// Keeps every owned conversation the product list names, including one with no title or preview.
@@ -61,6 +83,7 @@ public actor PhoneProductChat {
     text: String, attachments: [DraftAttachment], conversationID: String,
     identity: MessageCommandIdentity
   ) async throws -> PhoneOutboxView {
+    try requireBound()
     var images: [NessaImageAttachment] = []
     for attachment in attachments {
       images.append(try await transport.uploadPhoneImage(attachment, conversationID: conversationID))
@@ -73,20 +96,24 @@ public actor PhoneProductChat {
   }
 
   public func recover() async throws -> [PhoneOutboxView] {
+    try requireBound()
     _ = try await recoverStops()
     return try await outbox.recover()
   }
 
   public func retry(_ commandID: String) async throws -> PhoneOutboxView {
-    try await outbox.retry(commandID)
+    try requireBound()
+    return try await outbox.retry(commandID)
   }
 
   public func list() async throws -> [PhoneOutboxView] {
-    try await outbox.list()
+    try requireBound()
+    return try await outbox.list()
   }
 
   /// One Stop for this turn. A later call looks the first one up and does not stop again.
   public func stop(conversationID: String, executionID: String) async throws -> PhoneSendOutcome {
+    try requireBound()
     var records = try await stops.load()
     if let existing = records.first(where: {
       $0.conversationID == conversationID && $0.executionID == executionID && $0.departed
@@ -139,6 +166,10 @@ public actor PhoneProductChat {
       of: await transport.phoneLookupStop(
         conversationID: record.conversationID, requestID: record.requestID,
         executionID: record.executionID))
+  }
+
+  private func requireBound() throws {
+    if root != nil, boundScope == nil { throw PhoneOutboxFailure.unavailable }
   }
 
   private func replace(_ records: inout [PhoneStopRecord], _ record: PhoneStopRecord) {

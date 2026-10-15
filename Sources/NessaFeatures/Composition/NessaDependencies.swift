@@ -82,10 +82,7 @@ import Foundation
       let directory = FileManager.default.urls(
         for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Nessa/PhoneOutbox", isDirectory: true)
-      phoneChat = PhoneProductChat(
-        outbox: PhoneOutbox(
-          store: PhoneOutboxFileStore(directory: directory), gateway: transport),
-        transport: transport, stops: PhoneStopFileStore(directory: directory))
+      phoneChat = PhoneProductChat(root: directory, transport: transport)
     } else {
       phoneChat = nil
     }

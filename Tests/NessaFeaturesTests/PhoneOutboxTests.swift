@@ -279,6 +279,14 @@ private func intent(
   #expect(gateway.stopLookups == 1)
 }
 
+@Test func aFailedLookupCanBeRetried() {
+  #expect(PhoneSendOutcome.unknown(.lookupFailed).admitsRetry)
+  #expect(PhoneSendOutcome.unknown(.notAdmitted).admitsRetry)
+  #expect(!PhoneSendOutcome.unknown(.attempted).admitsRetry)
+  #expect(!PhoneSendOutcome.unknown(.unresolved).admitsRetry)
+  #expect(!PhoneSendOutcome.failed("forbidden").admitsRetry)
+}
+
 @Test func aConversationRefusalKeepsItsCode() {
   let error = PhoneSocketRefusal.error(code: "turn_running", message: "busy", details: nil)
   #expect((error as? GatewayProductRejection)?.code == "turn_running")

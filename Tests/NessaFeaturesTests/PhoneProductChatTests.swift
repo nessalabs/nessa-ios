@@ -161,6 +161,71 @@ private final class CatalogueSpy: PhoneSyncRunning, @unchecked Sendable {
   #expect(sync.displays == 0 && sync.catalogues == 0)
 }
 
+@Test func eachConnectionKeepsItsOwnOutbox() async throws {
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  let gateway = ScriptedGateway(
+    store: MemoryOutboxStore(), sendAnswers: [.receipt(.queued)])
+  let chat = PhoneProductChat(root: root, transport: gateway)
+  let first = PhoneCacheScope(
+    address: "wss://a.example/session", credential: "one", instance: "phone")
+  let second = PhoneCacheScope(
+    address: "wss://b.example/session", credential: "two", instance: "phone")
+  let identity = MessageCommandIdentity(
+    requestID: "11111111-1111-4111-8111-111111111111",
+    executionID: "22222222-2222-4222-8222-222222222222")
+  await chat.activate(first)
+  _ = try await chat.deliver(
+    text: "Hello", attachments: [], conversationID: emptyChat, identity: identity)
+  await chat.activate(second)
+  #expect(try await chat.list().isEmpty)
+  await chat.activate(first)
+  #expect(try await chat.list().map(\.text) == ["Hello"])
+}
+
+@Test func aFailedSendStaysListedAfterRecovery() async throws {
+  let store = MemoryOutboxStore()
+  let gateway = ScriptedGateway(store: store, sendAnswers: [.refused("forbidden")])
+  let chat = PhoneProductChat(
+    outbox: PhoneOutbox(store: store, gateway: gateway), transport: gateway,
+    stops: MemoryStopStore())
+  _ = try await chat.deliver(
+    text: "Hello", attachments: [], conversationID: emptyChat,
+    identity: MessageCommandIdentity(
+      requestID: "11111111-1111-4111-8111-111111111111",
+      executionID: "22222222-2222-4222-8222-222222222222"))
+  #expect(try await chat.recover().isEmpty)
+  #expect(try await chat.list().map(\.outcome) == [.failed("forbidden")])
+}
+
+@Test @MainActor func aNewCredentialClearsRevocationAndThePreviousOutbox() async throws {
+  let profile = exampleProfile(phase: .prepared).recording(
+    pairingStatus: nil, nativeReceiver: "native-receiver", nativeStatus: nil, recoveredPurge: nil,
+    retired: false)
+  let snapshot = try PhoneProfileSnapshot(
+    registry: exampleProfiles(profile), local: nil, nativeStatus: nil, source: nil)
+  let gateway = ProductListGateway()
+  let transport = ScriptedGateway(
+    store: MemoryOutboxStore(), sendAnswers: [.refused("forbidden")])
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  let model = MessagesViewModel(
+    service: MessagingService(repository: gateway), credentials: InMemoryCredentialStore(),
+    preferences: InMemoryChatPreferences(), phoneSync: CatalogueSpy(snapshot),
+    phoneChat: PhoneProductChat(root: root, transport: transport))
+  await model.connect(
+    address: profile.productAddress, credential: "fixture", instance: profile.instance)
+  let identity = MessageCommandIdentity(
+    requestID: "11111111-1111-4111-8111-111111111111",
+    executionID: "22222222-2222-4222-8222-222222222222")
+  #expect(await model.send("Hello", to: emptyChat, identity: identity) == false)
+  #expect(model.accessRevoked)
+  #expect(model.phoneDeliveries(in: emptyChat).map(\.outcome) == [.failed("forbidden")])
+  await model.connect(
+    address: "ws://127.0.0.1:18744/session", credential: "replacement", instance: "other-phone")
+  #expect(!model.accessRevoked)
+  #expect(model.phoneDeliveries(in: emptyChat).isEmpty)
+  #expect(model.canSubmit(in: emptyChat))
+}
+
 private actor MemoryStopStore: PhoneStopStoring {
   private var records: [PhoneStopRecord] = []
   func load() async throws -> [PhoneStopRecord] { records }

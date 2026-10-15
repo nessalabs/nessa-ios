@@ -35,7 +35,7 @@ struct PhoneDeliveryRow: View {
       Image(systemName: "clock").foregroundStyle(MessagesStyle.secondary)
       Text(title).font(MessagesStyle.caption).lineLimit(2)
       Spacer()
-      if case .unknown(.notAdmitted) = delivery.outcome {
+      if delivery.outcome.admitsRetry {
         Button("Retry") { Task { await store.retryPhoneDelivery(delivery.commandID) } }
           .disabled(!store.connected || store.accessRevoked)
       }
