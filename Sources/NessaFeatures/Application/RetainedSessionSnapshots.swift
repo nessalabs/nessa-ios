@@ -19,6 +19,7 @@ public enum RetainedConsentClass: String, Codable, Equatable, Sendable {
   case deviceRead
   case peerRead
   case peerEnvironment
+  case ownerPhoneReadWrite
 }
 
 public enum RetainedCryptoFailure: String, Codable, Equatable, Sendable {
@@ -105,6 +106,7 @@ public enum RetainedPublicationStep: String, Codable, Equatable, Sendable {
 public enum RetainedReadFailure: String, Codable, Equatable, Sendable {
   case refused
   case unreachable
+  case away
   case resetRequired
   case `protocol`
   case cache
@@ -114,7 +116,7 @@ public enum RetainedReadFailure: String, Codable, Equatable, Sendable {
   case stopped
 }
 
-public enum RetainedSessionFailureKind: String, Equatable, Sendable {
+public enum RetainedSessionFailureKind: String, Codable, Equatable, Sendable {
   case busy
   case closed
   case damaged
@@ -124,6 +126,8 @@ public enum RetainedSessionFailureKind: String, Equatable, Sendable {
   case enrollment
   case noCredential
   case stopped
+  case product
+  case owner
 }
 
 public enum RetainedStorageFailure: String, Codable, Equatable, Sendable {
@@ -437,17 +441,24 @@ public struct RetainedScope: Equatable, Sendable {
   }
 }
 
-public struct RetainedSessionFailure: Equatable, Sendable {
+public struct RetainedSessionFailure: Codable, Equatable, Sendable {
   public let cache: RetainedReadFailure?
   public let enrollment: RetainedEnrollmentFailure?
   public let kind: RetainedSessionFailureKind
+  public let ownerStatus: RetainedStatus?
+  public let ownerSelection: RetainedEnrollmentFailure?
+  public let product: RetainedProductFailure?
   public let privateState: RetainedPrivateStateFailure?
   public let runtimeDiagnostic: String?
   public init(
     cache: RetainedReadFailure?, enrollment: RetainedEnrollmentFailure?,
     kind: RetainedSessionFailureKind, privateState: RetainedPrivateStateFailure?,
-    runtimeDiagnostic: String?
+    runtimeDiagnostic: String?, ownerStatus: RetainedStatus? = nil,
+    ownerSelection: RetainedEnrollmentFailure? = nil, product: RetainedProductFailure? = nil
   ) {
+    self.ownerStatus = ownerStatus
+    self.ownerSelection = ownerSelection
+    self.product = product
     self.cache = cache
     self.enrollment = enrollment
     self.kind = kind
@@ -457,6 +468,7 @@ public struct RetainedSessionFailure: Equatable, Sendable {
 }
 
 public struct RetainedStatus: Codable, Equatable, Sendable {
+  public let owner: RetainedOwnerStatus?
   public let completionCaptured: Bool
   public let failure: RetainedEnrollmentFailure?
   public let purge: RetainedPurge?
@@ -465,8 +477,10 @@ public struct RetainedStatus: Codable, Equatable, Sendable {
   public let receipt: RetainedEnrollmentReceipt?
   public init(
     completionCaptured: Bool, failure: RetainedEnrollmentFailure?, purge: RetainedPurge?,
-    purgeAttempted: Bool, purgeFailure: RetainedReadFailure?, receipt: RetainedEnrollmentReceipt?
+    purgeAttempted: Bool, purgeFailure: RetainedReadFailure?, receipt: RetainedEnrollmentReceipt?,
+    owner: RetainedOwnerStatus? = nil
   ) {
+    self.owner = owner
     self.completionCaptured = completionCaptured
     self.failure = failure
     self.purge = purge
@@ -493,6 +507,7 @@ public enum RetainedViewFailure: String, Equatable, Sendable {
 public enum RetainedSessionError: Error, Equatable, Sendable {
   case invalidArgument
   case session(RetainedSessionFailure)
+  case ownerPreparation(RetainedOwnerPreparationCallFailure)
   case view(RetainedViewFailure)
   case busy, closed, cancelled, bridge
 }
@@ -590,6 +605,8 @@ extension RetainedScope {
 extension RetainedSessionFailure {
   public static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.cache == rhs.cache && lhs.enrollment == rhs.enrollment && lhs.kind == rhs.kind
+      && lhs.ownerStatus == rhs.ownerStatus && lhs.ownerSelection == rhs.ownerSelection
+      && lhs.product == rhs.product
       && lhs.privateState == rhs.privateState
       && RetainedTextEquality.equal(lhs.runtimeDiagnostic, rhs.runtimeDiagnostic)
   }

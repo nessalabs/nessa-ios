@@ -596,6 +596,9 @@ final class FixtureNativeScope: NativeScope, @unchecked Sendable {
 }
 
 final class FixtureNativeSessionFailure: NativeSessionFailure, @unchecked Sendable {
+  let stored_ownerStatus: NativeStatus?
+  let stored_ownerSelection: NativeEnrollmentFailure?
+  let stored_product: NativeProductFailure?
   let stored_cache: NativeReadFailure?
   let stored_enrollment: NativeEnrollmentFailure?
   let stored_kind: NativeSessionFailureKind
@@ -606,8 +609,13 @@ final class FixtureNativeSessionFailure: NativeSessionFailure, @unchecked Sendab
     enrollment: NativeEnrollmentFailure? = FixtureNativeEnrollmentFailure(),
     kind: NativeSessionFailureKind = .stopped,
     privateState: NativePrivateStateFailure? = FixtureNativePrivateStateFailure(),
-    runtimeDiagnostic: String? = "  NativeSessionFailure.runtimeDiagnostic  "
+    runtimeDiagnostic: String? = "  NativeSessionFailure.runtimeDiagnostic  ",
+    ownerStatus: NativeStatus? = nil, ownerSelection: NativeEnrollmentFailure? = nil,
+    product: NativeProductFailure? = nil
   ) {
+    stored_ownerStatus = ownerStatus
+    stored_ownerSelection = ownerSelection
+    stored_product = product
     stored_cache = cache
     stored_enrollment = enrollment
     stored_kind = kind
@@ -616,6 +624,18 @@ final class FixtureNativeSessionFailure: NativeSessionFailure, @unchecked Sendab
     super.init(noHandle: .init())
   }
   required init(unsafeFromHandle handle: UInt64) { fatalError("fixture cannot be lowered") }
+  override func ownerStatus() -> NativeStatus? {
+    precondition(!Thread.isMainThread)
+    return stored_ownerStatus
+  }
+  override func ownerSelection() -> NativeEnrollmentFailure? {
+    precondition(!Thread.isMainThread)
+    return stored_ownerSelection
+  }
+  override func product() -> NativeProductFailure? {
+    precondition(!Thread.isMainThread)
+    return stored_product
+  }
   override func cache() -> NativeReadFailure? {
     precondition(!Thread.isMainThread)
     return stored_cache
@@ -639,6 +659,7 @@ final class FixtureNativeSessionFailure: NativeSessionFailure, @unchecked Sendab
 }
 
 final class FixtureNativeStatus: NativeStatus, @unchecked Sendable {
+  let stored_owner: NativeOwnerStatus?
   let stored_completionCaptured: Bool
   let stored_failure: NativeEnrollmentFailure?
   let stored_purge: NativePurge?
@@ -650,8 +671,10 @@ final class FixtureNativeStatus: NativeStatus, @unchecked Sendable {
     failure: NativeEnrollmentFailure? = FixtureNativeEnrollmentFailure(),
     purge: NativePurge? = FixtureNativePurge(), purgeAttempted: Bool = true,
     purgeFailure: NativeReadFailure? = .stopped,
-    receipt: NativeEnrollmentReceipt? = FixtureNativeEnrollmentReceipt()
+    receipt: NativeEnrollmentReceipt? = FixtureNativeEnrollmentReceipt(),
+    owner: NativeOwnerStatus? = nil
   ) {
+    stored_owner = owner
     stored_completionCaptured = completionCaptured
     stored_failure = failure
     stored_purge = purge
@@ -661,6 +684,10 @@ final class FixtureNativeStatus: NativeStatus, @unchecked Sendable {
     super.init(noHandle: .init())
   }
   required init(unsafeFromHandle handle: UInt64) { fatalError("fixture cannot be lowered") }
+  override func owner() -> NativeOwnerStatus? {
+    precondition(!Thread.isMainThread)
+    return stored_owner
+  }
   override func completionCaptured() -> Bool {
     precondition(!Thread.isMainThread)
     return stored_completionCaptured

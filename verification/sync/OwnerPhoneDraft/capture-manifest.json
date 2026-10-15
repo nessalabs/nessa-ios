@@ -1,0 +1,12 @@
+{
+  "Sources/NessaFeatures/Application/RetainedOwnerSnapshots.swift": "f08816f04a81c092386aa3017fab143236f2b13e0768f971164f6bf904150a51",
+  "Sources/NessaFeatures/Application/RetainedSessionSnapshots.swift": "4c913e0d7bc922876bfe0d2b12f87860d65df46a257ea7f82830fa636ac42254",
+  "Sources/NessaFeatures/Infrastructure/Native/NativeRetainedCapture.swift": "6eb5792c44b6fd98b4069fd3c1f200c81a571f744b0d4ce07c0719b716cd6681",
+  "Sources/NessaFeatures/Infrastructure/Native/NativeRetainedOwnerCapture.swift": "3e098ee1431e9b85337166e2f558dda04416231fd4f5b1980cc0f77ef8306016",
+  "Sources/NessaFeatures/Infrastructure/Native/NativeRetainedProjection.swift": "4d7f10c1657c22b81322f3d456261a6d271c052f81f4bd0200c24e4ffa115264",
+  "Tests/NessaFeaturesTests/NativeRetainedOwnerAssertions.swift": "e74fa62db57274ada89ef76da5e7a819af64457603f37e31e3e4361637686d45",
+  "Tests/NessaFeaturesTests/NativeRetainedOwnerMappingTests.swift": "8d78ec4e6c43d1ba0c7d3cceb3b053ecd3fe70a9fe7407fe3a729a3e497ce59d",
+  "Tests/NessaFeaturesTests/NativeRetainedOwnerFixtures.swift": "02b7d6c92c71dd2d9392192bab23448f5a5370e6c0314a55d928ae94989fd2ce",
+  "Tests/NessaFeaturesTests/NativeRetainedFixtures.swift": "b57a8d8fa39c4981ae93b391e867a34be8172fd0ad5263948ba700694d2a7f9f",
+  "Tests/NessaFeaturesTests/NativeRetainedMappingTests.swift": "b63e92c26b5914aba441317a20951fc566992d1c85aed3c30c1474943a66a4bb"
+}

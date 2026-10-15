@@ -24,9 +24,10 @@ public struct ConnectionRecovery: Sendable {
     }
   }
   public static func retryable(_ error: Error) -> Bool {
-    if let error = error as? NessaGatewayError {
+    if let error = (error as? GatewayProductRejection)?.behavior ?? error as? NessaGatewayError {
       switch error {
       case .disconnected, .timeout: return true
+      case .revoked: return false
       default: return false
       }
     }
