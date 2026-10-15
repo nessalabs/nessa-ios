@@ -12,16 +12,24 @@ struct PinnedChatsGrid: View {
       columns: Array(repeating: GridItem(.flexible(), spacing: MessagesStyle.pinGap), count: 3),
       spacing: MessagesStyle.pinRowGap
     ) {
-      ForEach(store.pinnedChats.filter { !store.isDeleting($0) }, id: \.self) { agent in
+      let pinned = store.pinnedChats.filter { !store.isDeleting($0) }
+      let running = Set(store.conversations.filter(\.running).map(\.id))
+      ForEach(pinned, id: \.self) { agent in
         Button {
           onOpen(agent)
         } label: {
           VStack(spacing: NessaSpacing.xs) {
-            AgentAvatar(name: store.agentName(for: agent), size: MessagesStyle.pinnedAvatar)
+            AgentAvatar(
+              name: store.agentName(for: agent), size: MessagesStyle.pinnedAvatar,
+              working: running.contains(agent)
+            )
               .overlay(alignment: .bottomTrailing) {
                 if store.unreadChats.contains(agent) {
-                  Image(systemName: "circle.fill").font(MessagesStyle.smallIcon).foregroundStyle(
-                    MessagesStyle.outgoing)
+                  Circle().fill(MessagesStyle.outgoingFill)
+                    .frame(width: MessagesStyle.unreadDot, height: MessagesStyle.unreadDot)
+                    .padding(NessaSpacing.xxs / 2)
+                    .background(MessagesStyle.background, in: Circle())
+                    .transition(.scale.combined(with: .opacity))
                 } else if store.mutedChats.contains(agent) {
                   Image(systemName: "bell.slash.fill").font(MessagesStyle.smallIcon)
                     .foregroundStyle(MessagesStyle.secondary)
@@ -31,6 +39,9 @@ struct PinnedChatsGrid: View {
               .foregroundStyle(MessagesStyle.secondary).lineLimit(1)
           }.frame(maxWidth: .infinity)
         }.buttonStyle(.plain).disabled(!enabled)
+          // A new pin grows into its cell while the list closes up under the grid.
+          .transition(
+            .scale(scale: MessagesStyle.pinEnterScale).combined(with: .opacity))
           .accessibilityLabel("Open pinned chat \(store.chatName(agent))")
           .chatContextMenu(
             store: store, identifier: agent, enabled: enabled,

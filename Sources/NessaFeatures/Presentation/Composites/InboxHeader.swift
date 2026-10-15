@@ -11,9 +11,7 @@ struct InboxHeader: View {
     HStack {
       Button(editing ? "Done" : "Edit", action: onEdit).font(MessagesStyle.body)
         .padding(.horizontal, NessaSpacing.md).frame(height: MessagesStyle.controlHeight)
-        .messagesGlass()
-      Spacer()
-      Text(showingArchived ? "Archived" : "Messages").font(MessagesStyle.title)
+        .messagesGlass().buttonStyle(.nessaPress)
       Spacer()
       Menu {
         Button(
@@ -25,6 +23,16 @@ struct InboxHeader: View {
           .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
           .messagesGlass()
       }.accessibilityLabel("Messages options")
-    }.padding(.horizontal, MessagesStyle.horizontal).padding(.vertical, NessaSpacing.xxs)
+    }
+    // Centred on the screen, not between two buttons of different widths.
+    .overlay {
+      Text(showingArchived ? "Archived" : "Messages").font(MessagesStyle.title)
+        .lineLimit(1).minimumScaleFactor(0.8)
+        // Clear of the wider of the two buttons at large text sizes.
+        .padding(.horizontal, NessaSpacing.xl * 2)
+        .contentTransition(.opacity)
+        .animation(NessaMotion.standard(), value: showingArchived)
+    }
+    .padding(.horizontal, MessagesStyle.horizontal).padding(.vertical, NessaSpacing.xxs)
   }
 }

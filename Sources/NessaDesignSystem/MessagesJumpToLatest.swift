@@ -14,7 +14,7 @@ public struct MessagesJumpToLatest: View {
         .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
         .contentShape(Rectangle())
     }
-    .buttonStyle(.plain)
+    .buttonStyle(.nessaPress)
     .accessibilityLabel("Jump to latest messages")
   }
 }

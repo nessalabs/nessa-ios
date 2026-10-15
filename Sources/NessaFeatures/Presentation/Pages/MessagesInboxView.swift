@@ -14,6 +14,8 @@ struct MessagesInboxView: View {
   @State private var pendingDeletion: Set<String> = []
   @State private var deleting = false
   @State private var search = ""
+  @State private var pinRefusals = 0
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   var body: some View {
     List {
       Group {
@@ -25,9 +27,7 @@ struct MessagesInboxView: View {
         ForEach(store.pendingCreations, id: \.requestID) { command in
           PendingCommandActions(command: command, store: store, onCreated: onOpen)
         }
-        if !editing && !showingArchived
-          && store.pinnedChats.contains(where: { !store.isDeleting($0) }) && search.isEmpty
-        {
+        if !pinnedShown.isEmpty {
           PinnedChatsGrid(
             store: store, onOpen: onOpen, onOpenComposer: onOpenComposer,
             onDelete: { pendingDeletion = [$0] }, enabled: !deleting)
@@ -36,13 +36,10 @@ struct MessagesInboxView: View {
           Button(store.reconnecting ? "Reconnecting…" : "Connect to Nessa", action: onSettings)
             .font(MessagesStyle.body).padding(NessaSpacing.xl)
         } else if store.visibleConversations.isEmpty {
-          VStack(spacing: NessaSpacing.sm) {
-            Text("Your chats, one message away.").font(MessagesStyle.title)
-            Button("New message", action: onCompose).font(MessagesStyle.body)
-              .disabled(
-                !store.conversationAuthorityReady || store.pendingLoadError != nil
-                  || !store.pendingCreations.isEmpty)
-          }.padding(.vertical, NessaSpacing.xl)
+          InboxEmptyState(onCompose: onCompose)
+            .disabled(
+              !store.conversationAuthorityReady || store.pendingLoadError != nil
+                || !store.pendingCreations.isEmpty)
         } else if showingArchived && filtered.isEmpty {
           Text("No archived chats.").font(MessagesStyle.body)
             .foregroundStyle(MessagesStyle.secondary).padding(.vertical, NessaSpacing.xl)
@@ -57,15 +54,26 @@ struct MessagesInboxView: View {
           } label: {
             HStack(spacing: NessaSpacing.sm) {
               if editing {
-                Image(
-                  systemName: selected.contains(conversation.id)
-                    ? "checkmark.circle.fill" : "circle"
-                )
-                .font(MessagesStyle.icon).foregroundStyle(MessagesStyle.outgoing)
+                NessaSelectionMark(selected: selected.contains(conversation.id))
+                  .transition(.move(edge: .leading).combined(with: .opacity))
               }
               ConversationRow(
                 conversation: conversation, agentName: store.agentName(for: conversation.id))
-            }.contentShape(Rectangle())
+            }
+            .background {
+              RoundedRectangle(cornerRadius: MessagesStyle.selectedRowRadius, style: .continuous)
+                .fill(
+                  editing && selected.contains(conversation.id)
+                    ? MessagesStyle.selectedRowFill : .clear
+                )
+                .padding(.horizontal, -NessaSpacing.xs)
+                .animation(reduceMotion ? nil : NessaMotion.standard(), value: selected)
+            }
+            .contentShape(Rectangle())
+            // A row leaving (pinned, archived, deleted) collapses inside its own bounds, so
+            // its text never slides over the row moving up into its place. The mask is
+            // widened sideways only, to keep the selected fill's overhang.
+            .mask { Rectangle().padding(.horizontal, -NessaSpacing.xs) }
           }.buttonStyle(.plain)
             .disabled(deleting)
             .accessibilityLabel(
@@ -81,12 +89,20 @@ struct MessagesInboxView: View {
             )
             .swipeActions(edge: .leading, allowsFullSwipe: false) {
               if !editing && !showingArchived {
+                // A swipe action's button looks the same disabled or not, so a full pin row
+                // says so in its label and colour, and a tap on it buzzes instead of silently
+                // doing nothing.
+                let canPin = store.canTogglePin(conversation.id)
                 Button(
-                  store.isPinned(conversation.id) ? "Unpin" : "Pin",
+                  store.isPinned(conversation.id) ? "Unpin" : canPin ? "Pin" : "Pins full",
                   systemImage: store.isPinned(conversation.id) ? "pin.slash.fill" : "pin.fill"
                 ) {
-                  store.togglePin(conversation.id)
-                }.tint(MessagesStyle.pinAction).disabled(!store.canTogglePin(conversation.id))
+                  if canPin {
+                    changeLayout { store.togglePin(conversation.id) }
+                  } else {
+                    pinRefusals += 1
+                  }
+                }.tint(canPin ? MessagesStyle.pinAction : MessagesStyle.control)
               }
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -98,7 +114,9 @@ struct MessagesInboxView: View {
                 }.tint(MessagesStyle.danger).disabled(
                   !store.connected || !store.conversationAuthorityReady)
                 Button(showingArchived ? "Unarchive" : "Archive", systemImage: "archivebox") {
-                  store.setArchived(!showingArchived, conversationID: conversation.id)
+                  changeLayout {
+                    store.setArchived(!showingArchived, conversationID: conversation.id)
+                  }
                 }.tint(MessagesStyle.archiveAction)
               }
             }
@@ -111,19 +129,25 @@ struct MessagesInboxView: View {
         EdgeInsets(
           top: 0, leading: MessagesStyle.horizontal, bottom: 0, trailing: MessagesStyle.horizontal)
       )
-      .listRowSeparator(.hidden).listRowBackground(MessagesStyle.background)
+      .listRowSeparator(.hidden).listRowBackground(Color.clear)
     }.listStyle(.plain).scrollContentBackground(.hidden)
       .environment(\.defaultMinListRowHeight, 0)
       .messagesTrackScroll(offset: $scrollOffset)
-      .background(MessagesStyle.background)
+      .sensoryFeedback(.impact(flexibility: .soft), trigger: store.pinnedChats)
+      .sensoryFeedback(.warning, trigger: pinRefusals)
+      .messagesAmbientGround()
       .messagesScrollEdges()
       .scrollDismissesKeyboard(.interactively)
+      .messagesFooterGrain()
       .messagesBar(edge: .top) {
         InboxHeader(
           editing: editing,
           onEdit: {
-            editing.toggle()
-            selected = []
+            // The marks slide in from the edge as the rows make room, on one spring.
+            withAnimation(reduceMotion ? nil : NessaMotion.enter) {
+              editing.toggle()
+              selected = []
+            }
           }, onSettings: onSettings, showingArchived: showingArchived,
           onToggleArchived: {
             showingArchived.toggle()
@@ -131,28 +155,36 @@ struct MessagesInboxView: View {
           }
         )
         .disabled(deleting)
+        .messagesHeaderGrain()
         .messagesHeaderBlur(scrollOffset: scrollOffset)
       }
       .messagesBar(edge: .bottom) {
         if editing {
           HStack {
             Text("\(selected.count) selected").font(MessagesStyle.body)
+              .foregroundStyle(MessagesStyle.secondary)
+              .contentTransition(.numericText(value: Double(selected.count)))
+              .animation(reduceMotion ? nil : NessaMotion.morph, value: selected.count)
             Spacer()
             Button(role: .destructive) {
               pendingDeletion = selected
             } label: {
-              Label("Delete", systemImage: "trash")
+              // Only the icon carries the red, so the bar stays as quiet as the list.
+              Label {
+                Text("Delete").foregroundStyle(MessagesStyle.foreground)
+              } icon: {
+                Image(systemName: "trash").foregroundStyle(MessagesStyle.danger)
+              }
             }
-            .font(MessagesStyle.title).foregroundStyle(MessagesStyle.danger)
+            .font(MessagesStyle.title).buttonStyle(.nessaPress)
             .disabled(selected.isEmpty || deleting || !store.connected)
-          }.padding(MessagesStyle.horizontal).foregroundStyle(MessagesStyle.foreground)
+          }.padding(.horizontal, NessaSpacing.lg).frame(height: MessagesStyle.composerHeight)
+            .messagesComposerSurface()
+            .padding(.horizontal, MessagesStyle.horizontal).padding(.bottom, MessagesStyle.bottomInset)
+            .foregroundStyle(MessagesStyle.foreground)
         } else {
           HStack(spacing: MessagesStyle.toolbarGap) {
-            HStack(spacing: NessaSpacing.xs) {
-              Image(systemName: "magnifyingglass").font(MessagesStyle.icon)
-              TextField("Search", text: $search).font(MessagesStyle.body)
-            }.padding(.horizontal, NessaSpacing.md).frame(height: MessagesStyle.composerHeight)
-              .messagesGlass()
+            NessaSearchField(text: $search)
             Button(action: onCompose) {
               Group {
                 if store.busy {
@@ -163,7 +195,7 @@ struct MessagesInboxView: View {
               }
               .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
               .messagesGlass()
-            }.disabled(
+            }.buttonStyle(.nessaPress).disabled(
               !store.connected || !store.conversationAuthorityReady || store.busy
                 || store.pendingLoadError != nil
                 || !store.pendingCreations.isEmpty
@@ -197,6 +229,18 @@ struct MessagesInboxView: View {
       .refreshable {
         do { try await store.refreshList() } catch { store.error = error.localizedDescription }
       }
+  }
+  /// The pinned chats the grid shows right now, or none while it is hidden.
+  private var pinnedShown: [String] {
+    guard !editing && !showingArchived && search.isEmpty else { return [] }
+    return store.pinnedChats.filter { !store.isDeleting($0) }
+  }
+  /// Moves the list and the pinned grid on one spring, from the change itself. The list
+  /// carries no implicit animation of its own: an `.animation` on a List mixes SwiftUI's
+  /// animation into the collection view's own row updates, and a row inserted while the grid
+  /// resizes could be left drawn over its neighbour.
+  private func changeLayout(_ change: () -> Void) {
+    withAnimation(reduceMotion ? nil : NessaMotion.enter, change)
   }
   private var filtered: [NessaConversation] {
     store.visibleConversations.filter {

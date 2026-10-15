@@ -15,10 +15,12 @@ struct MessageContextOverlay: View {
       if let selected = controller.selection {
         MessageContextStage(
           selected: selected, geometry: geometry, palette: palette(selected),
+          paletteCount: favorites.count,
           actions: actions(selected), selector: selector(selected),
           dismiss: { controller.selection = nil }
         )
         .id(selected.id)
+        .transition(.asymmetric(insertion: .identity, removal: .opacity))
       }
     }.sheet(item: $emojiRequest) { selected in
       NavigationStack {
@@ -42,7 +44,10 @@ struct MessageContextOverlay: View {
       HStack(spacing: MessagesStyle.reactionPaletteSpacing) {
         ForEach(favorites, id: \.self) { emoji in reactionButton(emoji, selected: selected) }
       }.padding(NessaSpacing.xs)
-    }.scrollIndicators(.hidden).messagesGlass()
+    }.scrollIndicators(.hidden)
+      // Opaque under the glass, so the bubble behind never tints an emoji, and clipped to the
+      // capsule, so a scrolled item ends at its rounded edge.
+      .background(MessagesStyle.incoming, in: Capsule()).clipShape(Capsule()).messagesGlass()
   }
   private func selector(_ selected: MessageContextSelection) -> some View {
     Button {
@@ -117,6 +122,7 @@ private struct MessageContextStage<Palette: View, Actions: View, Selector: View>
   let selected: MessageContextSelection
   let geometry: GeometryProxy
   let palette: Palette
+  let paletteCount: Int
   let actions: Actions
   let selector: Selector
   let dismiss: () -> Void
@@ -143,7 +149,15 @@ private struct MessageContextStage<Palette: View, Actions: View, Selector: View>
         max(originalTop, MessagesStyle.messageContextTopInset + topRoom),
         geometry.size.height - MessagesStyle.messageContextBottomInset - height - bottomRoom)
       let x = min(max(originalX, inset + width / 2), geometry.size.width - inset - width / 2)
-      let paletteWidth = min(MessagesStyle.reactionPickerWidth, geometry.size.width - inset * 2)
+      // As wide as a whole number of reactions, so none rests cut in half at the edge.
+      let paletteItem = MessagesStyle.reactionPaletteControl + MessagesStyle.reactionPaletteSpacing
+      let paletteRoom = min(MessagesStyle.reactionPickerWidth, geometry.size.width - inset * 2)
+      let paletteFit = min(
+        CGFloat(paletteCount),
+        ((paletteRoom - NessaSpacing.xs * 2 + MessagesStyle.reactionPaletteSpacing) / paletteItem)
+          .rounded(.down))
+      let paletteWidth =
+        paletteFit * paletteItem - MessagesStyle.reactionPaletteSpacing + NessaSpacing.xs * 2
       let paletteX =
         selected.outgoing
         ? geometry.size.width - inset - paletteWidth / 2 : inset + paletteWidth / 2

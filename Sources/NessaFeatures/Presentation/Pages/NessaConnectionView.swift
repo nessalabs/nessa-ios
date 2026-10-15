@@ -1,73 +1,148 @@
 import NessaDesignSystem
 import SwiftUI
 
+/// The gateway sheet, laid out like the agent details sheet: a title row with the close button
+/// on its centre line, then one card and one full-width action, all on one spacing step.
 struct NessaConnectionView: View {
   @ObservedObject var store: MessagesViewModel
   @Binding var address: String
   let instance: String
   @State private var draftAddress = ""
   @State private var credential = ""
+  /// The sheet's height fitted to what it holds, so no empty half sheet hangs under the action.
+  @State private var fittedHeight: CGFloat?
   @Environment(\.dismiss) private var dismiss
   var body: some View {
-    NavigationStack {
-      Form {
+    ScrollView {
+      VStack(alignment: .leading, spacing: NessaSpacing.lg) {
         if store.connected {
-          connectionStatus("Connected")
-          Section {
-            Button("Disconnect") { Task { await store.manualDisconnect() } }
-              .font(MessagesStyle.title)
+          statusCard(connected: true)
+          Button { Task { await store.manualDisconnect() } } label: {
+            Text("Disconnect").foregroundStyle(MessagesStyle.danger)
               .frame(maxWidth: .infinity, minHeight: MessagesStyle.controlHeight)
-              .messagesGlass().buttonStyle(.plain)
-          }.listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+              .background(MessagesStyle.control, in: Capsule())
+          }
+          .font(MessagesStyle.title).buttonStyle(.nessaPress)
         } else if store.hasSavedConnection {
-          connectionStatus("Disconnected")
-          Section {
-            Button(store.busy ? "Connecting…" : "Connect") {
-              Task { await store.reconnectSavedConnection() }
-            }.disabled(store.busy || store.phoneSetupBusy)
-              .font(MessagesStyle.title)
-              .frame(maxWidth: .infinity, minHeight: MessagesStyle.controlHeight)
-              .messagesGlass().buttonStyle(.plain)
-          }.listRowBackground(Color.clear).listRowInsets(EdgeInsets())
-          if let error = store.error ?? store.phoneSyncError {
-            Section { Text(error).font(MessagesStyle.caption) }
+          statusCard(connected: false)
+          Button { Task { await store.reconnectSavedConnection() } } label: {
+            Text(store.busy ? "Connecting…" : "Connect").frame(maxWidth: .infinity)
           }
+          .buttonStyle(.nessaPrimary).disabled(store.busy || store.phoneSetupBusy)
+          errorText
         } else {
-          Section {
+          VStack(spacing: 0) {
             TextField("wss://your-host/session", text: $draftAddress).nessaCredentialInput()
+              .modifier(ConnectionRow())
+            divider
             SecureField("Credential", text: $credential).nessaCredentialInput()
-            Button(store.busy ? "Connecting…" : "Connect") {
-              let selectedAddress = draftAddress
-              let selectedCredential = credential
-              Task {
-                await store.connect(
-                  address: selectedAddress, credential: selectedCredential, instance: instance)
-                if store.connected { address = selectedAddress }
-              }
-            }.disabled(store.busy || credential.isEmpty)
-            if let error = store.error ?? store.phoneSyncError {
-              Text(error).font(MessagesStyle.caption)
-            }
+              .modifier(ConnectionRow())
           }
+          .font(MessagesStyle.body).nessaCard()
+          Button {
+            let selectedAddress = draftAddress
+            let selectedCredential = credential
+            Task {
+              await store.connect(
+                address: selectedAddress, credential: selectedCredential, instance: instance)
+              if store.connected { address = selectedAddress }
+            }
+          } label: {
+            Text(store.busy ? "Connecting…" : "Connect").frame(maxWidth: .infinity)
+          }
+          .buttonStyle(.nessaPrimary).disabled(store.busy || credential.isEmpty)
+          errorText
         }
-      }.scrollDismissesKeyboard(.interactively).navigationTitle("Connection")
-        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
-        .onAppear { draftAddress = store.currentGatewayAddress ?? address }
+      }
+      .padding(.horizontal, MessagesStyle.horizontal)
+      // Measured on device, these keep the title-to-card, card-to-action and action-to-edge
+      // gaps on one step.
+      .padding(.top, NessaSpacing.xs)
+      .padding(.bottom, NessaSpacing.xs)
     }
+    .scrollDismissesKeyboard(.interactively)
+    .onScrollGeometryChange(for: CGFloat.self) { geometry in
+      geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
+    } action: { _, height in
+      fittedHeight = height
+    }
+    .messagesScrollEdges()
+    .messagesBar(edge: .top) { header.messagesHeaderGrain() }
+    .foregroundStyle(MessagesStyle.foreground)
+    .messagesAmbientGround()
+    .onAppear { draftAddress = store.currentGatewayAddress ?? address }
+    .presentationDetents(fittedHeight.map { [.height($0), .large] } ?? [.medium, .large])
+    .presentationDragIndicator(.visible)
+    .presentationBackground(MessagesStyle.background)
+    .presentationCornerRadius(AgentDetailsStyle.cardRadius * 2)
   }
+
+  /// The title and the close button share one row and one centre line, as in agent details.
+  private var header: some View {
+    HStack(spacing: NessaSpacing.sm) {
+      Text("Connection").font(AgentDetailsStyle.title)
+        .accessibilityAddTraits(.isHeader)
+      Spacer(minLength: NessaSpacing.xs)
+      Button { dismiss() } label: {
+        Image(systemName: "xmark").font(MessagesStyle.icon)
+          .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
+          .messagesGlass()
+      }
+      .buttonStyle(.nessaPress)
+      .accessibilityLabel("Close connection")
+    }
+    .frame(minHeight: MessagesStyle.controlHeight)
+    .padding(.horizontal, MessagesStyle.horizontal)
+    .padding(.top, NessaSpacing.sm)
+  }
+
   private var endpoint: String {
     if store.connected { return store.currentGatewayAddress ?? address }
     return store.savedReconnectGatewayAddress ?? "Saved gateway unavailable"
   }
-  private func connectionStatus(_ status: String) -> some View {
-    Section {
-      LabeledContent("Status", value: status)
+
+  /// The status and the gateway as two rows of one card, their labels on one leading edge.
+  private func statusCard(connected: Bool) -> some View {
+    VStack(spacing: 0) {
+      HStack(spacing: NessaSpacing.xs) {
+        Text("Status").foregroundStyle(MessagesStyle.secondary)
+        Spacer(minLength: NessaSpacing.md)
+        Circle().fill(connected ? NessaColor.accent : NessaColor.mutedForeground)
+          .frame(width: MessagesStyle.statusDot, height: MessagesStyle.statusDot)
+        Text(connected ? "Connected" : "Disconnected")
+      }
+      .modifier(ConnectionRow())
+      .accessibilityElement(children: .combine)
+      divider
       VStack(alignment: .leading, spacing: NessaSpacing.xxs) {
         Text("Gateway").font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
         Text(endpoint).font(NessaType.mono).textSelection(.enabled)
           .fixedSize(horizontal: false, vertical: true)
       }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.vertical, NessaSpacing.sm)
+      .padding(.horizontal, NessaSpacing.md)
     }
+    .font(MessagesStyle.body).nessaCard()
   }
 
+  private var divider: some View {
+    Rectangle().fill(NessaColor.hairline).frame(height: MessagesStyle.rowDivider)
+      .padding(.leading, NessaSpacing.md)
+  }
+
+  @ViewBuilder private var errorText: some View {
+    if let error = store.error ?? store.phoneSyncError {
+      Text(error).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
+        .padding(.horizontal, NessaSpacing.md)
+    }
+  }
+}
+
+/// One row of a connection card: a control's height, the card's inner inset.
+private struct ConnectionRow: ViewModifier {
+  func body(content: Content) -> some View {
+    content.padding(.horizontal, NessaSpacing.md)
+      .frame(maxWidth: .infinity, minHeight: MessagesStyle.controlHeight, alignment: .leading)
+  }
 }

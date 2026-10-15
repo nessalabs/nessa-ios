@@ -10,7 +10,6 @@ struct ReplyThreadView: View {
   @Binding var draft: String
   @Binding var attachments: [DraftAttachment]
   @ObservedObject var dictation: DictationViewModel
-  let onDetails: () -> Void
   let onSend: () -> Void
   @State private var nearBottom = true
   @State private var bottomVisible = true
@@ -34,7 +33,7 @@ struct ReplyThreadView: View {
             store.views[conversationID]?.messages.first(where: { $0.id == lastTurn })?.status
               == "running"
           {
-            TypingIndicator()
+            TypingIndicator().transition(MessagesStyle.typingTransition)
           }
           ForEach(store.views[conversationID]?.messages.filter { turnIDs.contains($0.id) } ?? []) {
             turn in
@@ -106,11 +105,6 @@ struct ReplyThreadView: View {
       }
     }
     .background(MessagesStyle.background.opacity(MessagesStyle.replyPreviewOpacity))
-    .messagesBar(edge: .top) {
-      ThreadHeader(
-        name: agentName, onBack: { selection = nil }, onDetails: onDetails,
-        isReplyThread: true)
-    }
   }
 
   private func message(_ message: ConversationMessage) -> some View {

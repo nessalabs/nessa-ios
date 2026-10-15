@@ -1,65 +1,51 @@
 import SwiftUI
-#if os(iOS)
-  import UIKit
-#endif
 
-/// Native segmented selection with a comfortable height and system appearance.
+/// Nessa's segmented selection: a quiet track with a lit pill that springs to the choice.
+/// Assistive technologies see it as a standard segmented picker.
 public struct MessagesSegmentedControl: View {
   public let labels: [String]
   public let accessibilityLabel: String
   @Binding public var selectedIndex: Int
-  public init(labels: [String], selectedIndex: Binding<Int>, accessibilityLabel: String = "Selection") {
+  @Namespace private var pill
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  public init(
+    labels: [String], selectedIndex: Binding<Int>, accessibilityLabel: String = "Selection"
+  ) {
     self.labels = labels
     self.accessibilityLabel = accessibilityLabel
     self._selectedIndex = selectedIndex
   }
   public var body: some View {
-    #if os(iOS)
-      NativeSegments(labels: labels, selectedIndex: $selectedIndex)
-        .frame(height: AgentDetailsStyle.tabHeight)
-        .accessibilityRepresentation {
-          Picker(accessibilityLabel, selection: $selectedIndex) {
-            ForEach(labels.indices, id: \.self) { index in Text(labels[index]).tag(index) }
-          }.pickerStyle(.segmented)
+    HStack(spacing: 0) {
+      ForEach(labels.indices, id: \.self) { index in
+        let selected = index == selectedIndex
+        Button {
+          withAnimation(reduceMotion ? nil : NessaMotion.morph) { selectedIndex = index }
+        } label: {
+          Text(labels[index]).font(AgentDetailsStyle.tabLabel)
+            .foregroundStyle(selected ? NessaColor.foreground : NessaColor.mutedForeground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+              if selected {
+                Capsule().fill(NessaColor.muted)
+                  .overlay(Capsule().strokeBorder(NessaColor.hairline, lineWidth: 0.5))
+                  .matchedGeometryEffect(id: "pill", in: pill)
+              }
+            }
+            .contentShape(Capsule())
         }
-    #else
+        .buttonStyle(NessaPressStyle(scale: 0.97))
+      }
+    }
+    .padding(AgentDetailsStyle.tabInset)
+    .frame(height: AgentDetailsStyle.tabHeight)
+    .background(NessaColor.card, in: Capsule())
+    .overlay(Capsule().strokeBorder(NessaColor.hairline, lineWidth: 0.5))
+    .sensoryFeedback(.selection, trigger: selectedIndex)
+    .accessibilityRepresentation {
       Picker(accessibilityLabel, selection: $selectedIndex) {
         ForEach(labels.indices, id: \.self) { index in Text(labels[index]).tag(index) }
-      }.pickerStyle(.segmented).frame(minHeight: AgentDetailsStyle.tabHeight)
-    #endif
+      }.pickerStyle(.segmented)
+    }
   }
 }
-
-#if os(iOS)
-  private struct NativeSegments: UIViewRepresentable {
-    let labels: [String]
-    @Binding var selectedIndex: Int
-    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
-    func makeUIView(context: Context) -> UISegmentedControl {
-      let control = UISegmentedControl(items: labels)
-      control.addTarget(context.coordinator, action: #selector(Coordinator.select(_:)), for: .valueChanged)
-      return control
-    }
-    func updateUIView(_ control: UISegmentedControl, context: Context) {
-      context.coordinator.parent = self
-      if (0..<control.numberOfSegments).map({ control.titleForSegment(at: $0) ?? "" }) != labels {
-        control.removeAllSegments()
-        for (index, label) in labels.enumerated() {
-          control.insertSegment(withTitle: label, at: index, animated: false)
-        }
-      }
-      control.selectedSegmentIndex = selectedIndex
-    }
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UISegmentedControl, context: Context) -> CGSize? {
-      CGSize(width: proposal.width ?? uiView.intrinsicContentSize.width, height: AgentDetailsStyle.tabHeight)
-    }
-    final class Coordinator: NSObject {
-      var parent: NativeSegments
-      init(parent: NativeSegments) { self.parent = parent }
-      @objc func select(_ control: UISegmentedControl) {
-        guard parent.labels.indices.contains(control.selectedSegmentIndex) else { return }
-        parent.selectedIndex = control.selectedSegmentIndex
-      }
-    }
-  }
-#endif

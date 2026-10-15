@@ -30,9 +30,22 @@ struct MessageComposer: View {
   var submissionUnavailableReason: String? = nil
   var placeholder: String? = nil
   var autoFocus = false
+  /// Lights the composer's rim while the agent is answering.
+  var working = false
   let onSend: () -> Void
   @FocusState private var focused: Bool
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  private enum Trailing: Equatable { case busy, dictate, send }
+  private var trailing: Trailing {
+    if preparing || dictation.state == .finishing { return .busy }
+    if dictation.active
+      || (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty)
+    {
+      return .dictate
+    }
+    return .send
+  }
   private var sendAvailable: Bool { !sending && !preparing && connected && submissionAllowed }
   var body: some View {
     VStack(spacing: NessaSpacing.xs) {
@@ -41,7 +54,10 @@ struct MessageComposer: View {
           .foregroundStyle(MessagesStyle.secondary)
           .padding(.horizontal, MessagesStyle.horizontal)
       }
-      if !attachments.isEmpty { DraftAttachmentsTray(attachments: $attachments, sending: sending) }
+      if !attachments.isEmpty {
+        DraftAttachmentsTray(attachments: $attachments, sending: sending)
+          .transition(.move(edge: .bottom).combined(with: .opacity))
+      }
       HStack(alignment: .bottom, spacing: NessaSpacing.sm) {
         Menu {
           #if os(iOS)
@@ -57,10 +73,12 @@ struct MessageComposer: View {
           #endif
           Button("Add Files", systemImage: "doc") { filesPresented = true }
         } label: {
+          // As tall as the message field beside it, so the two share a centre line.
           Image(systemName: "plus").font(MessagesStyle.icon)
-            .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
+            .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
             .messagesGlass()
-        }.disabled(sending || dictation.active || preparing).accessibilityLabel("Message actions")
+        }.buttonStyle(.nessaPress)
+          .disabled(sending || dictation.active || preparing).accessibilityLabel("Message actions")
         HStack(alignment: .bottom, spacing: NessaSpacing.xs) {
           TextField(placeholder ?? "Message \(recipient)", text: $draft, axis: .vertical)
             .focused($focused)
@@ -68,13 +86,12 @@ struct MessageComposer: View {
             .font(MessagesStyle.body).lineLimit(1...6)
             .padding(.vertical, NessaSpacing.sm)
           Group {
-            if preparing || dictation.state == .finishing {
+            switch trailing {
+            case .busy:
               ProgressView().accessibilityLabel(
                 preparing ? "Preparing photos" : "Finishing dictation")
-            } else if dictation.active
-              || (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                && attachments.isEmpty)
-            {
+                .transition(.scale(scale: MessagesStyle.swapScale).combined(with: .opacity))
+            case .dictate:
               Button {
                 dictation.toggle()
               } label: {
@@ -85,26 +102,42 @@ struct MessageComposer: View {
                   )
                   .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
                   .contentShape(Rectangle())
+                  .contentTransition(.symbolEffect(.replace))
               }
+              .buttonStyle(.nessaPress)
               .disabled(sending || dictation.state == .finishing)
               .accessibilityLabel(dictation.active ? "Stop dictation" : "Dictate message")
-            } else {
+              .transition(.scale(scale: MessagesStyle.swapScale).combined(with: .opacity))
+            case .send:
               Button(action: onSend) {
                 Image(systemName: "arrow.up").font(MessagesStyle.title)
                   .frame(width: MessagesStyle.sendButton, height: MessagesStyle.sendButton)
                   .background(
-                    sendAvailable ? MessagesStyle.outgoing : MessagesStyle.control, in: Circle())
-              }.disabled(!sendAvailable)
+                    sendAvailable
+                      ? AnyShapeStyle(MessagesStyle.outgoingFill)
+                      : AnyShapeStyle(MessagesStyle.control),
+                    in: Circle())
+              }.buttonStyle(NessaPressStyle(scale: MessagesStyle.sendPressScale)).disabled(!sendAvailable)
                 .accessibilityLabel("Send message")
                 .accessibilityHint(submissionUnavailableReason ?? "")
+                .transition(.scale(scale: MessagesStyle.swapScale).combined(with: .opacity))
             }
           }
           .frame(height: MessagesStyle.composerHeight)
+          .animation(reduceMotion ? nil : NessaMotion.morph, value: trailing)
+          .animation(reduceMotion ? nil : NessaMotion.standard(), value: sendAvailable)
         }.padding(.horizontal, NessaSpacing.md)
           .frame(minHeight: MessagesStyle.composerHeight).messagesComposerSurface()
+          .nessaRim(
+            active: working,
+            in: RoundedRectangle(cornerRadius: MessagesStyle.composerRadius, style: .continuous))
       }.foregroundStyle(MessagesStyle.foreground)
         .padding(.horizontal, MessagesStyle.horizontal)
         .padding(.bottom, MessagesStyle.bottomInset)
+    }
+    .animation(reduceMotion ? nil : NessaMotion.enter, value: attachments.isEmpty)
+    .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: sending) { old, new in
+      !old && new
     }
     .fileImporter(
       isPresented: $filesPresented,

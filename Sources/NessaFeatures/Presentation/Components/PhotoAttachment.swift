@@ -93,7 +93,7 @@ struct PhotoCanvas: View {
           }
           .onEnded { scale = min(max(scale * $0.magnification, 1), 4) }
         )
-        .onTapGesture(count: 2) { withAnimation { scale = scale == 1 ? 2 : 1 } }
+        .onTapGesture(count: 2) { withAnimation(NessaMotion.morph) { scale = scale == 1 ? 2 : 1 } }
       }.scrollDisabled(scale <= 1).scrollIndicators(.hidden)
     }.background(MessagesStyle.background)
       .task { image = await PhotoProcessing.thumbnail(data, maximumDimension: 2048) }

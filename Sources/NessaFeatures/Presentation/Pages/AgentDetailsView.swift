@@ -8,56 +8,63 @@ struct AgentDetailsView: View {
   @Environment(\.dismiss) private var dismiss
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var tab = AgentDetailsTab.overview
-  @State private var collapse: CGFloat = 0
   private var conversation: NessaConversationView? { store.views[conversationID] }
   private var profile: AgentProfile? {
     let id = conversation?.runtime?.agent ?? store.agentID(for: conversationID)
     return store.agentProfiles.first { $0.id == id }
   }
 
+  private var working: Bool {
+    conversation?.messages.contains { $0.status == "running" } == true
+  }
+
   var body: some View {
-    VStack(spacing: NessaSpacing.xs) {
-      header
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: NessaSpacing.md, pinnedViews: [.sectionHeaders]) {
-          AgentDetailsIdentity(name: name, compact: false)
-            .scaleEffect(
-              reduceMotion ? 1 : 1 - collapse * (1 - AgentDetailsStyle.collapsedScale),
-              anchor: .leading
-            )
-            .opacity(1 - collapse)
-            .accessibilityHidden(collapse >= 1)
-          Section {
-            content
-          } header: {
-            AgentDetailsTabs(selection: $tab)
-              .padding(.bottom, NessaSpacing.sm)
-              .background(MessagesStyle.background)
-          }
-        }.padding(.bottom, NessaSpacing.md)
+    ScrollView {
+      LazyVStack(alignment: .leading, spacing: NessaSpacing.lg, pinnedViews: [.sectionHeaders]) {
+        let summary = AgentDetailsSummary(profile: profile, working: working)
+        if summary.hasContent { summary }
+        Section {
+          content
+            .id(tab)
+            .transition(
+              .asymmetric(
+                insertion: .opacity.combined(with: .offset(y: AgentDetailsStyle.tabSwapDistance)),
+                removal: .opacity))
+        } header: {
+          AgentDetailsTabs(selection: $tab)
+            .padding(.vertical, NessaSpacing.xs)
+        }
       }
-      .onScrollGeometryChange(for: CGFloat.self) { geometry in
-        min(1, max(0, geometry.contentOffset.y + geometry.contentInsets.top)
-          / AgentDetailsStyle.collapseDistance)
-      } action: { _, progress in
-        collapse = progress
-      }
-    }.padding(.horizontal, MessagesStyle.horizontal)
-      .padding(.top, NessaSpacing.sm)
-      .foregroundStyle(MessagesStyle.foreground).background(MessagesStyle.background)
-      .presentationDragIndicator(.hidden)
+      .padding(.horizontal, MessagesStyle.horizontal)
+      .padding(.bottom, NessaSpacing.xl)
+      .animation(reduceMotion ? nil : NessaMotion.morph, value: tab)
+      .animation(reduceMotion ? nil : NessaMotion.morph, value: working)
+    }
+    .messagesScrollEdges()
+    .messagesBar(edge: .top) { header.messagesHeaderGrain() }
+    .foregroundStyle(MessagesStyle.foreground)
+    .messagesAmbientGround()
+    .presentationDragIndicator(.visible)
+    .presentationBackground(MessagesStyle.background)
+    .presentationCornerRadius(AgentDetailsStyle.cardRadius * 2)
   }
 
   private var header: some View {
     HStack(spacing: NessaSpacing.sm) {
-      AgentDetailsIdentity(name: name, compact: true)
-        .opacity(collapse)
-        .accessibilityHidden(collapse < 1)
+      // The agent and the close button share one row and one centre line.
+      AgentDetailsIdentity(name: name, working: working)
       Spacer(minLength: NessaSpacing.xs)
-      Button("Done") { dismiss() }
-        .font(MessagesStyle.title).padding(.horizontal, NessaSpacing.md)
-        .frame(minHeight: MessagesStyle.controlHeight).messagesGlass()
-    }.frame(minHeight: MessagesStyle.controlHeight)
+      Button { dismiss() } label: {
+        Image(systemName: "xmark").font(MessagesStyle.icon)
+          .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
+          .messagesGlass()
+      }
+      .buttonStyle(.nessaPress)
+      .accessibilityLabel("Close details")
+    }
+    .frame(minHeight: MessagesStyle.controlHeight)
+    .padding(.horizontal, MessagesStyle.horizontal)
+    .padding(.top, NessaSpacing.sm)
   }
 
   private var content: some View {
