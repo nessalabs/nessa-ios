@@ -27,7 +27,7 @@ struct ChatMenuAction: Identifiable {
 
 @MainActor func chatMenuActions(
   selection: ChatMenuSelection, store: MessagesViewModel, layoutAnimation: Animation? = nil,
-  onDelete: @escaping (String) -> Void
+  onArchive: @escaping (String) -> Void, onDelete: @escaping (String) -> Void
 ) -> [ChatMenuAction] {
   let id = selection.identifier
   func action(
@@ -53,9 +53,8 @@ struct ChatMenuAction: Identifiable {
       "archive", archived ? "Unarchive" : "Archive", "archivebox",
       enabled: selection.conversationID != nil
     ) {
-      if let conversation = selection.conversationID {
-        withAnimation(layoutAnimation) { store.setArchived(!archived, conversationID: conversation) }
-      }
+      // The caller asks first, in place, and moves the list when it is confirmed.
+      if let conversation = selection.conversationID { onArchive(conversation) }
     },
     action(
       "delete", "Delete", "trash", enabled: store.connected && selection.conversationID != nil,

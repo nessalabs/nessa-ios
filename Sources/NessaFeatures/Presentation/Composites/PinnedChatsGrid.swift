@@ -5,6 +5,7 @@ struct PinnedChatsGrid: View {
   @ObservedObject var store: MessagesViewModel
   let onOpen: (String) -> Void
   let onOpenComposer: (String) -> Void
+  let onArchive: (String) -> Void
   let onDelete: (String) -> Void
   var enabled = true
   /// Chats on their way out, gone from the grid on the inbox's own spring.
@@ -47,7 +48,8 @@ struct PinnedChatsGrid: View {
           .accessibilityLabel("Open pinned chat \(store.chatName(agent))")
           .chatContextMenu(
             store: store, identifier: agent, enabled: enabled,
-            onTap: { onOpen(agent) }, onCommit: onOpenComposer, onDelete: onDelete)
+            onTap: { onOpen(agent) }, onCommit: onOpenComposer, onArchive: onArchive,
+            onDelete: onDelete)
       }
     }.padding(.top, NessaSpacing.sm).padding(.bottom, NessaSpacing.xxs)
   }

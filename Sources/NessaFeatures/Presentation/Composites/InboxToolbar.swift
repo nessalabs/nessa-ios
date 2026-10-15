@@ -6,7 +6,8 @@ import SwiftUI
 /// each other.
 struct InboxToolbar: ToolbarContent {
   let editing: Bool
-  /// Select mode opened for one chat's Delete, so leaving it backs out: Cancel, not Done.
+  /// Select mode opened for one pinned chat's Delete or Archive, so leaving it backs out:
+  /// Cancel, not Done.
   let cancelsDelete: Bool
   /// Seeds the reader's own disc, so it stays the same face for one gateway.
   let accountSeed: String

@@ -10,13 +10,17 @@ struct MessagesInboxView: View {
   @State private var editing = false
   @State private var showingArchived = false
   @State private var selected: Set<String> = []
-  /// Select mode was opened by a single chat's Delete, so it closes again after the delete.
-  @State private var selectingToDelete = false
+  /// Select mode was opened for one pinned chat's Delete or Archive (a disc has no row to
+  /// confirm on), so it closes again after the slide.
+  @State private var selectingOne = false
+  /// A row's Delete or Archive waiting for its second tap, asked on the row itself.
+  @State private var confirming: RowConfirmation?
   @State private var deleting = false
-  /// Chats being deleted. Their rows first fade out where they stand (`fading`), then leave
-  /// the list and the pinned grid on the layout spring (`leaving`), so the rows below close
-  /// the gap through empty space rather than through fading text. The store's own removal
-  /// lands later, outside any animation, once there is nothing left to see go.
+  /// Chats being deleted or archived. Their rows first fade out where they stand (`fading`),
+  /// then leave the list on the layout spring, so the rows below close the gap through empty
+  /// space rather than through fading text. Deleted chats also leave the pinned grid
+  /// (`leaving`); the store's own removal lands later, outside any animation, once there is
+  /// nothing left to see go.
   @State private var fading: Set<String> = []
   @State private var leaving: Set<String> = []
   @State private var search = ""
@@ -36,7 +40,7 @@ struct MessagesInboxView: View {
         if !pinnedShown.isEmpty {
           PinnedChatsGrid(
             store: store, onOpen: onOpen, onOpenComposer: onOpenComposer,
-            onDelete: selectToDelete, enabled: !deleting, leaving: leaving)
+            onArchive: selectOne, onDelete: selectOne, enabled: !deleting, leaving: leaving)
         }
         if !store.connected {
           Button(store.reconnecting ? "Reconnecting…" : "Connect to Nessa", action: onSettings)
@@ -52,7 +56,10 @@ struct MessagesInboxView: View {
         }
         ForEach(filtered) { conversation in
           Button {
-            if editing {
+            if confirming != nil {
+              // A tap anywhere else lets a pending confirmation go.
+              setConfirming(nil)
+            } else if editing {
               // Animated, so the delete bar rises with the first pick and sinks with the last.
               withAnimation(reduceMotion ? nil : NessaMotion.enter) {
                 if !selected.insert(conversation.id).inserted { selected.remove(conversation.id) }
@@ -85,6 +92,17 @@ struct MessagesInboxView: View {
             // widened sideways only, to keep the selected fill's overhang.
             .mask { Rectangle().padding(.horizontal, -NessaSpacing.xs) }
           }.buttonStyle(.plain)
+            .overlay(alignment: .trailing) {
+              if let ask = confirming, ask.id == conversation.id {
+                NessaInlineConfirm(
+                  ask.title(archived: showingArchived), symbol: ask.symbol,
+                  tint: ask.action == .delete ? MessagesStyle.danger : MessagesStyle.archiveAction
+                ) { perform(ask) }
+                .disabled(
+                  ask.action == .delete
+                    && (!store.connected || !store.conversationAuthorityReady))
+              }
+            }
             // Rows wait out a deletion without dimming: the list stays as it looks.
             .allowsHitTesting(!deleting)
             .accessibilityLabel(
@@ -96,7 +114,8 @@ struct MessagesInboxView: View {
               store: store, identifier: conversation.id,
               enabled: !editing && !deleting,
               onTap: { onOpen(conversation.id) }, onCommit: onOpenComposer,
-              onDelete: selectToDelete
+              onArchive: { setConfirming(.init(id: $0, action: .archive)) },
+              onDelete: { setConfirming(.init(id: $0, action: .delete)) }
             )
             .swipeActions(edge: .leading, allowsFullSwipe: false) {
               if !editing && !showingArchived {
@@ -118,16 +137,15 @@ struct MessagesInboxView: View {
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
               if !editing {
+                // Each asks again on the row once the swipe closes; nothing goes on one tap.
                 Button {
-                  selectToDelete(conversation.id)
+                  setConfirming(.init(id: conversation.id, action: .delete))
                 } label: {
                   Label("Delete", systemImage: "trash")
                 }.tint(MessagesStyle.danger).disabled(
                   !store.connected || !store.conversationAuthorityReady)
                 Button(showingArchived ? "Unarchive" : "Archive", systemImage: "archivebox") {
-                  changeLayout {
-                    store.setArchived(!showingArchived, conversationID: conversation.id)
-                  }
+                  setConfirming(.init(id: conversation.id, action: .archive))
                 }.tint(MessagesStyle.archiveAction)
               }
             }
@@ -142,15 +160,19 @@ struct MessagesInboxView: View {
       )
       .listRowSeparator(.hidden).listRowBackground(Color.clear)
     }.listStyle(.plain).scrollContentBackground(.hidden)
-      // A single chat's Delete backs out with a tap anywhere on the list, as the slide did
-      // before it became the bar.
+      // A pinned chat's Delete or Archive backs out with a tap anywhere on the list.
       .overlay {
-        if selectingToDelete && !deleting {
+        if selectingOne && !deleting {
           Color.clear.contentShape(Rectangle())
-            .onTapGesture { cancelDelete() }
+            .onTapGesture { cancelSelectingOne() }
             .accessibilityAddTraits(.isButton).accessibilityLabel("Keep chat")
         }
       }
+      // Scrolling lets a pending confirmation go, so it never sits on a row out of sight.
+      .onScrollPhaseChange { _, phase in
+        if phase == .interacting && confirming != nil { setConfirming(nil) }
+      }
+      .sensoryFeedback(.warning, trigger: confirming) { _, new in new != nil }
       .environment(\.defaultMinListRowHeight, 0)
       .sensoryFeedback(.impact(flexibility: .soft), trigger: store.pinnedChats)
       .sensoryFeedback(.warning, trigger: pinRefusals)
@@ -163,49 +185,43 @@ struct MessagesInboxView: View {
       .nessaInlineNavigationTitle()
       .toolbar {
         InboxToolbar(
-          editing: editing, cancelsDelete: selectingToDelete,
+          editing: editing, cancelsDelete: selectingOne,
           accountSeed: store.currentGatewayAddress ?? "nessa",
           onEdit: {
             // The marks slide in from the edge as the rows make room, on one spring.
             withAnimation(reduceMotion ? nil : NessaMotion.enter) {
               editing.toggle()
               selected = []
-              selectingToDelete = false
+              selectingOne = false
+              confirming = nil
             }
           }, onSettings: onSettings, showingArchived: showingArchived,
           onToggleArchived: {
             showingArchived.toggle()
             selected = []
-            // A single chat's Delete has nothing left to delete in the other list.
-            if selectingToDelete {
+            confirming = nil
+            // A pinned chat's Delete or Archive has nothing left to act on in the other list.
+            if selectingOne {
               editing = false
-              selectingToDelete = false
+              selectingOne = false
             }
           }, disabled: deleting
         )
       }
       .messagesBar(edge: .bottom) {
         if editing {
-          // The bar is the slide itself, so deleting a selection needs no sheet. It is there
-          // only while something is selected, and goes with what it deleted.
+          // The bar is the slides themselves, so acting on a selection needs no sheet. They
+          // are there only while something is selected, and go with what they acted on.
           if !selected.isEmpty {
-            NessaSlideToConfirm(
-              "Slide to delete \(selected.count)",
-              tint: MessagesStyle.danger, height: MessagesStyle.selectionBarHeight
-            ) {
-              let ids = selected
-              withAnimation(reduceMotion ? nil : NessaMotion.enter) {
-                selected = []
-                if selectingToDelete {
-                  editing = false
-                  selectingToDelete = false
-                }
-              }
-              delete(ids)
-            }
+            SelectionSlides(
+              count: selected.count, showingArchived: showingArchived,
+              archiveEnabled: !deleting,
+              deleteEnabled: !deleting && store.connected && store.conversationAuthorityReady,
+              onArchive: { archive(takeSelection(), archived: !showingArchived) },
+              onDelete: { delete(takeSelection()) }
+            )
             .padding(.horizontal, MessagesStyle.horizontal)
             .padding(.bottom, MessagesStyle.bottomInset)
-            .disabled(deleting || !store.connected || !store.conversationAuthorityReady)
             .transition(.move(edge: .bottom).combined(with: .opacity))
           }
         } else {
@@ -234,39 +250,57 @@ struct MessagesInboxView: View {
       .onChange(of: store.connected) { _, _ in
         selected = []
         editing = false
-        selectingToDelete = false
+        selectingOne = false
+        confirming = nil
       }
       .refreshable {
         do { try await store.refreshList() } catch { store.error = error.localizedDescription }
       }
   }
-  /// A single chat's Delete (from its menu or a swipe) uses the same slide as a selection:
-  /// select mode opens with just that chat picked, so the slide rises, with no sheet.
-  private func selectToDelete(_ id: String) {
+  /// Asks for (or, with nil, lets go of) a row's second tap.
+  private func setConfirming(_ ask: RowConfirmation?) {
+    withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirming = ask }
+  }
+  private func perform(_ ask: RowConfirmation) {
+    setConfirming(nil)
+    switch ask.action {
+    case .delete: delete([ask.id])
+    case .archive: archive([ask.id], archived: !showingArchived)
+    }
+  }
+  /// A pinned chat's Delete or Archive: its disc has no row to ask on, so select mode opens
+  /// with just that chat picked, and the slides rise.
+  private func selectOne(_ id: String) {
     withAnimation(reduceMotion ? nil : NessaMotion.enter) {
-      selectingToDelete = !editing
+      selectingOne = !editing
       editing = true
       selected = [id]
     }
   }
-  private func cancelDelete() {
+  private func cancelSelectingOne() {
     withAnimation(reduceMotion ? nil : NessaMotion.enter) {
       editing = false
       selected = []
-      selectingToDelete = false
+      selectingOne = false
     }
+  }
+  /// Hands over what is selected and clears it, so the slides sink with what they act on
+  /// (and select mode closes if it opened for one chat).
+  private func takeSelection() -> Set<String> {
+    let ids = selected
+    withAnimation(reduceMotion ? nil : NessaMotion.enter) {
+      selected = []
+      if selectingOne {
+        editing = false
+        selectingOne = false
+      }
+    }
+    return ids
   }
   private func delete(_ ids: Set<String>) {
     deleting = true
-    withAnimation(reduceMotion ? nil : NessaMotion.standard(MessagesStyle.rowFadeOut)) {
-      fading.formUnion(ids)
-    }
-    Task {
-      // The gap closes only once the rows have faded: timed rather than waiting on the
-      // fade's completion, which can fire at once when the list redraws the rows in the same
-      // update (the selection clearing and the bar sinking). The store hides a chat the
-      // moment its deletion starts, so the rows leave first, on the layout spring.
-      if !reduceMotion { try? await Task.sleep(for: .seconds(MessagesStyle.rowFadeOut)) }
+    fadeOut(ids) {
+      // The store hides a chat the moment its deletion starts, so the rows leave first.
       changeLayout { leaving.formUnion(ids) }
       await store.deleteConversations(ids)
       selected.formIntersection(Set(store.conversations.map(\.id)))
@@ -276,6 +310,26 @@ struct MessagesInboxView: View {
         leaving.subtract(ids)
         fading.subtract(ids)
       }
+    }
+  }
+  private func archive(_ ids: Set<String>, archived: Bool) {
+    fadeOut(ids) {
+      changeLayout { for id in ids { store.setArchived(archived, conversationID: id) } }
+      // Gone from this list now; once it has closed up, the rows may show again in the other.
+      try? await Task.sleep(for: .seconds(MessagesStyle.rowSettle))
+      fading.subtract(ids)
+    }
+  }
+  /// Fades the rows out where they stand, then runs what takes them away. Timed rather than
+  /// waiting on the fade's completion, which can fire at once when the list redraws the rows
+  /// in the same update (the selection clearing and the slides sinking).
+  private func fadeOut(_ ids: Set<String>, then remove: @escaping @MainActor () async -> Void) {
+    withAnimation(reduceMotion ? nil : NessaMotion.standard(MessagesStyle.rowFadeOut)) {
+      fading.formUnion(ids)
+    }
+    Task {
+      if !reduceMotion { try? await Task.sleep(for: .seconds(MessagesStyle.rowFadeOut)) }
+      await remove()
     }
   }
   /// The pinned chats the grid shows right now, or none while it is hidden.
@@ -297,5 +351,16 @@ struct MessagesInboxView: View {
         && (search.isEmpty || ($0.title ?? "").localizedCaseInsensitiveContains(search)
           || ($0.preview ?? "").localizedCaseInsensitiveContains(search))
     }
+  }
+}
+
+/// A row's one-tap action waiting for its second tap.
+private struct RowConfirmation: Equatable {
+  enum Action { case delete, archive }
+  let id: String
+  let action: Action
+  var symbol: String { action == .delete ? "trash" : "archivebox" }
+  func title(archived: Bool) -> String {
+    action == .delete ? "Delete" : archived ? "Unarchive" : "Archive"
   }
 }

@@ -4,7 +4,8 @@ import SwiftUI
 public enum MessagesStyle {
   public static let confirmationHeight: CGFloat = 300
   public static let pinAction = Color(hex: 0xFF9F0A)
-  public static let archiveAction = Color(hex: 0x5856D6)
+  /// Archiving is quiet and undoable: a neutral grey, never a hue.
+  public static let archiveAction = Color(hex: 0x636366)
   public static let tapbackPinkLight = Color(hex: 0xFFB3DB)
   public static let tapbackPink = Color(hex: 0xFA3A96)
   public static let tapbackBackground = Color(hex: 0x18A4ED)
@@ -151,8 +152,14 @@ public enum MessagesStyle {
   /// The delete slide that stands in for the bar while chats are selected: a touch taller
   /// than the composer, so the slide's knob has room.
   public static let selectionBarHeight: CGFloat = 62
-  /// A deleted row fading out before the rows below close up: a micro-interaction.
+  /// A deleted or archived row fading out before the rows below close up: a
+  /// micro-interaction.
   public static let rowFadeOut: Double = 0.12
+  /// How long the list takes to close up after a row leaves, before the row's fade can be
+  /// cleared for wherever it went (the archive, say).
+  public static let rowSettle: Double = 0.35
+  /// The archive and delete slides, one above the other.
+  public static let selectionSlideGap: CGFloat = 8
   public static let sendPressScale: CGFloat = 0.86
   public static let headerPressScale: CGFloat = 0.97
   public static let emptyTitle = Font.system(size: 22, weight: .semibold)
