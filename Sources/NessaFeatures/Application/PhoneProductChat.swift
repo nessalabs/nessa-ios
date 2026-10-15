@@ -111,14 +111,21 @@ public actor PhoneProductChat {
     return try await outbox.list()
   }
 
-  /// One Stop for this turn. A later call looks the first one up and does not stop again.
+  /// One Stop request id for this turn. A restart only looks it up. An explicit Stop sends
+  /// again, with that same id, only when the lookup confirms the receipt is absent.
   public func stop(conversationID: String, executionID: String) async throws -> PhoneSendOutcome {
     try requireBound()
     var records = try await stops.load()
     if let existing = records.first(where: {
       $0.conversationID == conversationID && $0.executionID == executionID && $0.departed
     }) {
-      return try await recoverStop(existing, records: &records)
+      let looked = try await recoverStop(existing, records: &records)
+      guard looked == .unknown(.notAdmitted) else { return looked }
+      var resent = existing
+      resent.outcome = await finishStop(existing)
+      replace(&records, resent)
+      try await stops.save(records)
+      return resent.outcome
     }
     let requestID = UUID().uuidString.lowercased()
     var record = PhoneStopRecord(
@@ -126,15 +133,7 @@ public actor PhoneProductChat {
       departed: true, outcome: .unknown(.notAdmitted))
     records.append(record)
     try await stops.save(records)
-    let answer = await transport.phoneStop(
-      conversationID: conversationID, requestID: requestID, executionID: executionID)
-    if case .lost = answer {
-      record.outcome = await lookedUp(record)
-    } else if case .broken = answer {
-      record.outcome = await lookedUp(record)
-    } else {
-      record.outcome = outcome(of: answer)
-    }
+    record.outcome = await finishStop(record)
     replace(&records, record)
     try await stops.save(records)
     return record.outcome
@@ -159,6 +158,15 @@ public actor PhoneProductChat {
     replace(&records, updated)
     try await stops.save(records)
     return updated.outcome
+  }
+
+  private func finishStop(_ record: PhoneStopRecord) async -> PhoneSendOutcome {
+    let answer = await transport.phoneStop(
+      conversationID: record.conversationID, requestID: record.requestID,
+      executionID: record.executionID)
+    if case .lost = answer { return await lookedUp(record) }
+    if case .broken = answer { return await lookedUp(record) }
+    return outcome(of: answer)
   }
 
   private func lookedUp(_ record: PhoneStopRecord) async -> PhoneSendOutcome {

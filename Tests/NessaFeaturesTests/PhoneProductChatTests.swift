@@ -226,6 +226,35 @@ private final class CatalogueSpy: PhoneSyncRunning, @unchecked Sendable {
   #expect(model.canSubmit(in: emptyChat))
 }
 
+@Test @MainActor func anOldRevocationDoesNotLockTheSameAccountAgain() async throws {
+  let profile = exampleProfile(phase: .prepared).recording(
+    pairingStatus: nil, nativeReceiver: "native-receiver", nativeStatus: nil, recoveredPurge: nil,
+    retired: false)
+  let snapshot = try PhoneProfileSnapshot(
+    registry: exampleProfiles(profile), local: nil, nativeStatus: nil, source: nil)
+  let transport = ScriptedGateway(
+    store: MemoryOutboxStore(), sendAnswers: [.refused("forbidden")])
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  let model = MessagesViewModel(
+    service: MessagingService(repository: ProductListGateway()),
+    credentials: InMemoryCredentialStore(), preferences: InMemoryChatPreferences(),
+    phoneSync: CatalogueSpy(snapshot), phoneChat: PhoneProductChat(root: root, transport: transport))
+  await model.connect(
+    address: profile.productAddress, credential: "fixture", instance: profile.instance)
+  #expect(
+    await model.send(
+      "Hello", to: emptyChat,
+      identity: MessageCommandIdentity(
+        requestID: "11111111-1111-4111-8111-111111111111",
+        executionID: "22222222-2222-4222-8222-222222222222")) == false)
+  #expect(model.accessRevoked)
+  await model.connect(
+    address: profile.productAddress, credential: "fixture", instance: profile.instance)
+  #expect(!model.accessRevoked)
+  #expect(model.phoneDeliveries(in: emptyChat).map(\.outcome) == [.failed("forbidden")])
+  #expect(model.canSubmit(in: emptyChat))
+}
+
 private actor MemoryStopStore: PhoneStopStoring {
   private var records: [PhoneStopRecord] = []
   func load() async throws -> [PhoneStopRecord] { records }

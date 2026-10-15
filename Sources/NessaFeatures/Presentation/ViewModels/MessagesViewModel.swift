@@ -945,7 +945,10 @@ public final class MessagesViewModel: ObservableObject {
       await restoreDisconnectedHistory()
       return
     }
-    if !automatically { setAutomaticConnection(true) }
+    if !automatically {
+      setAutomaticConnection(true)
+      accessRevoked = false
+    }
     recoveryTask?.cancel()
     recoveryTask = nil
     reconnecting = false
@@ -1327,9 +1330,9 @@ public final class MessagesViewModel: ObservableObject {
       if let phoneChat {
         do {
           await phoneChat.activate(cacheScope(profile))
-          _ = try await phoneChat.recover()
+          let recovered = try await phoneChat.recover()
           phoneDeliveries = try await phoneChat.list()
-          noteRevokedDeliveries()
+          noteRevokedDeliveries(recovered)
         } catch {
           self.error = "Saved sends could not be read."
         }
@@ -1695,9 +1698,9 @@ public final class MessagesViewModel: ObservableObject {
     guard let phoneChat, let profile, connected, !accessRevoked else { return }
     await phoneChat.activate(cacheScope(profile))
     do {
-      _ = try await phoneChat.retry(commandID)
+      let view = try await phoneChat.retry(commandID)
       phoneDeliveries = try await phoneChat.list()
-      noteRevokedDeliveries()
+      noteRevokedDeliveries([view])
     } catch {
       self.error = error.localizedDescription
     }
@@ -1707,8 +1710,8 @@ public final class MessagesViewModel: ObservableObject {
       address: profile.address, credential: profile.credential, instance: profile.instance)
   }
 
-  private func noteRevokedDeliveries() {
-    let revoked = phoneDeliveries.contains { view in
+  private func noteRevokedDeliveries(_ current: [PhoneOutboxView]) {
+    let revoked = current.contains { view in
       if case .failed(let code) = view.outcome { return PhoneAccess.revoked(code) }
       return false
     }
@@ -1728,9 +1731,14 @@ public final class MessagesViewModel: ObservableObject {
     do {
       let view = try await chat.deliver(
         text: contextual, attachments: attachments, conversationID: id, identity: identity)
-      guard generation == currentGeneration else { return true }
+      let kept: Bool
+      switch view.outcome {
+      case .failed, .draft: kept = false
+      case .accepted, .running, .done, .unknown: kept = true
+      }
+      guard generation == currentGeneration else { return kept }
       phoneDeliveries = (try? await chat.list()) ?? phoneDeliveries
-      noteRevokedDeliveries()
+      noteRevokedDeliveries([view])
       switch view.outcome {
       case .accepted, .running, .done, .unknown:
         if profile == currentProfile { recordAcknowledgment(identity.requestID) }

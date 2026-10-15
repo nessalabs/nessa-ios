@@ -55,7 +55,9 @@ actor PhoneOutboxFileStore: PhoneOutboxStoring {
   }
   private func read() throws {
     guard !loaded else { return }
-    guard let data = try? Data(contentsOf: file) else {
+    let data: Data?
+    do { data = try readStoreFile(file) } catch { throw PhoneOutboxStoreFailure.unavailable }
+    guard let data else {
       loaded = true
       return
     }
@@ -89,7 +91,9 @@ actor PhoneStopFileStore: PhoneStopStoring {
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
   }
   func load() async throws -> [PhoneStopRecord] {
-    guard let data = try? Data(contentsOf: file) else { return [] }
+    let data: Data?
+    do { data = try readStoreFile(file) } catch { throw PhoneOutboxFailure.unavailable }
+    guard let data else { return [] }
     guard let decoded = try? JSONDecoder().decode([PhoneStopRecord].self, from: data) else {
       throw PhoneOutboxFailure.corrupt
     }
@@ -109,5 +113,20 @@ actor PhoneStopFileStore: PhoneStopStoring {
     } catch {
       throw PhoneOutboxFailure.unavailable
     }
+  }
+}
+
+/// A missing file is an empty store. Any other read error leaves the saved file untouched.
+private func readStoreFile(_ file: URL) throws -> Data? {
+  do {
+    return try Data(contentsOf: file)
+  } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+    return nil
+  } catch let error as NSError
+    where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError
+  {
+    return nil
+  } catch {
+    throw error
   }
 }

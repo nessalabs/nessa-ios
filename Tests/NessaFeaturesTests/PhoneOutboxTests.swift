@@ -42,6 +42,9 @@ final class ScriptedGateway: PhoneProductTransport, @unchecked Sendable {
   var stopLookups = 0
   var uploads = 0
   var departedBeforeSend = false
+  var stopRequestIDs: [String] = []
+  var stopAnswers: [PhoneSendAnswer] = []
+  var stopLookupAnswers: [PhoneLookupAnswer] = []
   init(
     store: MemoryOutboxStore, sendAnswers: [PhoneSendAnswer] = [],
     lookupAnswers: [PhoneLookupAnswer] = []
@@ -71,13 +74,15 @@ final class ScriptedGateway: PhoneProductTransport, @unchecked Sendable {
     -> PhoneSendAnswer
   {
     stops += 1
-    return .receipt(.settled)
+    stopRequestIDs.append(requestID)
+    return stopAnswers.isEmpty ? .receipt(.settled) : stopAnswers.removeFirst()
   }
   func phoneLookupStop(conversationID: String, requestID: String, executionID: String) async
     -> PhoneLookupAnswer
   {
     stopLookups += 1
-    return .found(stage: "settled", effect: "cancelled")
+    return stopLookupAnswers.isEmpty
+      ? .found(stage: "settled", effect: "cancelled") : stopLookupAnswers.removeFirst()
   }
 }
 
@@ -277,6 +282,34 @@ private func intent(
   _ = try await chat.recover()
   #expect(gateway.stops == 1)
   #expect(gateway.stopLookups == 1)
+}
+
+@Test func anExplicitStopSendsAgainWhenTheReceiptIsAbsent() async throws {
+  let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  let gateway = ScriptedGateway(store: MemoryOutboxStore())
+  gateway.stopLookupAnswers = [.notFound]
+  gateway.stopAnswers = [.receipt(.settled)]
+  let stops = PhoneStopFileStore(directory: directory)
+  let requestID = "33333333-3333-4333-8333-333333333333"
+  try await stops.save([
+    PhoneStopRecord(
+      conversationID: "00000000-0000-4000-8000-0000000000aa",
+      requestID: requestID,
+      executionID: "44444444-4444-4444-8444-444444444444", departed: true,
+      outcome: .unknown(.notAdmitted))
+  ])
+  let chat = PhoneProductChat(
+    outbox: PhoneOutbox(store: PhoneOutboxFileStore(directory: directory), gateway: gateway),
+    transport: gateway, stops: stops)
+  let outcome = try await chat.stop(
+    conversationID: "00000000-0000-4000-8000-0000000000aa",
+    executionID: "44444444-4444-4444-8444-444444444444")
+  #expect(outcome == .done)
+  #expect(gateway.stopLookups == 1)
+  #expect(gateway.stops == 1)
+  #expect(gateway.stopRequestIDs == [requestID])
+  _ = try await chat.recover()
+  #expect(gateway.stops == 1)
 }
 
 @Test func aFailedLookupCanBeRetried() {
