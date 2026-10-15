@@ -4,12 +4,17 @@ import SwiftUI
 /// slide to unlock. The knob is the tint, and behind it the track fills with the tint, faint
 /// at the start and deepening toward the knob and toward the end. Let go early and the knob
 /// springs back and the fill drains with it.
+///
+/// Given `armed`, the slide can also stand in for a bar at rest: it shows `restingLabel` and
+/// the knob is a button. A tap on the knob arms it (the label turns into `label`, the knob
+/// nudges toward the end), and only then does it slide. Clear `armed` to put it back.
 public struct NessaSlideToConfirm: View {
   private let label: String
+  private let restingLabel: String?
+  private let armed: Binding<Bool>?
   private let symbol: String
   private let tint: Color
   private let height: CGFloat
-  private let knobMatch: NessaMatch?
   private let onConfirm: () -> Void
   @Environment(\.isEnabled) private var isEnabled
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -19,21 +24,27 @@ public struct NessaSlideToConfirm: View {
   private var drag: CGFloat = 0
   @GestureState private var holding = false
   @State private var confirmed = false
+  /// The hint that the armed knob now moves: a short push toward the end and back.
+  @State private var nudge: CGFloat = 0
 
   /// `height` sizes the track, so it can stand in for a bar of the same height; the knob
-  /// keeps the same inset at any height. `knobMatch` lets a button elsewhere turn into the
-  /// knob: give that button the same match and swap the two in one animation.
+  /// keeps the same inset at any height.
   public init(
-    _ label: String, symbol: String = "trash", tint: Color = NessaColor.destructive,
-    height: CGFloat? = nil, knobMatch: NessaMatch? = nil, onConfirm: @escaping () -> Void
+    _ label: String, restingLabel: String? = nil, armed: Binding<Bool>? = nil,
+    symbol: String = "trash", tint: Color = NessaColor.destructive,
+    height: CGFloat? = nil, onConfirm: @escaping () -> Void
   ) {
     self.label = label
+    self.restingLabel = restingLabel
+    self.armed = armed
     self.symbol = symbol
     self.tint = tint
     self.height = height ?? SlideStyle.trackHeight
-    self.knobMatch = knobMatch
     self.onConfirm = onConfirm
   }
+
+  /// Without an `armed` binding the slide is always ready.
+  private var isArmed: Bool { armed?.wrappedValue ?? true }
 
   public var body: some View {
     GeometryReader { geometry in
@@ -43,14 +54,15 @@ public struct NessaSlideToConfirm: View {
       ZStack(alignment: .leading) {
         Capsule().fill(NessaColor.muted)
           .overlay(Capsule().strokeBorder(NessaColor.hairline, lineWidth: 1))
-        Text(label).font(SlideStyle.label)
-          .nessaShimmer(active: isEnabled && !holding)
+        Text(isArmed ? label : restingLabel ?? label).font(SlideStyle.label)
+          .contentTransition(.numericText())
+          .nessaShimmer(active: isEnabled && isArmed && !holding)
           .frame(maxWidth: .infinity)
           .padding(.leading, height)
           .opacity(1 - min(progress / SlideStyle.labelFadeEnd, 1))
         NessaSlideFill(progress: progress, travel: travel, height: height, tint: tint)
         knob
-          .offset(x: offset)
+          .offset(x: offset + nudge)
           .gesture(dragGesture(travel: travel), including: isEnabled && !confirmed ? .all : .none)
       }
       .sensoryFeedback(.selection, trigger: Int(progress * SlideStyle.ticks))
@@ -58,29 +70,61 @@ public struct NessaSlideToConfirm: View {
     .frame(height: height)
     .opacity(isEnabled ? 1 : NessaMotion.disabledOpacity)
     .sensoryFeedback(.impact(weight: .heavy), trigger: confirmed) { _, new in new }
+    .sensoryFeedback(.selection, trigger: isArmed) { _, new in new }
+    // Disarmed (after a confirm too), the knob goes home so the slide is ready to use again.
+    .onChange(of: isArmed) { _, new in
+      if new {
+        hint()
+      } else if confirmed {
+        withAnimation(reduceMotion ? nil : SlideStyle.springBack) { confirmed = false }
+      }
+    }
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel(label)
+    .accessibilityLabel(isArmed ? label : restingLabel ?? label)
     .accessibilityAddTraits(.isButton)
-    .accessibilityAction { confirm() }
+    .accessibilityAction { isArmed ? confirm() : arm() }
   }
 
   private var knob: some View {
     NessaSlideKnob(symbol: symbol, tint: tint, diameter: height - SlideStyle.knobInset * 2)
-      .nessaMatched(knobMatch)
       .scaleEffect(holding ? SlideStyle.liftScale : 1)
       .padding(SlideStyle.knobInset)
       .contentShape(Circle())
       .animation(reduceMotion ? nil : NessaMotion.press, value: holding)
   }
 
+  /// One gesture serves both states: at rest a press is the button that arms the slide, and
+  /// only an armed knob follows the finger.
   private func dragGesture(travel: CGFloat) -> some Gesture {
     DragGesture(minimumDistance: 0)
-      .updating($drag) { value, drag, _ in drag = value.translation.width }
+      .updating($drag) { value, drag, _ in if isArmed { drag = value.translation.width } }
       .updating($holding) { _, holding, _ in holding = true }
       .onEnded { value in
+        guard isArmed else {
+          if abs(value.translation.width) < SlideStyle.tapSlop,
+            abs(value.translation.height) < SlideStyle.tapSlop
+          {
+            arm()
+          }
+          return
+        }
         // Short of the mark, the gesture state resets and the knob springs home on its own.
         if value.translation.width / travel >= SlideStyle.confirmAt { confirm() }
       }
+  }
+
+  private func arm() {
+    guard isEnabled, let armed, !armed.wrappedValue else { return }
+    withAnimation(reduceMotion ? nil : NessaMotion.morph) { armed.wrappedValue = true }
+  }
+
+  private func hint() {
+    guard !reduceMotion else { return }
+    withAnimation(SlideStyle.nudgeOut) {
+      nudge = SlideStyle.nudgeDistance
+    } completion: {
+      withAnimation(SlideStyle.springBack) { nudge = 0 }
+    }
   }
 
   private func confirm() {
@@ -133,47 +177,31 @@ private enum SlideStyle {
   /// A selection tick each quarter of the way.
   static let ticks: CGFloat = 4
   static let springBack = Animation.spring(duration: 0.25, bounce: 0.15)
+  /// How far the knob pushes toward the end when the slide arms, and how fast it gets there.
+  static let nudgeDistance: CGFloat = 10
+  static let nudgeOut = Animation.easeOut(duration: 0.12)
+  /// A press that moves less than this is a tap on the knob, not a drag.
+  static let tapSlop: CGFloat = 10
   /// The fill's tint strength at the track's start, and at the knob once it reaches the end.
   static let fillStart: Double = 0.25
   static let fillEnd: Double = 0.85
 }
 
-/// The knob: the tint with the symbol in white. Public so a button can wear the same face
-/// before it turns into the knob.
-public struct NessaSlideKnob: View {
+/// The knob: the tint with the symbol in white.
+private struct NessaSlideKnob: View {
   private let symbol: String
   private let tint: Color
   private let diameter: CGFloat
-  public init(symbol: String = "trash", tint: Color = NessaColor.destructive, diameter: CGFloat) {
+  init(symbol: String, tint: Color, diameter: CGFloat) {
     self.symbol = symbol
     self.tint = tint
     self.diameter = diameter
   }
-  public var body: some View {
+  var body: some View {
     Circle().fill(tint)
       .overlay(
         Image(systemName: symbol).font(SlideStyle.knobIcon).foregroundStyle(NessaColor.foreground)
       )
       .frame(width: diameter, height: diameter)
-  }
-}
-
-/// One shared geometry: the same id in the same namespace on two views that swap.
-public struct NessaMatch {
-  public let id: String
-  public let namespace: Namespace.ID
-  public init(id: String, in namespace: Namespace.ID) {
-    self.id = id
-    self.namespace = namespace
-  }
-}
-
-extension View {
-  @ViewBuilder public func nessaMatched(_ match: NessaMatch?) -> some View {
-    if let match {
-      matchedGeometryEffect(id: match.id, in: match.namespace)
-    } else {
-      self
-    }
   }
 }

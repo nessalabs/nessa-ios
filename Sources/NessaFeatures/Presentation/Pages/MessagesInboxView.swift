@@ -11,7 +11,7 @@ struct MessagesInboxView: View {
   @State private var showingArchived = false
   @State private var selected: Set<String> = []
   @State private var pendingDeletion: Set<String> = []
-  /// The selection bar has turned into the slide that deletes what is selected.
+  /// The selection bar's slide is armed to delete what is selected.
   @State private var confirmingSelection = false
   @State private var deleting = false
   /// Chats being deleted, taken out of the list at once on the layout spring so they animate
@@ -20,9 +20,6 @@ struct MessagesInboxView: View {
   @State private var search = ""
   @State private var pinRefusals = 0
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  /// The bar's trash button and the slide's knob are one object that moves between them.
-  @Namespace private var deleteMorph
-  private var deleteKnob: NessaMatch { NessaMatch(id: "delete-knob", in: deleteMorph) }
   var body: some View {
     List {
       Group {
@@ -138,7 +135,7 @@ struct MessagesInboxView: View {
       )
       .listRowSeparator(.hidden).listRowBackground(Color.clear)
     }.listStyle(.plain).scrollContentBackground(.hidden)
-      // While the bar is a delete slide, a tap anywhere on the list puts it back.
+      // While the bar's slide is armed, a tap anywhere on the list disarms it.
       .overlay {
         if confirmingSelection {
           Color.clear.contentShape(Rectangle())
@@ -175,13 +172,15 @@ struct MessagesInboxView: View {
         )
       }
       .messagesBar(edge: .bottom) {
-        if editing && confirmingSelection {
-          // The bar itself becomes the slide, so deleting a selection needs no sheet.
-          // A tap anywhere else lets it go (see the catcher over the list).
+        if editing {
+          // The bar is the slide itself: at rest it counts the selection, a tap on its knob
+          // arms it, and only then does it delete, so no sheet is needed. A tap anywhere else
+          // disarms it (see the catcher over the list).
           NessaSlideToConfirm(
             selected.count == 1 ? "Slide to delete" : "Slide to delete \(selected.count)",
-            tint: MessagesStyle.danger, height: MessagesStyle.selectionBarHeight,
-            knobMatch: deleteKnob
+            restingLabel: selected.isEmpty ? "Select chats" : "\(selected.count) selected",
+            armed: $confirmingSelection,
+            tint: MessagesStyle.danger, height: MessagesStyle.selectionBarHeight
           ) {
             let ids = selected
             withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirmingSelection = false }
@@ -189,35 +188,8 @@ struct MessagesInboxView: View {
           }
           .padding(.horizontal, MessagesStyle.horizontal)
           .padding(.bottom, MessagesStyle.bottomInset)
-          .disabled(deleting || !store.connected)
-          // The track fades in around the knob, which arrives from the bar's trash button.
+          .disabled(selected.isEmpty || deleting || !store.connected)
           .transition(.opacity)
-        } else if editing {
-          HStack {
-            Text("\(selected.count) selected").font(MessagesStyle.body)
-              .foregroundStyle(MessagesStyle.secondary)
-              .contentTransition(.numericText(value: Double(selected.count)))
-              .animation(reduceMotion ? nil : NessaMotion.morph, value: selected.count)
-            Spacer()
-            // The slide's own knob, waiting at the bar's end; tapped, it travels to the start
-            // of the track the bar becomes.
-            Button(role: .destructive) {
-              withAnimation(reduceMotion ? nil : NessaMotion.morph) { confirmingSelection = true }
-            } label: {
-              NessaSlideKnob(
-                tint: MessagesStyle.danger,
-                diameter: MessagesStyle.selectionBarHeight - MessagesStyle.selectionKnobInset * 2)
-                .nessaMatched(deleteKnob)
-            }
-            .buttonStyle(.nessaPress).accessibilityLabel("Delete")
-            .disabled(selected.isEmpty || deleting || !store.connected)
-          }
-          .padding(.leading, NessaSpacing.lg).padding(.trailing, MessagesStyle.selectionKnobInset)
-          .frame(height: MessagesStyle.selectionBarHeight)
-            .messagesComposerSurface()
-            .padding(.horizontal, MessagesStyle.horizontal).padding(.bottom, MessagesStyle.bottomInset)
-            .foregroundStyle(MessagesStyle.foreground)
-            .transition(.opacity)
         } else {
           HStack(spacing: MessagesStyle.toolbarGap) {
             NessaSearchField(text: $search)
