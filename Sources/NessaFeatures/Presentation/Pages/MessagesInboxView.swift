@@ -176,6 +176,11 @@ struct MessagesInboxView: View {
           onToggleArchived: {
             showingArchived.toggle()
             selected = []
+            // A single chat's Delete has nothing left to delete in the other list.
+            if selectingToDelete {
+              editing = false
+              selectingToDelete = false
+            }
           }, disabled: deleting
         )
       }
@@ -200,7 +205,7 @@ struct MessagesInboxView: View {
             }
             .padding(.horizontal, MessagesStyle.horizontal)
             .padding(.bottom, MessagesStyle.bottomInset)
-            .disabled(deleting || !store.connected)
+            .disabled(deleting || !store.connected || !store.conversationAuthorityReady)
             .transition(.move(edge: .bottom).combined(with: .opacity))
           }
         } else {
