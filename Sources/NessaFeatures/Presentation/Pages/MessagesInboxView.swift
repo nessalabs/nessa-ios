@@ -16,6 +16,8 @@ struct MessagesInboxView: View {
   /// A row's Delete or Archive waiting for its second tap, asked on the row itself.
   @State private var confirming: RowConfirmation?
   @State private var deleting = false
+  /// Rows are fading out or the list is closing up after them.
+  @State private var removing = false
   /// Chats being deleted or archived. Their rows first fade out where they stand (`fading`),
   /// then leave the list and the pinned grid on the layout spring (`leaving`), so the rows
   /// below close the gap through empty space rather than through fading text. The store's
@@ -100,7 +102,9 @@ struct MessagesInboxView: View {
             .accessibilityAddTraits(selected.contains(conversation.id) ? .isSelected : [])
             .chatContextMenu(
               store: store, identifier: conversation.id,
-              enabled: !editing && !deleting,
+              // Off while rows leave, as it already is while selecting or deleting, where the
+              // close runs smoothly; with it on, a single archive's close jumped.
+              enabled: !editing && !deleting && !removing,
               onTap: {
                 // The row's tap lands here, under the menu's own view: while a row is asking,
                 // a tap anywhere else only lets that go.
@@ -333,12 +337,14 @@ struct MessagesInboxView: View {
   /// waiting on the fade's completion, which can fire at once when the list redraws the rows
   /// in the same update (the selection clearing and the slides sinking).
   private func fadeOut(_ ids: Set<String>, then remove: @escaping @MainActor () async -> Void) {
+    removing = true
     withAnimation(reduceMotion ? nil : NessaMotion.standard(MessagesStyle.rowFadeOut)) {
       fading.formUnion(ids)
     }
     Task {
       if !reduceMotion { try? await Task.sleep(for: .seconds(MessagesStyle.rowFadeOut)) }
       await remove()
+      removing = false
     }
   }
   /// The pinned chats the grid shows right now, or none while it is hidden.
