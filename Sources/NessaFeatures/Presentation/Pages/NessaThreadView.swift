@@ -99,6 +99,12 @@ struct NessaThreadView: View {
                   .environment(\.messageMorph, MessageMorph(id: slot, namespace: replyMorph))
                   .id(slot)
                   .transition(MessagesStyle.typingTransition)
+                Button("Stop") {
+                  Task { await store.stopTurn(turn.id, in: conversationID) }
+                }
+                .font(MessagesStyle.caption)
+                .foregroundStyle(MessagesStyle.danger)
+                .disabled(!store.connected || store.accessRevoked)
               }
               if let error = turn.error {
                 Text(error).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.danger)
@@ -213,6 +219,9 @@ struct NessaThreadView: View {
           if composer.reply == nil {
             VStack(spacing: NessaSpacing.xs) {
               if store.pendingLoadError != nil { PendingDeliveryUnavailable(store: store) }
+              ForEach(store.phoneDeliveries(in: conversationID)) { delivery in
+                PhoneDeliveryRow(delivery: delivery, store: store)
+              }
               ForEach(store.pendingSubmissions(in: conversationID), id: \.requestID) { command in
                 PendingCommandActions(command: command, store: store)
               }

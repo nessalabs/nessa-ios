@@ -17,6 +17,9 @@ extension NativeRetainedCapture {
       case .Session(let failure): return .session(capture(failure))
       }
     }
+    if let error = error as? NativeOwnerPreparationCallError {
+      return .ownerPreparation(preparationError(error))
+    }
     if let error = error as? NativeViewError { return .view(capture(error)) }
     return .bridge
   }

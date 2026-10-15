@@ -11,6 +11,7 @@ import Foundation
   public let phoneSync: (any PhoneSyncRunning)?
   public let conversationSharing: PhoneConversationSharing?
   public let conversationDeletion: PhoneConversationDeletion?
+  public let phoneChat: PhoneProductChat?
   private let snapshots: PhoneSnapshotSession
   private let recovery: ConnectionRecovery
   private let speechFactory: @MainActor () -> any SpeechTranscribing
@@ -77,6 +78,14 @@ import Foundation
       self.conversationDeletion = nil
     }
     self.recovery = recovery ?? ConnectionRecovery(waiting: SystemRecoveryWait())
+    if mode == .live, let transport = repository as? any PhoneProductTransport {
+      let directory = FileManager.default.urls(
+        for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Nessa/PhoneOutbox", isDirectory: true)
+      phoneChat = PhoneProductChat(root: directory, transport: transport)
+    } else {
+      phoneChat = nil
+    }
     self.launchConnection = launchConnection
     self.speechFactory =
       speechFactory ?? {
@@ -121,7 +130,7 @@ import Foundation
     MessagesViewModel(
       service: service, credentials: credentials, preferences: preferences,
       snapshots: snapshots, recovery: recovery, phoneSync: phoneSync,
-      conversationSharing: conversationSharing)
+      conversationSharing: conversationSharing, phoneChat: phoneChat)
   }
   private static func liveRepository() -> NessaGatewayClient {
     NessaGatewayClient(journal: PhoneCommandJournal(store: PhoneCommandStore()))

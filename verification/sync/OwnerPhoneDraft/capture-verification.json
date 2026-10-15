@@ -1,0 +1,24 @@
+{
+  "scope": "current native immutable DTOs and admitted off-UI captures only",
+  "plan": "work/phone-current-native-capture-plan.md",
+  "source_manifest": "work/phone-current-native-capture-manifest.json",
+  "source_manifest_sha256": "b1fb208dd867e7f3427659730057cf0db09cbe900e3c853665d641d8f607bd9b",
+  "source_review": "PASS /root/gateway_review/review_fixes; current protocol inventory checked, no actionable findings",
+  "checks": {
+    "strict_current_module_typecheck": "PASS",
+    "full_features_and_actual_child_adapter_typecheck": "PASS",
+    "actual_generated_sdk_host_assertions": "PASS",
+    "semantic_reversals": "both compiled and failed actual assertions; restored exact source passed",
+    "architecture": "PASS",
+    "design_system": "PASS",
+    "diff_check": "PASS"
+  },
+  "unfinished": [
+    "matching vendored package replacement",
+    "normal package/Apple simulator build",
+    "same-owner connection composition",
+    "actual first Send/image/offline/revoke tests"
+  ],
+  "backward_compatibility_layers_added": false,
+  "development_data_migrated": false
+}

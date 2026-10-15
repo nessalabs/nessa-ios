@@ -582,3 +582,109 @@ The isolated simulator verifies connected settings, local disconnect across a
 cold restart, and explicit saved reconnect. These checks do not implement the
 owner-wide read/write authorization or demonstrate a first native Send on a new
 empty chat. That gateway/application change is tracked separately in #811.
+
+
+## Issue #811 handoff to Alfred and Cursor
+
+This is unfinished work published for reuse at Alfred's request, not an installed
+phone feature or a merge-ready app build. The next implementer owns completion
+against the gateway's current `docs/design/phone-send-contract.md` and the outbox
+work in #269. Use one current contract and migrate development data directly;
+do not add old-schema fallbacks.
+
+- Gateway: `nessalabs/nessa-agent`, branch `fix/owner-phone-authorization`.
+  Reviewed server checkpoint `c1a2ab2b5477b536b2a44c9fc4ffd92c4eecb9cf` retains
+  integrated main `66dae526` without rebasing. Handoff head `ac5b3b7b93409787cdbd771d6e742369633c9302`
+  adds the previously uncommitted Swift parent/product workers and build script.
+  Those SDK sources remain in their owning gateway repository at
+  `crates/nessa-device-client/swift/` and `scripts/build-native-device.sh`.
+- iOS: `nessalabs/nessa-ios`, branch `codex/811-owner-phone`, based on main
+  `d5427ec34fce65078fc6ed5433a3148505ebfbe5`. It preserves the result-capture,
+  protected product exchange, subscription/error mapping and regression tests.
+- The unconnected actual native child adapter is preserved in
+  `verification/sync/OwnerPhoneDraft/NativeGatewayProductExchange.swift`.
+  It is not part of the Package.swift production target. It was typechecked
+  as an additional NessaFeatures source against the generated current SDK.
+  The adjacent JSON records retain source hashes, scopes and check outcomes.
+
+### Completed checks and their limits
+
+The exact restored server checkpoint passed 2,881 server tests (12 ignored),
+strict all-target/all-feature Clippy, formatting, 61 protocol checks and
+architecture checks. Seventeen compiled rule-removal probes failed their
+intended assertions and were restored. These are server results, not phone
+runtime results.
+
+The product-exchange slice passed logical source review and 330 package tests
+before the subsequent current-native capture update. Its tests include request
+acknowledgment across disconnect/cancellation, subscription activation ordering,
+original error details and retained barriers for unconfirmed physical release.
+That package count does not certify the combined latest handoff against the old
+vendored package.
+
+The current-native capture slice passed scoped independent source review,
+complete-concurrency Swift 6 typechecking against the actual generated module,
+whole NessaFeatures plus the draft child adapter typechecking, actual-generated
+SDK host assertions, two compiled capture reversals followed by restoration,
+and architecture/design checks. SDK workers also compiled against the actual
+current declarations; the host parent-worker check passed Busy, cancellation,
+capture, shared close, private-scope release and abandoned-owner cases. Actual
+SDK product-child Ready/request/event lifecycle with a gateway remains unproven.
+
+The vendored `Vendor/NessaNative/SOURCE.json` still identifies gateway `b4d9e908`.
+It was deliberately not relabeled or partially replaced with current Swift over
+old binaries. The new capture switches require the current native API; rebuilding
+and replacing the matching Apple package is required before normal package/app
+checks. This handoff has no new simulator installation or first-Send result.
+
+### Remaining work and ownership traps
+
+1. Reconcile these branches with current main and #269's shared phone-send
+   contract. Rebuild the matching SDK for macOS, iOS and simulator; replace the
+   vendored sources, binaries and provenance together.
+2. Wire the ordinary app setup/connection flow. Preparation, original recovery,
+   retained reads and protected product must use the same native parent.
+   The current factory still opens a separate retained owner, and the ordinary
+   bearer socket remains the production path; the written protected exchange
+   does not switch the app to native device authentication.
+3. Finish the durable original-proof journal using canonical native JSON.
+   The existing PhoneOwnerApprovalContext hand-check of action/class fields
+   must give way to the published canonical contract. Initial prepare and
+   restore of an existing reservation are different operations; absent original
+   history must not silently generate a replacement key/request.
+4. Gate usability on actual current Ready and positive native read evidence,
+   including a newly created empty conversation. Historical Active, a saved
+   adoption receipt or successful cached display alone is not current authority.
+   Retain owner recovery and later settlement/selection/cleanup failures separately.
+5. Preserve actual command acknowledgments before applying UI-generation fences.
+   Native owns product ticket IDs, capacity and deadlines. Retain the exact
+   child/parent physical-close owner until native release is confirmed;
+   historical failure and physical release are separate facts. Settle pending
+   subscription-registration waiters on both response and admission failures.
+6. Verify signed owner Read/Write authorization, text/image Send and reply,
+   offline/no-contact Disconnect, reconnect and revocation in the isolated
+   simulator. Integrate outbox behavior through #269, not a parallel phone queue.
+
+The original gateway, simulator chats and drafts were not changed. This handoff
+contains no runtime credentials, private pairing seeds, or development registry.
+Codex stops implementing #811 after publishing these branches and its issue reply.
+Default Nessa agent management/per-agent prompts remain separate product work.
+
+## Product socket chat
+
+Live mode reads the chat list from `conversation.subscribeList` and a thread from
+`conversation.subscribe`, including a conversation with no title and no preview.
+Sends of text and already-uploaded images go through the phone outbox ordering in
+`PhoneOutbox`: the typed send is saved before `conversation.send`, a restart reads
+`conversation.receipt` and does not send again, and an explicit retry is the only
+later send. Stop is saved before `conversation.stop` and is not repeated after a
+restart. Offline reconnect resumes the thread cursor. `forbidden`, `unauthorized`,
+and `credential_revoked` stop automatic reconnect. This path does not call
+`conversation.watchRecords` or `conversation.watchCatalogue`.
+
+The vendored Apple package still identifies gateway `b4d9e908`. This environment
+has no macOS, Xcode, or Apple SDK, so the package was not rebuilt from
+`nessa-device-client` and does not link `nessa-client-core`'s outbox. The app
+runs that outbox's published ordering on the ordinary product socket instead.
+A signed simulator or device is still required to prove a live send, a live
+reply, image upload, revocation, and a cold restart against a gateway.

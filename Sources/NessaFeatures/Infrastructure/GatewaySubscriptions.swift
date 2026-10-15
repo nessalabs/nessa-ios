@@ -11,6 +11,7 @@ struct GatewaySubscriptions {
   private var pending: [String: Entry] = [:]
   private var live: [String: Entry] = [:]
   var count: Int { pending.count + live.count }
+  var registrations: [String] { Array(pending.keys) }
   func awaiting(_ requestID: String) -> Bool { pending[requestID] != nil }
   /// The phone owns one inbox and one visible thread; a replacement retires that slot.
   func replacement(for conversationID: String?) -> String? {

@@ -13,6 +13,13 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   }
   private var uploadURL: URL?
   private var socket: URLSessionWebSocketTask?
+  private var product: (any GatewayProductExchange)?
+  private struct ProductDrain {
+    let exchange: any GatewayProductExchange
+    let task: Task<GatewayProductCloseObservation, Never>
+  }
+  // Actual child identity, never a native wire request ID or correlation map.
+  private var productDrains: [ObjectIdentifier: ProductDrain] = [:]
   private var reader: Task<Void, Never>?
   private struct PendingRequest {
     let continuation: CheckedContinuation<Data, Error>
@@ -23,7 +30,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   private var timeouts: [String: Task<Void, Never>] = [:]
   private var subscriptions = GatewaySubscriptions()
   private struct RegistrationWaiter {
-    let inbox: Bool
+    let inbox: Bool?
     let continuation: CheckedContinuation<Void, Never>
   }
   private var registrationWaiters: [String: [RegistrationWaiter]] = [:]
@@ -38,17 +45,26 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   private var authenticatedPublication: AuthenticatedGatewaySession?
 
   private let pairingAccepted: (@Sendable () async -> Void)?
+  private let productBatchWaiting: (@Sendable () -> Void)?
   private let commands: JournaledGatewayCommands?
   private var commandBinding: JournaledGatewayCommands.Binding?
   private var commandBindingError: (any Error)?
   public init(journal: PhoneCommandJournal? = nil) {
     commands = journal.map { JournaledGatewayCommands(journal: $0) }
     pairingAccepted = nil
+    productBatchWaiting = nil
   }
   /// Internal ordering seam: the production initializer never installs this observer.
   init(pairingAccepted: @escaping @Sendable () async -> Void) {
     commands = nil
     self.pairingAccepted = pairingAccepted
+    productBatchWaiting = nil
+  }
+  /// Ordering observation only; production never holds or alters transport data.
+  init(productBatchWaiting: @escaping @Sendable () -> Void) {
+    commands = nil
+    pairingAccepted = nil
+    self.productBatchWaiting = productBatchWaiting
   }
 
   public func connect(address: String, credential: String, instance: String) async throws {
@@ -59,6 +75,8 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   {
     disconnect()
     let generation = connectionGeneration
+    try await awaitProductDrain()
+    guard generation == connectionGeneration else { throw NessaGatewayError.disconnected }
     let lease = GatewayConnectionLease()
     connectionLease = lease
     do {
@@ -78,6 +96,55 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
       return lease
     } catch {
       if generation == connectionGeneration { close(error) }
+      throw error
+    }
+  }
+  /// Composition passes the child of the same retained native parent. Historical
+  /// adoption and bootstrap authentication cannot manufacture this publication.
+  func connectProduct(
+    _ exchange: any GatewayProductExchange, address: String, scope: PhoneCacheScope
+  ) async throws -> GatewayConnectionLease {
+    disconnect()
+    let generation = connectionGeneration
+    do {
+      try await awaitProductDrain()
+      guard generation == connectionGeneration else { throw NessaGatewayError.disconnected }
+      product = exchange
+      let lease = GatewayConnectionLease()
+      connectionLease = lease
+      let ready = try JSONDecoder().decode(GatewayReadyDTO.self, from: await exchange.ready())
+      guard generation == connectionGeneration else { throw NessaGatewayError.disconnected }
+      authenticatedPublication = .init(connection: lease, snapshot: ready.snapshot)
+      authenticated = true
+      connectionScope = scope
+      imageCache = AttachmentImageCache(scope: scope.key)
+      try configureUploadEndpoint(address)
+      if let commands {
+        do {
+          let binding = try await commands.bind(scope: scope, connection: lease)
+          guard generation == connectionGeneration else { throw NessaGatewayError.disconnected }
+          commandBinding = binding
+        } catch {
+          guard generation == connectionGeneration else { throw NessaGatewayError.disconnected }
+          commandBindingError = error
+        }
+      }
+      reader = Task { [weak self, exchange] in
+        do {
+          while !Task.isCancelled {
+            let batch = try await exchange.events()
+            await self?.receiveProduct(batch, generation: generation)
+          }
+        } catch { await self?.productFailed(error, generation: generation) }
+      }
+      return lease
+    } catch {
+      if generation == connectionGeneration { close(error) }
+      // If admission never transferred this child, its physical owner still drains.
+      let cleanup = await beginProductDrain(exchange).value
+      if let failure = cleanup.failure {
+        throw GatewayProductConnectionFailure(underlying: error, cleanup: failure)
+      }
       throw error
     }
   }
@@ -165,12 +232,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     guard url.scheme == "wss" || ["127.0.0.1", "[::1]", "::1"].contains(url.host ?? "") else {
       throw NessaGatewayError.invalidAddress
     }
-    var uploadComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-    uploadComponents.scheme = url.scheme == "wss" ? "https" : "http"
-    uploadComponents.path = "/attachments"
-    uploadComponents.query = nil
-    uploadComponents.fragment = nil
-    uploadURL = uploadComponents.url
+    try configureUploadEndpoint(address)
     imageCache = AttachmentImageCache(scope: address + "|" + instance + "|" + credential)
     let task = URLSession.shared.webSocketTask(with: url)
     task.maximumMessageSize = 1_048_576
@@ -204,6 +266,17 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
       connection: lease, snapshot: result.snapshot)
     authenticated = true
     connectionScope = PhoneCacheScope(address: address, credential: credential, instance: instance)
+  }
+  private func configureUploadEndpoint(_ address: String) throws {
+    guard let url = URL(string: address), let scheme = url.scheme,
+      ["ws", "wss"].contains(scheme), url.host != nil, url.path == "/session",
+      url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
+      scheme == "wss" || ["127.0.0.1", "[::1]", "::1"].contains(url.host ?? ""),
+      var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+    else { throw NessaGatewayError.invalidAddress }
+    components.scheme = scheme == "wss" ? "https" : "http"
+    components.path = "/attachments"
+    uploadURL = components.url
   }
 
   public func list() async throws -> NessaConversationList {
@@ -291,8 +364,10 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
             executionId: value.executionID, text: value.text, attachments: value.images, files: []))
         acknowledgment = .submitted(result.executionId)
       }
-    } catch let error as NessaGatewayError {
-      try requireCommandConnection(connection, scope: scope)
+    } catch {
+      let original = error
+      guard let error = (error as? GatewayProductRejection)?.behavior ?? error as? NessaGatewayError
+      else { throw original }
       // These codes are audited before effects. The journal additionally proves
       // this is the sole durable dispatch attempt, not a later uncertain retry.
       switch (command, error) {
@@ -302,10 +377,11 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
         throw ConversationCommandRefusal(command: command, reason: .agentNotConfigured)
       case (.submit, .imageInputUnsupported):
         throw ConversationCommandRefusal(command: command, reason: .imagesUnsupported)
-      default: throw error
+      default: throw original
       }
     }
-    try requireCommandConnection(connection, scope: scope)
+    // This is a factual acknowledgment of the original admitted command. The
+    // journal owns its publication; navigation/lease retirement fences UI later.
     guard acknowledgment.validates(command) else { throw NessaGatewayError.invalidFrame }
     return acknowledgment
   }
@@ -549,6 +625,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
       }
     } catch {
       subscriptions.fail(token, error: error)
+      registrationSettled(token)
       throw error
     }
   }
@@ -574,9 +651,12 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     do {
       let _: Ignored = try await request(
         "conversation.unsubscribe", params: Stop(subscriptionId: id))
-    } catch NessaGatewayError.unknownSubscription {
+    } catch {
+      let behavior = (error as? GatewayProductRejection)?.behavior ?? error as? NessaGatewayError
       // A terminal publication can retire the remote subscription before cleanup arrives.
-    } catch { if generation == connectionGeneration { close(error) } }
+      if case .unknownSubscription = behavior { return }
+      if generation == connectionGeneration { close(error) }
+    }
   }
   private func registrationSettled(_ token: String) {
     for waiter in registrationWaiters.removeValue(forKey: token) ?? [] {
@@ -600,6 +680,10 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     authenticated = false
     reader?.cancel()
     reader = nil
+    if let product {
+      _ = beginProductDrain(product)
+      self.product = nil
+    }
     socket?.cancel(with: .goingAway, reason: nil)
     socket = nil
     subscriptions.finishAll(error)
@@ -607,7 +691,33 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     challenge = nil
   }
   private func requireConnection() throws {
-    guard authenticated, socket != nil else { throw NessaGatewayError.disconnected }
+    guard authenticated, product != nil || socket != nil else {
+      throw NessaGatewayError.disconnected
+    }
+  }
+  private func awaitProductDrain() async throws {
+    while let (id, draining) = productDrains.first {
+      var observation = await draining.task.value
+      if !observation.released {
+        // Retry observation on that same physical owner; no filesystem probe or
+        // diagnostic classification can clear its release barrier.
+        observation = await draining.exchange.close()
+      }
+      guard observation.released else {
+        throw observation.failure ?? NessaGatewayError.disconnected
+      }
+      productDrains.removeValue(forKey: id)
+    }
+  }
+  private func beginProductDrain(_ exchange: any GatewayProductExchange)
+    -> Task<GatewayProductCloseObservation, Never>
+  {
+    let id = ObjectIdentifier(exchange)
+    if let existing = productDrains[id] { return existing.task }
+    exchange.requestClose()
+    let task = Task.detached { await exchange.close() }
+    productDrains[id] = .init(exchange: exchange, task: task)
+    return task
   }
   private func waitForChallenge() async throws -> Data {
     if let challenge { return challenge }
@@ -628,8 +738,29 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   private func request<P: Encodable, R: Decodable>(
     _ method: String, params: P,
     id: String = UUID().uuidString, expectedSocket: URLSessionWebSocketTask? = nil,
-    pairingSource: AuthenticatedGatewaySession? = nil
+    pairingSource: AuthenticatedGatewaySession? = nil, preserveRefusal: Bool = false
   ) async throws -> R {
+    if let product, expectedSocket == nil, pairingSource == nil {
+      let generation = connectionGeneration
+      // Native admission and its ticket are the sole response/deadline owners.
+      let response = try await product.request(
+        method: method, parameters: JSONEncoder().encode(params))
+      let payload = try productPayload(response)
+      if generation == connectionGeneration, subscriptions.awaiting(id) {
+        do {
+          if let stopped = try subscriptions.activate(id, data: payload) {
+            _ = beginCleanup(stopped, generation: generation)
+          }
+          registrationSettled(id)
+        } catch {
+          subscriptions.fail(id, error: error)
+          registrationSettled(id)
+          close(error)
+          throw error
+        }
+      }
+      return try JSONDecoder().decode(R.self, from: payload)
+    }
     guard let socket, expectedSocket == nil || socket === expectedSocket else {
       throw NessaGatewayError.disconnected
     }
@@ -643,6 +774,9 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
         pending[id] = PendingRequest(
           continuation: continuation, strictEnvelope: pairingSource != nil,
           failure: { code, message, details in
+            if preserveRefusal {
+              return PhoneSocketRefusal.error(code: code, message: message, details: details)
+            }
             if pairingSource != nil, let code, let message {
               return GatewayPairingRejection(code: code, diagnostic: message, details: details)
             }
@@ -670,6 +804,55 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
       }
       throw error
     }
+  }
+  private func productPayload(_ data: Data) throws -> Data {
+    // Rust validated the canonical envelope and correlated its UInt64 transport
+    // ID. Swift decodes only the application payload and published failure code.
+    guard let frame = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let ok = frame["ok"] as? Bool
+    else { throw NessaGatewayError.invalidFrame }
+    if ok {
+      guard let payload = frame["payload"] else { throw NessaGatewayError.invalidFrame }
+      return try JSONSerialization.data(withJSONObject: payload, options: .fragmentsAllowed)
+    }
+    guard let error = frame["error"] as? [String: Any],
+      let code = error["code"] as? String, let message = error["message"] as? String
+    else { throw NessaGatewayError.invalidFrame }
+    let details = try error["details"].map {
+      try JSONSerialization.data(withJSONObject: $0, options: .fragmentsAllowed)
+    }
+    throw GatewayProductRejection(
+      code: code, diagnostic: message, details: details,
+      behavior: GatewayFailureDTO.failure(code: code, message: message))
+  }
+  private func receiveProduct(_ batch: [Data], generation: Int) async {
+    do {
+      // One native batch stays held here if event capture wins the scheduling
+      // race with registration completion. Submit/completion run independently.
+      for token in subscriptions.registrations {
+        guard generation == connectionGeneration else { return }
+        if subscriptions.awaiting(token) {
+          await withCheckedContinuation {
+            registrationWaiters[token, default: []].append(
+              RegistrationWaiter(inbox: nil, continuation: $0))
+            productBatchWaiting?()
+          }
+        }
+      }
+      guard generation == connectionGeneration else { return }
+      for data in batch {
+        guard let frame = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let name = frame["event"] as? String, let payload = frame["payload"]
+        else { throw NessaGatewayError.invalidFrame }
+        let bytes = try JSONSerialization.data(withJSONObject: payload, options: .fragmentsAllowed)
+        if let stopped = subscriptions.receive(name, payload: bytes) {
+          _ = beginCleanup(stopped, generation: generation)
+        }
+      }
+    } catch { if generation == connectionGeneration { close(error) } }
+  }
+  private func productFailed(_ error: Error, generation: Int) {
+    if generation == connectionGeneration { close(error) }
   }
   private func expire(_ id: String, error: Error) {
     timeouts.removeValue(forKey: id)?.cancel()
@@ -776,6 +959,147 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     challengeWaiter?.resume(throwing: error)
     challengeWaiter = nil
   }
+  public func send(_ intent: PhoneSendIntent) async -> PhoneSendAnswer {
+    struct Body: Encodable {
+      let conversationId: String
+      let requestId: String
+      let executionId: String
+      let text: String
+      let attachments: [NessaImageAttachment]
+      let files: [String]
+    }
+    let payload = await phoneDecode(
+      "conversation.send",
+      params: Body(
+        conversationId: intent.conversationID, requestId: intent.commandID,
+        executionId: intent.turnID, text: intent.text, attachments: intent.images, files: []),
+      as: PhoneWireReceipt.self)
+    return phoneSendAnswer(payload, turnID: intent.turnID)
+  }
+  public func lookup(_ intent: PhoneSendIntent) async -> PhoneLookupAnswer {
+    struct Body: Encodable {
+      let conversationId: String
+      let requestId: String
+      let operation: String
+      let executionId: String
+      let text: String
+      let attachments: [NessaImageAttachment]
+      let files: [String]
+    }
+    let payload = await phoneDecode(
+      "conversation.receipt",
+      params: Body(
+        conversationId: intent.conversationID, requestId: intent.commandID, operation: "submit",
+        executionId: intent.turnID, text: intent.text, attachments: intent.images, files: []),
+      as: PhoneWireLookup.self)
+    return phoneLookupAnswer(payload, requestID: intent.commandID)
+  }
+  public func uploadPhoneImage(_ attachment: DraftAttachment, conversationID: String) async throws
+    -> NessaImageAttachment
+  {
+    try await upload(attachment, conversationID: conversationID)
+  }
+  public func phoneStop(conversationID: String, requestID: String, executionID: String) async
+    -> PhoneSendAnswer
+  {
+    struct Body: Encodable {
+      let conversationId: String
+      let requestId: String
+      let executionId: String
+    }
+    let payload = await phoneDecode(
+      "conversation.stop",
+      params: Body(
+        conversationId: conversationID, requestId: requestID, executionId: executionID),
+      as: PhoneWireReceipt.self)
+    return phoneSendAnswer(payload, turnID: executionID)
+  }
+  public func phoneLookupStop(conversationID: String, requestID: String, executionID: String) async
+    -> PhoneLookupAnswer
+  {
+    struct Body: Encodable {
+      let conversationId: String
+      let requestId: String
+      let operation: String
+      let executionId: String
+    }
+    let payload = await phoneDecode(
+      "conversation.receipt",
+      params: Body(
+        conversationId: conversationID, requestId: requestID, operation: "stop",
+        executionId: executionID),
+      as: PhoneWireLookup.self)
+    return phoneLookupAnswer(payload, requestID: requestID)
+  }
+  private struct PhoneWireReceipt: Decodable {
+    let executionId: String
+    let disposition: String
+  }
+  private struct PhoneWireLookup: Decodable {
+    let found: Bool
+    let requestId: String
+    let stage: String?
+    let outcome: String?
+  }
+  private enum PhoneDecoded<Value> {
+    case value(Value)
+    case refused(String)
+    case lost
+    case broken
+  }
+  private func phoneDecode<P: Encodable, R: Decodable>(
+    _ method: String, params: P, as type: R.Type
+  ) async -> PhoneDecoded<R> {
+    do {
+      _ = type
+      return .value(try await request(method, params: params, preserveRefusal: true))
+    } catch let rejection as GatewayProductRejection {
+      return rejection.code.isEmpty ? .broken : .refused(rejection.code)
+    } catch is DecodingError {
+      return .broken
+    } catch let error as NessaGatewayError {
+      switch error {
+      case .revoked(let code): return .refused(code)
+      case .invalidFrame: return .broken
+      default: return .lost
+      }
+    } catch {
+      return .lost
+    }
+  }
+  private func phoneSendAnswer(
+    _ payload: PhoneDecoded<PhoneWireReceipt>, turnID: String
+  ) -> PhoneSendAnswer {
+    switch payload {
+    case .lost: return .lost
+    case .broken: return .broken
+    case .refused(let code): return .refused(code)
+    case .value(let receipt):
+      guard receipt.executionId == turnID else { return .broken }
+      switch receipt.disposition {
+      case "queued": return .receipt(.queued)
+      case "injected": return .receipt(.injected)
+      case "settled": return .receipt(.settled)
+      default: return .broken
+      }
+    }
+  }
+  private func phoneLookupAnswer(
+    _ payload: PhoneDecoded<PhoneWireLookup>, requestID: String
+  ) -> PhoneLookupAnswer {
+    switch payload {
+    case .lost: return .lost
+    case .broken: return .broken
+    case .refused(let code): return .refused(code)
+    case .value(let result):
+      guard result.requestId == requestID else { return .broken }
+      if !result.found {
+        return result.stage == nil && result.outcome == nil ? .notFound : .broken
+      }
+      guard let stage = result.stage else { return .broken }
+      return .found(stage: stage, effect: result.outcome)
+    }
+  }
   private struct Empty: Encodable {}
   private struct Ignored: Decodable {}
   private struct Challenge: Decodable {
@@ -827,3 +1151,5 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     let optionId: String
   }
 }
+
+extension NessaGatewayClient: PhoneProductTransport {}
