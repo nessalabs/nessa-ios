@@ -17,10 +17,9 @@ struct MessagesInboxView: View {
   @State private var confirming: RowConfirmation?
   @State private var deleting = false
   /// Chats being deleted or archived. Their rows first fade out where they stand (`fading`),
-  /// then leave the list on the layout spring, so the rows below close the gap through empty
-  /// space rather than through fading text. Deleted chats also leave the pinned grid
-  /// (`leaving`); the store's own removal lands later, outside any animation, once there is
-  /// nothing left to see go.
+  /// then leave the list and the pinned grid on the layout spring (`leaving`), so the rows
+  /// below close the gap through empty space rather than through fading text. The store's
+  /// own change lands later, outside any animation, once there is nothing left to see go.
   @State private var fading: Set<String> = []
   @State private var leaving: Set<String> = []
   @State private var search = ""
@@ -92,17 +91,6 @@ struct MessagesInboxView: View {
             // widened sideways only, to keep the selected fill's overhang.
             .mask { Rectangle().padding(.horizontal, -NessaSpacing.xs) }
           }.buttonStyle(.plain)
-            .overlay(alignment: .trailing) {
-              if let ask = confirming, ask.id == conversation.id {
-                NessaInlineConfirm(
-                  ask.title(archived: showingArchived), symbol: ask.symbol,
-                  tint: ask.action == .delete ? MessagesStyle.danger : MessagesStyle.archiveAction
-                ) { perform(ask) }
-                .disabled(
-                  ask.action == .delete
-                    && (!store.connected || !store.conversationAuthorityReady))
-              }
-            }
             // Rows wait out a deletion without dimming: the list stays as it looks.
             .allowsHitTesting(!deleting)
             .accessibilityLabel(
@@ -113,7 +101,12 @@ struct MessagesInboxView: View {
             .chatContextMenu(
               store: store, identifier: conversation.id,
               enabled: !editing && !deleting,
-              onTap: { onOpen(conversation.id) }, onCommit: onOpenComposer,
+              onTap: {
+                // The row's tap lands here, under the menu's own view: while a row is asking,
+                // a tap anywhere else only lets that go.
+                if confirming != nil { setConfirming(nil) } else { onOpen(conversation.id) }
+              },
+              onCommit: onOpenComposer,
               onArchive: { setConfirming(.init(id: $0, action: .archive)) },
               onDelete: { setConfirming(.init(id: $0, action: .delete)) }
             )
@@ -147,6 +140,18 @@ struct MessagesInboxView: View {
                 Button(showingArchived ? "Unarchive" : "Archive", systemImage: "archivebox") {
                   setConfirming(.init(id: conversation.id, action: .archive))
                 }.tint(MessagesStyle.archiveAction)
+              }
+            }
+            // Above the menu's view, which takes every other tap on the row.
+            .overlay(alignment: .trailing) {
+              if let ask = confirming, ask.id == conversation.id {
+                NessaInlineConfirm(
+                  ask.title(archived: showingArchived), symbol: ask.symbol,
+                  tint: ask.action == .delete ? MessagesStyle.danger : MessagesStyle.archiveAction
+                ) { perform(ask) }
+                .disabled(
+                  ask.action == .delete
+                    && (!store.connected || !store.conversationAuthorityReady))
               }
             }
         }
@@ -314,9 +319,13 @@ struct MessagesInboxView: View {
   }
   private func archive(_ ids: Set<String>, archived: Bool) {
     fadeOut(ids) {
-      changeLayout { for id in ids { store.setArchived(archived, conversationID: id) } }
-      // Gone from this list now; once it has closed up, the rows may show again in the other.
+      // The rows leave on the view's own state, as a deletion's do; the store moves them only
+      // once the list has closed up, outside any animation, so its update can't jolt the
+      // list mid-close.
+      changeLayout { leaving.formUnion(ids) }
       try? await Task.sleep(for: .seconds(MessagesStyle.rowSettle))
+      for id in ids { store.setArchived(archived, conversationID: id) }
+      leaving.subtract(ids)
       fading.subtract(ids)
     }
   }
