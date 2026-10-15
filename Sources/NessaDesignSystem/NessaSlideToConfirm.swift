@@ -42,8 +42,10 @@ public struct NessaSlideToConfirm: View {
           .overlay(Capsule().strokeBorder(NessaColor.hairline, lineWidth: 1))
         Text(label).font(SlideStyle.label)
           .nessaShimmer(active: isEnabled && !holding)
+          .lineLimit(1).minimumScaleFactor(0.8)
+          // Centred on the whole track, kept clear of the knob's slot at either end.
           .frame(maxWidth: .infinity)
-          .padding(.leading, height)
+          .padding(.horizontal, height)
           .opacity(1 - min(progress / SlideStyle.labelFadeEnd, 1))
         NessaSlideFill(progress: progress, travel: travel, height: height, tint: tint)
         knob

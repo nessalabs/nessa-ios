@@ -150,7 +150,7 @@ public enum MessagesStyle {
   public static let swapScale: CGFloat = 0.5
   /// The delete slide that stands in for the bar while chats are selected: a touch taller
   /// than the composer, so the slide's knob has room.
-  public static let selectionBarHeight: CGFloat = 58
+  public static let selectionBarHeight: CGFloat = 62
   /// A deleted row fading out before the rows below close up: a micro-interaction.
   public static let rowFadeOut: Double = 0.12
   public static let sendPressScale: CGFloat = 0.86
