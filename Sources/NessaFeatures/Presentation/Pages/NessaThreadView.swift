@@ -66,6 +66,12 @@ struct NessaThreadView: View {
               if turn.status == "running" {
                 TypingIndicator()
                   .transition(MessagesStyle.bubbleInsertion(outgoing: false))
+                Button("Stop") {
+                  Task { await store.stopTurn(turn.id, in: conversationID) }
+                }
+                .font(MessagesStyle.caption)
+                .foregroundStyle(MessagesStyle.danger)
+                .disabled(!store.connected || store.accessRevoked)
               }
               if let error = turn.error {
                 Text(error).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.danger)
@@ -111,6 +117,9 @@ struct NessaThreadView: View {
           if composer.reply == nil {
             VStack(spacing: NessaSpacing.xs) {
               if store.pendingLoadError != nil { PendingDeliveryUnavailable(store: store) }
+              ForEach(store.phoneDeliveries(in: conversationID)) { delivery in
+                PhoneDeliveryRow(delivery: delivery, store: store)
+              }
               ForEach(store.pendingSubmissions(in: conversationID), id: \.requestID) { command in
                 PendingCommandActions(command: command, store: store)
               }

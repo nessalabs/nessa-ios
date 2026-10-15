@@ -738,7 +738,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   private func request<P: Encodable, R: Decodable>(
     _ method: String, params: P,
     id: String = UUID().uuidString, expectedSocket: URLSessionWebSocketTask? = nil,
-    pairingSource: AuthenticatedGatewaySession? = nil
+    pairingSource: AuthenticatedGatewaySession? = nil, preserveRefusal: Bool = false
   ) async throws -> R {
     if let product, expectedSocket == nil, pairingSource == nil {
       let generation = connectionGeneration
@@ -774,6 +774,9 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
         pending[id] = PendingRequest(
           continuation: continuation, strictEnvelope: pairingSource != nil,
           failure: { code, message, details in
+            if preserveRefusal {
+              return PhoneSocketRefusal.error(code: code, message: message, details: details)
+            }
             if pairingSource != nil, let code, let message {
               return GatewayPairingRejection(code: code, diagnostic: message, details: details)
             }
@@ -956,6 +959,147 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     challengeWaiter?.resume(throwing: error)
     challengeWaiter = nil
   }
+  public func send(_ intent: PhoneSendIntent) async -> PhoneSendAnswer {
+    struct Body: Encodable {
+      let conversationId: String
+      let requestId: String
+      let executionId: String
+      let text: String
+      let attachments: [NessaImageAttachment]
+      let files: [String]
+    }
+    let payload = await phoneDecode(
+      "conversation.send",
+      params: Body(
+        conversationId: intent.conversationID, requestId: intent.commandID,
+        executionId: intent.turnID, text: intent.text, attachments: intent.images, files: []),
+      as: PhoneWireReceipt.self)
+    return phoneSendAnswer(payload, turnID: intent.turnID)
+  }
+  public func lookup(_ intent: PhoneSendIntent) async -> PhoneLookupAnswer {
+    struct Body: Encodable {
+      let conversationId: String
+      let requestId: String
+      let operation: String
+      let executionId: String
+      let text: String
+      let attachments: [NessaImageAttachment]
+      let files: [String]
+    }
+    let payload = await phoneDecode(
+      "conversation.receipt",
+      params: Body(
+        conversationId: intent.conversationID, requestId: intent.commandID, operation: "submit",
+        executionId: intent.turnID, text: intent.text, attachments: intent.images, files: []),
+      as: PhoneWireLookup.self)
+    return phoneLookupAnswer(payload, requestID: intent.commandID)
+  }
+  public func uploadPhoneImage(_ attachment: DraftAttachment, conversationID: String) async throws
+    -> NessaImageAttachment
+  {
+    try await upload(attachment, conversationID: conversationID)
+  }
+  public func phoneStop(conversationID: String, requestID: String, executionID: String) async
+    -> PhoneSendAnswer
+  {
+    struct Body: Encodable {
+      let conversationId: String
+      let requestId: String
+      let executionId: String
+    }
+    let payload = await phoneDecode(
+      "conversation.stop",
+      params: Body(
+        conversationId: conversationID, requestId: requestID, executionId: executionID),
+      as: PhoneWireReceipt.self)
+    return phoneSendAnswer(payload, turnID: executionID)
+  }
+  public func phoneLookupStop(conversationID: String, requestID: String, executionID: String) async
+    -> PhoneLookupAnswer
+  {
+    struct Body: Encodable {
+      let conversationId: String
+      let requestId: String
+      let operation: String
+      let executionId: String
+    }
+    let payload = await phoneDecode(
+      "conversation.receipt",
+      params: Body(
+        conversationId: conversationID, requestId: requestID, operation: "stop",
+        executionId: executionID),
+      as: PhoneWireLookup.self)
+    return phoneLookupAnswer(payload, requestID: requestID)
+  }
+  private struct PhoneWireReceipt: Decodable {
+    let executionId: String
+    let disposition: String
+  }
+  private struct PhoneWireLookup: Decodable {
+    let found: Bool
+    let requestId: String
+    let stage: String?
+    let outcome: String?
+  }
+  private enum PhoneDecoded<Value> {
+    case value(Value)
+    case refused(String)
+    case lost
+    case broken
+  }
+  private func phoneDecode<P: Encodable, R: Decodable>(
+    _ method: String, params: P, as type: R.Type
+  ) async -> PhoneDecoded<R> {
+    do {
+      _ = type
+      return .value(try await request(method, params: params, preserveRefusal: true))
+    } catch let rejection as GatewayProductRejection {
+      return rejection.code.isEmpty ? .broken : .refused(rejection.code)
+    } catch is DecodingError {
+      return .broken
+    } catch let error as NessaGatewayError {
+      switch error {
+      case .revoked(let code): return .refused(code)
+      case .invalidFrame: return .broken
+      default: return .lost
+      }
+    } catch {
+      return .lost
+    }
+  }
+  private func phoneSendAnswer(
+    _ payload: PhoneDecoded<PhoneWireReceipt>, turnID: String
+  ) -> PhoneSendAnswer {
+    switch payload {
+    case .lost: return .lost
+    case .broken: return .broken
+    case .refused(let code): return .refused(code)
+    case .value(let receipt):
+      guard receipt.executionId == turnID else { return .broken }
+      switch receipt.disposition {
+      case "queued": return .receipt(.queued)
+      case "injected": return .receipt(.injected)
+      case "settled": return .receipt(.settled)
+      default: return .broken
+      }
+    }
+  }
+  private func phoneLookupAnswer(
+    _ payload: PhoneDecoded<PhoneWireLookup>, requestID: String
+  ) -> PhoneLookupAnswer {
+    switch payload {
+    case .lost: return .lost
+    case .broken: return .broken
+    case .refused(let code): return .refused(code)
+    case .value(let result):
+      guard result.requestId == requestID else { return .broken }
+      if !result.found {
+        return result.stage == nil && result.outcome == nil ? .notFound : .broken
+      }
+      guard let stage = result.stage else { return .broken }
+      return .found(stage: stage, effect: result.outcome)
+    }
+  }
   private struct Empty: Encodable {}
   private struct Ignored: Decodable {}
   private struct Challenge: Decodable {
@@ -1007,3 +1151,5 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     let optionId: String
   }
 }
+
+extension NessaGatewayClient: PhoneProductTransport {}

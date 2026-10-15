@@ -669,3 +669,22 @@ The original gateway, simulator chats and drafts were not changed. This handoff
 contains no runtime credentials, private pairing seeds, or development registry.
 Codex stops implementing #811 after publishing these branches and its issue reply.
 Default Nessa agent management/per-agent prompts remain separate product work.
+
+## Product socket chat
+
+Live mode reads the chat list from `conversation.subscribeList` and a thread from
+`conversation.subscribe`, including a conversation with no title and no preview.
+Sends of text and already-uploaded images go through the phone outbox ordering in
+`PhoneOutbox`: the typed send is saved before `conversation.send`, a restart reads
+`conversation.receipt` and does not send again, and an explicit retry is the only
+later send. Stop is saved before `conversation.stop` and is not repeated after a
+restart. Offline reconnect resumes the thread cursor. `forbidden`, `unauthorized`,
+and `credential_revoked` stop automatic reconnect. This path does not call
+`conversation.watchRecords` or `conversation.watchCatalogue`.
+
+The vendored Apple package still identifies gateway `b4d9e908`. This environment
+has no macOS, Xcode, or Apple SDK, so the package was not rebuilt from
+`nessa-device-client` and does not link `nessa-client-core`'s outbox. The app
+runs that outbox's published ordering on the ordinary product socket instead.
+A signed simulator or device is still required to prove a live send, a live
+reply, image upload, revocation, and a cold restart against a gateway.

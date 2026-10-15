@@ -7,6 +7,7 @@ public enum NessaGatewayError: LocalizedError {
   case imageInputUnsupported
   case modelUnavailable, agentNotConfigured
   case rejected(String)
+  case revoked(String)
   public var errorDescription: String? {
     switch self {
     case .invalidAddress:
@@ -23,6 +24,7 @@ public enum NessaGatewayError: LocalizedError {
     case .modelUnavailable: "This model is no longer available. Choose another model."
     case .agentNotConfigured: "This agent is no longer available on the gateway."
     case .rejected(let message): message
+    case .revoked: "This phone’s access was revoked."
     }
   }
 }

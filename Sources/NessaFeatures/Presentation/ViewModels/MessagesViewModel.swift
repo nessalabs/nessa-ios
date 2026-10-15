@@ -77,14 +77,23 @@ public final class MessagesViewModel: ObservableObject {
     pendingCommands.filter { if case .submit = $0 { $0.conversationID == id } else { false } }
   }
   public func canSubmit(in id: String) -> Bool {
-    connected && conversationAuthorityReady && !unavailableNativeIDs.contains(id)
+    connected && conversationAuthorityReady && !accessRevoked
+      && (phoneChat != nil || !unavailableNativeIDs.contains(id))
       && pendingLoadError == nil && pendingSubmissions(in: id).isEmpty
   }
+  public func phoneDeliveries(in id: String) -> [PhoneOutboxView] {
+    phoneDeliveries.filter {
+      $0.conversationID == id && !($0.outcome == .draft || $0.outcome.claimsSubmission)
+    }
+  }
   public func submissionUnavailableReason(in id: String) -> String? {
+    if accessRevoked { return "This phone’s access was revoked." }
     if !connected { return "Connect to send messages." }
     if phoneSetupBusy { return "Updating connection…" }
-    if unavailableNativeIDs.contains(id) { return "This chat isn’t available on this phone." }
-    if nativeConfigured && !nativeCommandReady {
+    if phoneChat == nil && unavailableNativeIDs.contains(id) {
+      return "This chat isn’t available on this phone."
+    }
+    if phoneChat == nil && nativeConfigured && !nativeCommandReady {
       return phoneSyncError ?? "Chat connection is unavailable."
     }
     return nil
@@ -113,6 +122,7 @@ public final class MessagesViewModel: ObservableObject {
   }
   private var profile: Profile?
   private let phoneSync: (any PhoneSyncRunning)?
+  private let phoneChat: PhoneProductChat?
   private let conversationSharing: PhoneConversationSharing?
   @Published public private(set) var phoneOwnerChoices: NessaConversationList?
   @Published public private(set) var pendingPhoneShares: [PhoneConversationShareIntent] = []
@@ -149,8 +159,11 @@ public final class MessagesViewModel: ObservableObject {
   public var canLoadLegacyCredential: Bool {
     !nativeConfigured && !busy && (phoneSync == nil || !nativeNeedsRestore)
   }
+  @Published public private(set) var phoneDeliveries: [PhoneOutboxView] = []
+  @Published public private(set) var accessRevoked = false
   public var conversationAuthorityReady: Bool {
-    !phoneSetupBusy && (!nativeConfigured || nativeCommandReady)
+    if phoneChat != nil { return !phoneSetupBusy && !accessRevoked }
+    return !phoneSetupBusy && (!nativeConfigured || nativeCommandReady)
   }
   private var nativeReceiverBound: Bool {
     phoneProfile?.profile.phase != .retired && phoneProfile?.profile.nativeReceiver != nil
@@ -160,7 +173,7 @@ public final class MessagesViewModel: ObservableObject {
     service: MessagingService, credentials: any NessaCredentialStoring,
     preferences: any ChatPreferences, snapshots: PhoneSnapshotSession? = nil,
     recovery: ConnectionRecovery? = nil, phoneSync: (any PhoneSyncRunning)? = nil,
-    conversationSharing: PhoneConversationSharing? = nil
+    conversationSharing: PhoneConversationSharing? = nil, phoneChat: PhoneProductChat? = nil
   ) {
     self.credentials = credentials
     self.service = service
@@ -170,6 +183,7 @@ public final class MessagesViewModel: ObservableObject {
     self.snapshots = snapshots
     self.recovery = recovery
     self.phoneSync = phoneSync
+    self.phoneChat = phoneChat
     self.conversationSharing = conversationSharing
   }
   deinit {
@@ -1208,6 +1222,7 @@ public final class MessagesViewModel: ObservableObject {
   }
 
   private func validateNativeCommand(_ id: String?, generation expected: Int) async -> Bool {
+    if phoneChat != nil { return generation == expected && connected && !accessRevoked }
     guard nativeConfigured else { return generation == expected && connected }
     guard !phoneSetupBusy, acceptedLease != nil, nativeReceiverBound else { return false }
     await loadNativeDisplay(id.map { [$0] } ?? [])
@@ -1216,7 +1231,7 @@ public final class MessagesViewModel: ObservableObject {
   }
 
   private func hydrate(_ profile: Profile, generation expected: Int) async throws {
-    if nativeConfigured {
+    if nativeConfigured && phoneChat == nil {
       if nativeReceiverBound { await loadNativeDisplay() }
       return
     }
@@ -1265,7 +1280,7 @@ public final class MessagesViewModel: ObservableObject {
         else { throw PhoneProfileCoordinationRefusal.accountChanged }
         nativeOfflineEligible = true
       }
-      if nativeReceiverBound { await loadNativeDisplay() }
+      if nativeReceiverBound && phoneChat == nil { await loadNativeDisplay() }
     }
     if snapshotLease == nil && !nativeConfigured {
       try await hydrate(profile, generation: expected)
@@ -1307,6 +1322,14 @@ public final class MessagesViewModel: ObservableObject {
       }
       originalConnection = profile
       connected = true
+      if let phoneChat {
+        do {
+          phoneDeliveries = try await phoneChat.recover()
+          noteRevokedDeliveries()
+        } catch {
+          self.error = "Saved sends could not be read."
+        }
+      }
       await refreshPhoneShareIntents(generation: expected)
       guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
       connectionRevision += 1
@@ -1374,7 +1397,8 @@ public final class MessagesViewModel: ObservableObject {
     if automaticConnectionEnabled && !connected { startRecovery() }
   }
   private func startRecovery() {
-    guard automaticConnectionEnabled, !phoneSetupBusy, let recovery, let profile, foreground,
+    guard !accessRevoked, automaticConnectionEnabled, !phoneSetupBusy, let recovery, let profile,
+      foreground,
       recoveryTask == nil,
       manualAttempt == nil
     else { return }
@@ -1400,6 +1424,14 @@ public final class MessagesViewModel: ObservableObject {
   }
   private func connectionLost(_ error: Error, generation expected: Int) {
     guard generation == expected else { return }
+    if phoneChat != nil && PhoneAccess.revoked(error) {
+      accessRevoked = true
+      setAutomaticConnection(false)
+      connected = false
+      acceptedLease = nil
+      self.error = error.localizedDescription
+      return
+    }
     if ConnectionRecovery.retryable(error) {
       if connected {
         cancelPreviews()
@@ -1424,16 +1456,16 @@ public final class MessagesViewModel: ObservableObject {
     self.error = error.localizedDescription
   }
   private func cache(_ update: ConversationUpdate) async {
-    if !nativeConfigured, let snapshotLease {
+    if (phoneChat != nil || !nativeConfigured), let snapshotLease {
       await snapshots?.record(update, lease: snapshotLease)
     }
   }
   public func refreshList() async throws {
-    if !automaticConnectionEnabled && !connected {
+    if phoneChat == nil && !automaticConnectionEnabled && !connected {
       await loadPassiveNativeDisplay()
       return
     }
-    if nativeConfigured {
+    if phoneChat == nil && nativeConfigured {
       if nativeReceiverBound { await loadNativeDisplay() }
       return
     }
@@ -1456,7 +1488,10 @@ public final class MessagesViewModel: ObservableObject {
   private func applyList(_ result: NessaConversationList) -> NessaConversationList {
     let observed = Set(result.conversations.map(\.id))
     unlistedCreations = unlistedCreations.filter { !observed.contains($0.key) }
-    var visible = result.conversations.filter { !deletedIDs.contains($0.id) }
+    var visible =
+      phoneChat == nil
+      ? result.conversations.filter { !deletedIDs.contains($0.id) }
+      : PhoneProductChat.visible(result, hiding: deletedIDs)
     visible += unlistedCreations.values
     if !unlistedCreations.isEmpty { visible.sort { $0.updatedAtMs > $1.updatedAtMs } }
     if conversations != visible { conversations = visible }
@@ -1464,11 +1499,11 @@ public final class MessagesViewModel: ObservableObject {
     return NessaConversationList(conversations: visible, complete: result.complete)
   }
   public func refresh(_ id: String) async {
-    if !automaticConnectionEnabled && !connected {
+    if phoneChat == nil && !automaticConnectionEnabled && !connected {
       await loadPassiveNativeDisplay([id])
       return
     }
-    if nativeConfigured {
+    if phoneChat == nil && nativeConfigured {
       guard nativeReceiverBound, !deletedIDs.contains(id), !pendingDeletionIDs.contains(id) else {
         return
       }
@@ -1518,17 +1553,19 @@ public final class MessagesViewModel: ObservableObject {
     }
   }
   public func watchInbox() async {
-    if !automaticConnectionEnabled && !connected {
+    if phoneChat == nil && !automaticConnectionEnabled && !connected {
       await loadPassiveNativeDisplay()
       return
     }
+    guard phoneChat == nil || connected else { return }
     await watch(nil)
   }
   public func watchConversation(_ id: String) async {
-    if !automaticConnectionEnabled && !connected {
+    if phoneChat == nil && !automaticConnectionEnabled && !connected {
       await loadPassiveNativeDisplay([id])
       return
     }
+    guard phoneChat == nil || connected else { return }
     await watch(id)
   }
   private func watch(_ id: String?) async {
@@ -1549,7 +1586,7 @@ public final class MessagesViewModel: ObservableObject {
     async throws
   {
     guard generation == expected, !Task.isCancelled else { throw CancellationError() }
-    if nativeConfigured {
+    if nativeConfigured && phoneChat == nil {
       if case .view(let cursor, let view) = update {
         viewCursors[view.conversationId] = cursor
       }
@@ -1600,7 +1637,7 @@ public final class MessagesViewModel: ObservableObject {
       guard generation == currentGeneration, !Task.isCancelled else { return nil }
       listVersion += 1
       replyProjections.removeValue(forKey: id)
-      if nativeConfigured {
+      if nativeConfigured && phoneChat == nil {
         // Creation belongs to the owner. Only an actual native transcript establishes phone access.
         unavailableNativeIDs.insert(id)
       } else {
@@ -1635,6 +1672,81 @@ public final class MessagesViewModel: ObservableObject {
       return nil
     }
   }
+  public func stopTurn(_ executionID: String, in conversationID: String) async {
+    guard let phoneChat, connected, !accessRevoked else { return }
+    do {
+      let outcome = try await phoneChat.stop(
+        conversationID: conversationID, executionID: executionID)
+      if case .failed(let code) = outcome, PhoneAccess.revoked(code) {
+        accessRevoked = true
+        setAutomaticConnection(false)
+        error = "This phone’s access was revoked."
+      }
+    } catch {
+      self.error = error.localizedDescription
+    }
+  }
+  public func retryPhoneDelivery(_ commandID: String) async {
+    guard let phoneChat, connected, !accessRevoked else { return }
+    do {
+      _ = try await phoneChat.retry(commandID)
+      phoneDeliveries = try await phoneChat.list()
+      noteRevokedDeliveries()
+    } catch {
+      self.error = error.localizedDescription
+    }
+  }
+  private func noteRevokedDeliveries() {
+    let revoked = phoneDeliveries.contains { view in
+      if case .failed(let code) = view.outcome { return PhoneAccess.revoked(code) }
+      return false
+    }
+    if revoked {
+      accessRevoked = true
+      setAutomaticConnection(false)
+      error = "This phone’s access was revoked."
+    }
+  }
+  private func deliverThroughOutbox(
+    _ text: String, attachments: [DraftAttachment], reply: MessageReply?, to id: String,
+    identity: MessageCommandIdentity, generation currentGeneration: Int, profile currentProfile: Profile?,
+    chat: PhoneProductChat
+  ) async -> Bool {
+    let contextual = reply?.contextualizing(text) ?? text
+    do {
+      let view = try await chat.deliver(
+        text: contextual, attachments: attachments, conversationID: id, identity: identity)
+      guard generation == currentGeneration else { return true }
+      phoneDeliveries = (try? await chat.list()) ?? phoneDeliveries
+      noteRevokedDeliveries()
+      switch view.outcome {
+      case .accepted, .running, .done, .unknown:
+        if profile == currentProfile { recordAcknowledgment(identity.requestID) }
+        if let reply, !deletedIDs.contains(id), !pendingDeletionIDs.contains(id) {
+          replyProjections.removeValue(forKey: id)
+          replyTargets[id + ":" + identity.executionID] = reply.id
+          preferences.save(replyTargets, forKey: replyKey)
+        }
+        await refresh(id)
+        return true
+      case .failed(let code):
+        error =
+          PhoneAccess.revoked(code)
+          ? "This phone’s access was revoked."
+          : "The message was not sent."
+        if PhoneAccess.revoked(code) {
+          accessRevoked = true
+          setAutomaticConnection(false)
+        }
+        return false
+      case .draft:
+        return false
+      }
+    } catch {
+      if generation == currentGeneration { self.error = error.localizedDescription }
+      return false
+    }
+  }
   public func send(
     _ text: String, attachments: [DraftAttachment] = [], reply: MessageReply? = nil,
     to id: String, identity: MessageCommandIdentity = MessageCommandIdentity()
@@ -1645,6 +1757,11 @@ public final class MessagesViewModel: ObservableObject {
     sending = true
     defer { if generation == currentGeneration { sending = false } }
     guard await validateNativeCommand(id, generation: currentGeneration) else { return false }
+    if let phoneChat {
+      return await deliverThroughOutbox(
+        text, attachments: attachments, reply: reply, to: id, identity: identity,
+        generation: currentGeneration, profile: currentProfile, chat: phoneChat)
+    }
     do {
       let executionID = try await service.send(
         text, attachments: attachments, reply: reply, conversationID: id, identity: identity)

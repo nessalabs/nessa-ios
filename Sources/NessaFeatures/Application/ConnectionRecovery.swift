@@ -27,6 +27,7 @@ public struct ConnectionRecovery: Sendable {
     if let error = (error as? GatewayProductRejection)?.behavior ?? error as? NessaGatewayError {
       switch error {
       case .disconnected, .timeout: return true
+      case .revoked: return false
       default: return false
       }
     }
