@@ -4,6 +4,9 @@ import SwiftUI
 /// A screen-level highlight keeps the selected message between two separate surfaces.
 struct MessageContextOverlay: View {
   @ObservedObject var controller: MessageContextController
+  /// How far down the screen the navigation bar reaches, so a message's reactions rest below
+  /// it rather than over the bar the blur has hidden.
+  var topClearance: CGFloat = 0
   @State private var emojiRequest: MessageContextSelection?
   private let favorites = ["❤️", "👍", "👎", "😂", "‼️", "❓", "💀", "😁"]
   private let more = [
@@ -14,7 +17,9 @@ struct MessageContextOverlay: View {
     GeometryReader { geometry in
       if let selected = controller.selection {
         MessageContextStage(
-          selected: selected, geometry: geometry, palette: palette(selected),
+          selected: selected, geometry: geometry,
+          topInset: max(MessagesStyle.messageContextTopInset, topClearance + NessaSpacing.sm),
+          palette: palette(selected),
           paletteCount: favorites.count,
           actions: actions(selected), selector: selector(selected),
           dismiss: { controller.selection = nil }
@@ -121,12 +126,16 @@ struct MessageContextOverlay: View {
 private struct MessageContextStage<Palette: View, Actions: View, Selector: View>: View {
   let selected: MessageContextSelection
   let geometry: GeometryProxy
+  let topInset: CGFloat
   let palette: Palette
   let paletteCount: Int
   let actions: Actions
   let selector: Selector
   let dismiss: () -> Void
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  /// The preview has reached its resting place; the dim follows it.
+  @State private var settled = false
+  /// The palette and menu are open.
   @State private var revealed = false
   var body: some View {
     ZStack {
@@ -139,14 +148,14 @@ private struct MessageContextStage<Palette: View, Actions: View, Selector: View>
       let bottomRoom = menuHeight + NessaSpacing.md
       let maxHeight = max(
         MessagesStyle.controlHeight,
-        geometry.size.height - MessagesStyle.messageContextTopInset
+        geometry.size.height - topInset
           - MessagesStyle.messageContextBottomInset - topRoom - bottomRoom)
       let height = min(selected.imageSize.height, maxHeight)
       let width = min(selected.frame.width, geometry.size.width - inset * 2)
       let originalTop = selected.frame.minY - geometry.frame(in: .global).minY
       let originalX = selected.frame.midX - geometry.frame(in: .global).minX
       let top = min(
-        max(originalTop, MessagesStyle.messageContextTopInset + topRoom),
+        max(originalTop, topInset + topRoom),
         geometry.size.height - MessagesStyle.messageContextBottomInset - height - bottomRoom)
       let x = min(max(originalX, inset + width / 2), geometry.size.width - inset - width / 2)
       // As wide as a whole number of reactions, so none rests cut in half at the edge.
@@ -165,12 +174,13 @@ private struct MessageContextStage<Palette: View, Actions: View, Selector: View>
         selected.outgoing
         ? geometry.size.width - inset - MessagesStyle.actionMenuWidth / 2
         : inset + MessagesStyle.actionMenuWidth / 2
-      MessagesStyle.background.opacity(revealed ? MessagesStyle.messageContextDim : 0)
+      let shift = abs(top - originalTop)
+      MessagesStyle.background.opacity(settled ? MessagesStyle.messageContextDim : 0)
         .contentShape(Rectangle()).onTapGesture { dismiss() }
       selected.image.resizable()
         .frame(width: width, height: selected.imageSize.height * width / selected.imageSize.width)
         .frame(width: width, height: height, alignment: .top).clipped()
-        .position(x: x, y: revealed || reduceMotion ? top + height / 2 : originalTop + height / 2)
+        .position(x: x, y: settled || reduceMotion ? top + height / 2 : originalTop + height / 2)
         .allowsHitTesting(false)
       palette.frame(width: paletteWidth, height: MessagesStyle.reactionPaletteHeight)
         .scaleEffect(revealed || reduceMotion ? 1 : MessagesStyle.contextPopScale, anchor: .bottom)
@@ -201,16 +211,31 @@ private struct MessageContextStage<Palette: View, Actions: View, Selector: View>
           .opacity(revealed ? 1 : 0)
           .position(x: menuX, y: top + height + NessaSpacing.md + menuHeight / 2)
       }
-    }.onAppear {
-      withAnimation(
-        reduceMotion
-          ? .easeOut(duration: MessagesStyle.contextFadeDuration)
-          : .spring(
-            duration: MessagesStyle.contextSpringDuration, bounce: MessagesStyle.contextSpringBounce
-          )
-      ) {
+      Color.clear.allowsHitTesting(false).onAppear {
+        open(shifting: !reduceMotion && shift > MessagesStyle.contextShiftThreshold)
+      }
+    }
+  }
+
+  /// A message near an edge glides to where its menu has room before the menu opens, so the
+  /// two never move at once; anywhere else the preview and menu open together.
+  private func open(shifting: Bool) {
+    let reveal: Animation =
+      reduceMotion
+      ? .easeOut(duration: MessagesStyle.contextFadeDuration)
+      : .spring(
+        duration: MessagesStyle.contextSpringDuration, bounce: MessagesStyle.contextSpringBounce)
+    guard shifting else {
+      withAnimation(reveal) {
+        settled = true
         revealed = true
       }
+      return
+    }
+    withAnimation(MessagesStyle.contextShiftAnimation, completionCriteria: .logicallyComplete) {
+      settled = true
+    } completion: {
+      withAnimation(reveal) { revealed = true }
     }
   }
 }

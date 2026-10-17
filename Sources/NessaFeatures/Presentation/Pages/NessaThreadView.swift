@@ -260,7 +260,13 @@ struct NessaThreadView: View {
         .transition(.opacity)
       }
     }
-    .overlay { MessageContextOverlay(controller: messageContext).ignoresSafeArea() }
+    .overlay {
+      // Read where the navigation bar ends before the overlay spreads over the whole screen.
+      GeometryReader { bar in
+        MessageContextOverlay(controller: messageContext, topClearance: bar.safeAreaInsets.top)
+          .ignoresSafeArea()
+      }
+    }
     // Closing a message's menu fades the menu and the blur behind it out together, instead of
     // both vanishing in one frame; opening keeps the menu's own spring.
     .animation(
@@ -279,7 +285,8 @@ struct NessaThreadView: View {
     .navigationBarBackButtonHidden(overlayOpen)
     .toolbar {
       ToolbarItem(placement: .principal) {
-        ThreadTitle(name: name, working: working, onDetails: { details = true })
+        ThreadTitle(
+          name: name, seed: conversationID, working: working, onDetails: { details = true })
           .opacity(messageContext.selection == nil ? 1 : 0)
           .disabled(messageContext.selection != nil)
       }

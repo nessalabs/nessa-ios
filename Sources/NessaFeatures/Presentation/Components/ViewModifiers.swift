@@ -19,14 +19,3 @@ extension View {
     #endif
   }
 }
-
-extension View {
-  @ViewBuilder
-  func nessaHideNavigationBar() -> some View {
-    #if os(iOS)
-      self.toolbar(.hidden, for: .navigationBar)
-    #else
-      self
-    #endif
-  }
-}

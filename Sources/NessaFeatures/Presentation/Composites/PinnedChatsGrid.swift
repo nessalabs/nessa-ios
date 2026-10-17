@@ -5,14 +5,17 @@ struct PinnedChatsGrid: View {
   @ObservedObject var store: MessagesViewModel
   let onOpen: (String) -> Void
   let onOpenComposer: (String) -> Void
+  let onArchive: (String) -> Void
   let onDelete: (String) -> Void
   var enabled = true
+  /// Chats on their way out, gone from the grid on the inbox's own spring.
+  var leaving: Set<String> = []
   var body: some View {
     LazyVGrid(
       columns: Array(repeating: GridItem(.flexible(), spacing: MessagesStyle.pinGap), count: 3),
       spacing: MessagesStyle.pinRowGap
     ) {
-      let pinned = store.pinnedChats.filter { !store.isDeleting($0) }
+      let pinned = store.pinnedChats.filter { !store.isDeleting($0) && !leaving.contains($0) }
       let running = Set(store.conversations.filter(\.running).map(\.id))
       ForEach(pinned, id: \.self) { agent in
         Button {
@@ -20,7 +23,7 @@ struct PinnedChatsGrid: View {
         } label: {
           VStack(spacing: NessaSpacing.xs) {
             AgentAvatar(
-              name: store.agentName(for: agent), size: MessagesStyle.pinnedAvatar,
+              seed: agent, size: MessagesStyle.pinnedAvatar,
               working: running.contains(agent)
             )
               .overlay(alignment: .bottomTrailing) {
@@ -45,7 +48,8 @@ struct PinnedChatsGrid: View {
           .accessibilityLabel("Open pinned chat \(store.chatName(agent))")
           .chatContextMenu(
             store: store, identifier: agent, enabled: enabled,
-            onTap: { onOpen(agent) }, onCommit: onOpenComposer, onDelete: onDelete)
+            onTap: { onOpen(agent) }, onCommit: onOpenComposer, onArchive: onArchive,
+            onDelete: onDelete)
       }
     }.padding(.top, NessaSpacing.sm).padding(.bottom, NessaSpacing.xxs)
   }

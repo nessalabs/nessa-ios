@@ -431,7 +431,13 @@ private func previewThread(_ text: String? = nil) -> NessaConversationView {
   model.toggleAlerts("codex")
   let selection = ChatMenuSelection(identifier: "codex", store: model)
   var confirmed: String?
-  let actions = chatMenuActions(selection: selection, store: model, onDelete: { confirmed = $0 })
+  var asked: String?
+  let actions = chatMenuActions(
+    selection: selection, store: model, onArchive: { asked = $0 }, onDelete: { confirmed = $0 })
+  // Archive only asks: the inbox confirms in place before anything moves.
+  try #require(actions.first { $0.id == "archive" }).perform()
+  #expect(asked == "thread")
+  #expect(!model.archivedChats.contains("thread"))
   try #require(actions.first { $0.id == "delete" }).perform()
   #expect(confirmed == "thread")
   await model.deleteConversations([try #require(confirmed)])

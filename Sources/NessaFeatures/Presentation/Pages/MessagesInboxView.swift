@@ -7,12 +7,20 @@ struct MessagesInboxView: View {
   let onOpen: (String) -> Void
   let onCompose: () -> Void
   let onOpenComposer: (String) -> Void
-  @State private var scrollOffset: CGFloat = 0
   @State private var editing = false
   @State private var showingArchived = false
   @State private var selected: Set<String> = []
-  @State private var pendingDeletion: Set<String> = []
+  /// A Delete or Archive waiting on the system's alert.
+  @State private var asking: ChatsConfirmation?
   @State private var deleting = false
+  /// Rows are fading out or the list is closing up after them.
+  @State private var removing = false
+  /// Chats being deleted or archived. Their rows first fade out where they stand (`fading`),
+  /// then leave the list and the pinned grid on the layout spring (`leaving`), so the rows
+  /// below close the gap through empty space rather than through fading text. The store's
+  /// own change lands later, outside any animation, once there is nothing left to see go.
+  @State private var fading: Set<String> = []
+  @State private var leaving: Set<String> = []
   @State private var search = ""
   @State private var pinRefusals = 0
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -30,7 +38,8 @@ struct MessagesInboxView: View {
         if !pinnedShown.isEmpty {
           PinnedChatsGrid(
             store: store, onOpen: onOpen, onOpenComposer: onOpenComposer,
-            onDelete: { pendingDeletion = [$0] }, enabled: !deleting)
+            onArchive: { ask([$0], .archive) }, onDelete: { ask([$0], .delete) },
+            enabled: !deleting, leaving: leaving)
         }
         if !store.connected {
           Button(store.reconnecting ? "Reconnecting…" : "Connect to Nessa", action: onSettings)
@@ -47,7 +56,10 @@ struct MessagesInboxView: View {
         ForEach(filtered) { conversation in
           Button {
             if editing {
-              if !selected.insert(conversation.id).inserted { selected.remove(conversation.id) }
+              // Animated, so the action bar rises with the first pick and sinks with the last.
+              withAnimation(reduceMotion ? nil : NessaMotion.enter) {
+                if !selected.insert(conversation.id).inserted { selected.remove(conversation.id) }
+              }
             } else {
               onOpen(conversation.id)
             }
@@ -70,12 +82,14 @@ struct MessagesInboxView: View {
                 .animation(reduceMotion ? nil : NessaMotion.standard(), value: selected)
             }
             .contentShape(Rectangle())
+            .opacity(fading.contains(conversation.id) ? 0 : 1)
             // A row leaving (pinned, archived, deleted) collapses inside its own bounds, so
             // its text never slides over the row moving up into its place. The mask is
             // widened sideways only, to keep the selected fill's overhang.
             .mask { Rectangle().padding(.horizontal, -NessaSpacing.xs) }
           }.buttonStyle(.plain)
-            .disabled(deleting)
+            // Rows wait out a deletion without dimming: the list stays as it looks.
+            .allowsHitTesting(!deleting)
             .accessibilityLabel(
               editing
                 ? "Select \(store.chatName(conversation.id))" : store.chatName(conversation.id)
@@ -83,9 +97,13 @@ struct MessagesInboxView: View {
             .accessibilityAddTraits(selected.contains(conversation.id) ? .isSelected : [])
             .chatContextMenu(
               store: store, identifier: conversation.id,
-              enabled: !editing && !deleting,
-              onTap: { onOpen(conversation.id) }, onCommit: onOpenComposer,
-              onDelete: { pendingDeletion = [$0] }
+              // Off while rows leave, as it already is while selecting or deleting, where the
+              // close runs smoothly; with it on, a single archive's close jumped.
+              enabled: !editing && !deleting && !removing,
+              onTap: { onOpen(conversation.id) },
+              onCommit: onOpenComposer,
+              onArchive: { ask([$0], .archive) },
+              onDelete: { ask([$0], .delete) }
             )
             .swipeActions(edge: .leading, allowsFullSwipe: false) {
               if !editing && !showingArchived {
@@ -107,16 +125,15 @@ struct MessagesInboxView: View {
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
               if !editing {
+                // Each asks first; nothing goes on one tap.
                 Button {
-                  pendingDeletion = [conversation.id]
+                  ask([conversation.id], .delete)
                 } label: {
                   Label("Delete", systemImage: "trash")
                 }.tint(MessagesStyle.danger).disabled(
                   !store.connected || !store.conversationAuthorityReady)
                 Button(showingArchived ? "Unarchive" : "Archive", systemImage: "archivebox") {
-                  changeLayout {
-                    store.setArchived(!showingArchived, conversationID: conversation.id)
-                  }
+                  ask([conversation.id], .archive)
                 }.tint(MessagesStyle.archiveAction)
               }
             }
@@ -131,17 +148,34 @@ struct MessagesInboxView: View {
       )
       .listRowSeparator(.hidden).listRowBackground(Color.clear)
     }.listStyle(.plain).scrollContentBackground(.hidden)
+      // An alert, centred with its own Cancel: a confirmation dialog on iOS 26 is a popover
+      // anchored to the list, pointing at none of the rows or buttons that asked.
+      .alert(
+        asking?.title(archived: showingArchived) ?? "", isPresented: askingShown,
+        presenting: asking
+      ) { ask in
+        Button(
+          ask.verb(archived: showingArchived), role: ask.action == .delete ? .destructive : nil
+        ) { perform(ask) }.disabled(
+          ask.action == .delete && (!store.connected || !store.conversationAuthorityReady))
+        Button("Cancel", role: .cancel) {}
+      } message: { ask in
+        if ask.action == .delete { Text("This can't be undone.") }
+      }
       .environment(\.defaultMinListRowHeight, 0)
-      .messagesTrackScroll(offset: $scrollOffset)
       .sensoryFeedback(.impact(flexibility: .soft), trigger: store.pinnedChats)
       .sensoryFeedback(.warning, trigger: pinRefusals)
       .messagesAmbientGround()
       .messagesScrollEdges()
       .scrollDismissesKeyboard(.interactively)
       .messagesFooterGrain()
-      .messagesBar(edge: .top) {
-        InboxHeader(
+      // The system bar, as in the thread, with the same grain over its edge.
+      .messagesTopGrain()
+      .nessaInlineNavigationTitle()
+      .toolbar {
+        InboxToolbar(
           editing: editing,
+          accountSeed: store.currentGatewayAddress ?? "nessa",
           onEdit: {
             // The marks slide in from the edge as the rows make room, on one spring.
             withAnimation(reduceMotion ? nil : NessaMotion.enter) {
@@ -152,36 +186,22 @@ struct MessagesInboxView: View {
           onToggleArchived: {
             showingArchived.toggle()
             selected = []
-          }
+          }, disabled: deleting
         )
-        .disabled(deleting)
-        .messagesHeaderGrain()
-        .messagesHeaderBlur(scrollOffset: scrollOffset)
       }
       .messagesBar(edge: .bottom) {
         if editing {
-          HStack {
-            Text("\(selected.count) selected").font(MessagesStyle.body)
-              .foregroundStyle(MessagesStyle.secondary)
-              .contentTransition(.numericText(value: Double(selected.count)))
-              .animation(reduceMotion ? nil : NessaMotion.morph, value: selected.count)
-            Spacer()
-            Button(role: .destructive) {
-              pendingDeletion = selected
-            } label: {
-              // Only the icon carries the red, so the bar stays as quiet as the list.
-              Label {
-                Text("Delete").foregroundStyle(MessagesStyle.foreground)
-              } icon: {
-                Image(systemName: "trash").foregroundStyle(MessagesStyle.danger)
-              }
-            }
-            .font(MessagesStyle.title).buttonStyle(.nessaPress)
-            .disabled(selected.isEmpty || deleting || !store.connected)
-          }.padding(.horizontal, NessaSpacing.lg).frame(height: MessagesStyle.composerHeight)
-            .messagesComposerSurface()
-            .padding(.horizontal, MessagesStyle.horizontal).padding(.bottom, MessagesStyle.bottomInset)
-            .foregroundStyle(MessagesStyle.foreground)
+          // Only while something is selected; it goes with what it acted on.
+          if !selected.isEmpty {
+            SelectionActions(
+              showingArchived: showingArchived, archiveEnabled: !deleting,
+              deleteEnabled: !deleting && store.connected && store.conversationAuthorityReady,
+              onArchive: { ask(selected, .archive) }, onDelete: { ask(selected, .delete) }
+            )
+            .padding(.horizontal, MessagesStyle.horizontal)
+            .padding(.bottom, MessagesStyle.bottomInset)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+          }
         } else {
           HStack(spacing: MessagesStyle.toolbarGap) {
             NessaSearchField(text: $search)
@@ -205,35 +225,78 @@ struct MessagesInboxView: View {
             .bottom, MessagesStyle.bottomInset)
         }
       }
-      .sheet(
-        isPresented: Binding(
-          get: { !pendingDeletion.isEmpty }, set: { if !$0 { pendingDeletion = [] } })
-      ) {
-        DeleteChatsConfirmation(count: pendingDeletion.count, onCancel: { pendingDeletion = [] }) {
-          let ids = pendingDeletion
-          pendingDeletion = []
-          deleting = true
-          Task {
-            await store.deleteConversations(ids)
-            selected.formIntersection(Set(store.conversations.map(\.id)))
-            deleting = false
-          }
-        }
-      }
-      .nessaHideNavigationBar()
       .onChange(of: store.connected) { _, _ in
         selected = []
-        pendingDeletion = []
         editing = false
+        asking = nil
       }
       .refreshable {
         do { try await store.refreshList() } catch { store.error = error.localizedDescription }
       }
   }
+  private var askingShown: Binding<Bool> {
+    Binding(get: { asking != nil }, set: { if !$0 { asking = nil } })
+  }
+  private func ask(_ ids: Set<String>, _ action: ChatsConfirmation.Action) {
+    // Asked on the next turn of the run loop, after the swipe or menu that asked has begun
+    // closing: presented in the same update, the alert could be dropped.
+    Task { asking = ChatsConfirmation(ids: ids, action: action) }
+  }
+  private func perform(_ ask: ChatsConfirmation) {
+    // The bar sinks as its selection goes, with the rows it acted on.
+    withAnimation(reduceMotion ? nil : NessaMotion.enter) {
+      selected.subtract(ask.ids)
+    }
+    switch ask.action {
+    case .delete: delete(ask.ids)
+    case .archive: archive(ask.ids, archived: !showingArchived)
+    }
+  }
+  private func delete(_ ids: Set<String>) {
+    deleting = true
+    fadeOut(ids) {
+      // The store hides a chat the moment its deletion starts, so the rows leave first.
+      changeLayout { leaving.formUnion(ids) }
+      await store.deleteConversations(ids)
+      selected.formIntersection(Set(store.conversations.map(\.id)))
+      deleting = false
+      // A chat the gateway kept comes back on the same spring.
+      changeLayout {
+        leaving.subtract(ids)
+        fading.subtract(ids)
+      }
+    }
+  }
+  private func archive(_ ids: Set<String>, archived: Bool) {
+    fadeOut(ids) {
+      // The rows leave on the view's own state, as a deletion's do; the store moves them only
+      // once the list has closed up, outside any animation, so its update can't jolt the
+      // list mid-close.
+      changeLayout { leaving.formUnion(ids) }
+      try? await Task.sleep(for: .seconds(MessagesStyle.rowSettle))
+      for id in ids { store.setArchived(archived, conversationID: id) }
+      leaving.subtract(ids)
+      fading.subtract(ids)
+    }
+  }
+  /// Fades the rows out where they stand, then runs what takes them away. Timed rather than
+  /// waiting on the fade's completion, which can fire at once when the list redraws the rows
+  /// in the same update (the selection clearing and the bar sinking).
+  private func fadeOut(_ ids: Set<String>, then remove: @escaping @MainActor () async -> Void) {
+    removing = true
+    withAnimation(reduceMotion ? nil : NessaMotion.standard(MessagesStyle.rowFadeOut)) {
+      fading.formUnion(ids)
+    }
+    Task {
+      if !reduceMotion { try? await Task.sleep(for: .seconds(MessagesStyle.rowFadeOut)) }
+      await remove()
+      removing = false
+    }
+  }
   /// The pinned chats the grid shows right now, or none while it is hidden.
   private var pinnedShown: [String] {
     guard !editing && !showingArchived && search.isEmpty else { return [] }
-    return store.pinnedChats.filter { !store.isDeleting($0) }
+    return store.pinnedChats.filter { !store.isDeleting($0) && !leaving.contains($0) }
   }
   /// Moves the list and the pinned grid on one spring, from the change itself. The list
   /// carries no implicit animation of its own: an `.animation` on a List mixes SwiftUI's
@@ -244,10 +307,24 @@ struct MessagesInboxView: View {
   }
   private var filtered: [NessaConversation] {
     store.visibleConversations.filter {
-      (store.archivedChats.contains($0.id) == showingArchived)
+      !leaving.contains($0.id) && (store.archivedChats.contains($0.id) == showingArchived)
         && (editing || showingArchived || !store.isPinned($0.id))
         && (search.isEmpty || ($0.title ?? "").localizedCaseInsensitiveContains(search)
           || ($0.preview ?? "").localizedCaseInsensitiveContains(search))
     }
+  }
+}
+
+/// Chats waiting on the alert, and what will happen to them.
+private struct ChatsConfirmation {
+  enum Action { case delete, archive }
+  let ids: Set<String>
+  let action: Action
+  func verb(archived: Bool) -> String {
+    action == .delete ? "Delete" : archived ? "Unarchive" : "Archive"
+  }
+  func title(archived: Bool) -> String {
+    let chats = ids.count == 1 ? "this chat" : "\(ids.count) chats"
+    return "\(verb(archived: archived)) \(chats)?"
   }
 }

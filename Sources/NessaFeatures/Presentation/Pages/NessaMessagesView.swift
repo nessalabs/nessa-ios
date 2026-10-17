@@ -57,25 +57,27 @@ public struct NessaMessagesView: View {
       } message: {
         Text(store.error ?? "")
       }
-      .task {
-        if dependencies.mode == .development {
-          await store.connect(
-            address: "mock://development", credential: "", instance: "development",
-            automatically: true)
-          return
-        }
-        if instance.isEmpty { instance = UUID().uuidString.lowercased() }
-        if let connection = dependencies.launchConnection {
-          await store.connect(
-            address: connection.address, credential: connection.credential, instance: instance,
-            automatically: true)
-          if store.connected { address = connection.address }
-          return
-        }
+    }
+    // On the stack, not the inbox: the inbox's own tasks run again each time a thread is
+    // popped, and connecting again would drop the live connection mid-transition.
+    .task {
+      if dependencies.mode == .development {
         await store.connect(
-          address: address, credential: "", instance: instance,
-          restoringSavedProfile: true, automatically: true)
+          address: "mock://development", credential: "", instance: "development",
+          automatically: true)
+        return
       }
+      if instance.isEmpty { instance = UUID().uuidString.lowercased() }
+      if let connection = dependencies.launchConnection {
+        await store.connect(
+          address: connection.address, credential: connection.credential, instance: instance,
+          automatically: true)
+        if store.connected { address = connection.address }
+        return
+      }
+      await store.connect(
+        address: address, credential: "", instance: instance,
+        restoringSavedProfile: true, automatically: true)
     }
     .task(id: store.connectionRevision) {
       if store.connected { await store.watchInbox() }

@@ -52,7 +52,7 @@ struct AgentDetailsView: View {
   private var header: some View {
     HStack(spacing: NessaSpacing.sm) {
       // The agent and the close button share one row and one centre line.
-      AgentDetailsIdentity(name: name, working: working)
+      AgentDetailsIdentity(name: name, seed: conversationID, working: working)
       Spacer(minLength: NessaSpacing.xs)
       Button { dismiss() } label: {
         Image(systemName: "xmark").font(MessagesStyle.icon)

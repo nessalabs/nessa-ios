@@ -6,7 +6,7 @@ struct ConversationRow: View {
   let agentName: String
   var body: some View {
     HStack(alignment: .center, spacing: NessaSpacing.sm) {
-      AgentAvatar(name: agentName, size: MessagesStyle.rowAvatar)
+      AgentAvatar(seed: conversation.id, size: MessagesStyle.rowAvatar)
       VStack(alignment: .leading, spacing: NessaSpacing.xxs) {
         HStack(spacing: NessaSpacing.xxs) {
           Text(conversation.title ?? agentName).font(MessagesStyle.title).lineLimit(1)

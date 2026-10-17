@@ -2,9 +2,9 @@ import SwiftUI
 
 /// Measurements in points, taken from the 440-point-wide Messages references.
 public enum MessagesStyle {
-  public static let confirmationHeight: CGFloat = 300
   public static let pinAction = Color(hex: 0xFF9F0A)
-  public static let archiveAction = Color(hex: 0x5856D6)
+  /// Archiving is quiet and undoable: a neutral grey, never a hue.
+  public static let archiveAction = Color(hex: 0x636366)
   public static let tapbackPinkLight = Color(hex: 0xFFB3DB)
   public static let tapbackPink = Color(hex: 0xFA3A96)
   public static let tapbackBackground = Color(hex: 0x18A4ED)
@@ -63,6 +63,11 @@ public enum MessagesStyle {
   public static let contextSpringDuration: Double = 0.25
   public static let contextSpringBounce: Double = 0.16
   public static let contextFadeDuration: Double = 0.15
+  /// A message too near an edge for its menu first glides to where the menu has room; the
+  /// palette and menu open only once it is there.
+  public static let contextShiftAnimation = Animation.spring(duration: 0.2, bounce: 0)
+  /// A move shorter than this happens with the menu's own spring rather than before it.
+  public static let contextShiftThreshold: CGFloat = 2
   public static let tapbackMoreCircle: CGFloat = 40
   public static let tapbackMoreTrail: CGFloat = 6
   public static let tapbackMoreDot: CGFloat = 3
@@ -110,7 +115,6 @@ public enum MessagesStyle {
   public static let photoHeight: CGFloat = 340
   public static let photoPlaceholderHeight: CGFloat = 160
   public static let photoRadius: CGFloat = 20
-  public static let headerBlurDistance: CGFloat = 24
   public static let headerBlurOpacity: Double = 0.9
   public static let background = NessaColor.background
   public static let danger = NessaColor.destructive
@@ -144,6 +148,12 @@ public enum MessagesStyle {
   public static let selectedRowRadius: CGFloat = 14
   /// A control swapping in place grows from this scale.
   public static let swapScale: CGFloat = 0.5
+  /// A deleted or archived row fading out before the rows below close up: a
+  /// micro-interaction.
+  public static let rowFadeOut: Double = 0.12
+  /// How long the list takes to close up after a row leaves, before the row's fade can be
+  /// cleared for wherever it went (the archive, say).
+  public static let rowSettle: Double = 0.35
   public static let sendPressScale: CGFloat = 0.86
   public static let headerPressScale: CGFloat = 0.97
   public static let emptyTitle = Font.system(size: 22, weight: .semibold)
@@ -173,7 +183,8 @@ public enum MessagesStyle {
   public static let sendButton: CGFloat = 30
   public static let bubbleGutter: CGFloat = 70
   public static let rowAvatar: CGFloat = 45
-  public static let headerAvatar: CGFloat = 44
+  /// The reader's own disc in the inbox's navigation bar.
+  public static let accountAvatar: CGFloat = 32
   /// The agent's disc in the thread's navigation bar title.
   public static let titleAvatar: CGFloat = 28
   public static let controlHeight: CGFloat = 44
@@ -255,39 +266,6 @@ public struct MessagesComposerSurface: ViewModifier {
     }
   }
 }
-/// Full-width translucent surface for content scrolling beneath navigation controls.
-public struct MessagesHeaderBlur: ViewModifier {
-  public let scrollOffset: CGFloat
-  public func body(content: Content) -> some View {
-    if #available(iOS 26.0, macOS 26.0, *) {
-      content  // safeAreaBar owns the native progressive scroll-edge blur.
-    } else {
-      content.background {
-        Rectangle().fill(.thinMaterial)
-          .opacity(min(max(scrollOffset / MessagesStyle.headerBlurDistance, 0), 1))
-          .ignoresSafeArea(edges: .top)
-          .allowsHitTesting(false)
-      }
-    }
-  }
-}
-/// Native scroll geometry keeps the header effect independent of lazy row layout.
-public struct MessagesScrollTracking: ViewModifier {
-  @Binding var offset: CGFloat
-  public func body(content: Content) -> some View {
-    if #available(iOS 26.0, macOS 26.0, *) {
-      content
-    } else {
-      content.onScrollGeometryChange(for: CGFloat.self) { geometry in
-        min(
-          MessagesStyle.headerBlurDistance,
-          max(0, geometry.contentOffset.y + geometry.contentInsets.top))
-      } action: { _, newOffset in
-        offset = newOffset
-      }
-    }
-  }
-}
 extension View {
   @ViewBuilder public func messagesBar<Bar: View>(
     edge: VerticalEdge, @ViewBuilder content: () -> Bar
@@ -306,13 +284,6 @@ extension View {
     } else {
       self
     }
-  }
-
-  public func messagesHeaderBlur(scrollOffset: CGFloat) -> some View {
-    modifier(MessagesHeaderBlur(scrollOffset: scrollOffset))
-  }
-  public func messagesTrackScroll(offset: Binding<CGFloat>) -> some View {
-    modifier(MessagesScrollTracking(offset: offset))
   }
 
   public func messagesGlass() -> some View { modifier(MessagesGlass()) }
