@@ -16,7 +16,9 @@ public struct TapbackSymbol: View {
       case "❤️": TapbackHeart()
       case "👍", "👎": Text(value).font(MessagesStyle.reactionEmojiFont)
       case "😂":
+        // At its own size: the badge's small frame otherwise truncates the two lines to "…".
         Text("HA\nHA").font(MessagesStyle.tapbackLetters).lineSpacing(-4)
+          .multilineTextAlignment(.center).fixedSize()
           .foregroundStyle(
             fill(top: MessagesStyle.tapbackCyanLight, bottom: MessagesStyle.tapbackCyan))
       case "‼️":

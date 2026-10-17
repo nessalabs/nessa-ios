@@ -53,7 +53,7 @@ struct ChatMenuAction: Identifiable {
       "archive", archived ? "Unarchive" : "Archive", "archivebox",
       enabled: selection.conversationID != nil
     ) {
-      // The caller asks first, in a confirmation dialog, and moves the list once confirmed.
+      // The caller asks first, in an alert, and moves the list once confirmed.
       if let conversation = selection.conversationID { onArchive(conversation) }
     },
     action(

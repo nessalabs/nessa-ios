@@ -10,7 +10,7 @@ struct MessagesInboxView: View {
   @State private var editing = false
   @State private var showingArchived = false
   @State private var selected: Set<String> = []
-  /// A Delete or Archive waiting on the system's confirmation dialog.
+  /// A Delete or Archive waiting on the system's alert.
   @State private var asking: ChatsConfirmation?
   @State private var deleting = false
   /// Rows are fading out or the list is closing up after them.
@@ -148,9 +148,11 @@ struct MessagesInboxView: View {
       )
       .listRowSeparator(.hidden).listRowBackground(Color.clear)
     }.listStyle(.plain).scrollContentBackground(.hidden)
-      .confirmationDialog(
+      // An alert, centred with its own Cancel: a confirmation dialog on iOS 26 is a popover
+      // anchored to the list, pointing at none of the rows or buttons that asked.
+      .alert(
         asking?.title(archived: showingArchived) ?? "", isPresented: askingShown,
-        titleVisibility: .visible, presenting: asking
+        presenting: asking
       ) { ask in
         Button(
           ask.verb(archived: showingArchived), role: ask.action == .delete ? .destructive : nil
@@ -236,7 +238,9 @@ struct MessagesInboxView: View {
     Binding(get: { asking != nil }, set: { if !$0 { asking = nil } })
   }
   private func ask(_ ids: Set<String>, _ action: ChatsConfirmation.Action) {
-    asking = ChatsConfirmation(ids: ids, action: action)
+    // Asked on the next turn of the run loop, after the swipe or menu that asked has begun
+    // closing: presented in the same update, the alert could be dropped.
+    Task { asking = ChatsConfirmation(ids: ids, action: action) }
   }
   private func perform(_ ask: ChatsConfirmation) {
     // The bar sinks as its selection goes, with the rows it acted on.
@@ -311,7 +315,7 @@ struct MessagesInboxView: View {
   }
 }
 
-/// Chats waiting on the confirmation dialog, and what will happen to them.
+/// Chats waiting on the alert, and what will happen to them.
 private struct ChatsConfirmation {
   enum Action { case delete, archive }
   let ids: Set<String>

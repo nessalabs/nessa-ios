@@ -2,7 +2,7 @@ import NessaDesignSystem
 import SwiftUI
 
 /// The bottom bar while chats are selected: Archive (or Unarchive) and Delete side by side,
-/// in the composer's glass. Each asks first, in the system's confirmation dialog.
+/// in the composer's glass. Each asks first, in the system's alert.
 struct SelectionActions: View {
   /// The list on screen is the archive, so Archive takes chats back out of it.
   let showingArchived: Bool
