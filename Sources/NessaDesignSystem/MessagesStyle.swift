@@ -2,7 +2,6 @@ import SwiftUI
 
 /// Measurements in points, taken from the 440-point-wide Messages references.
 public enum MessagesStyle {
-  public static let confirmationHeight: CGFloat = 300
   public static let pinAction = Color(hex: 0xFF9F0A)
   /// Archiving is quiet and undoable: a neutral grey, never a hue.
   public static let archiveAction = Color(hex: 0x636366)
@@ -149,17 +148,12 @@ public enum MessagesStyle {
   public static let selectedRowRadius: CGFloat = 14
   /// A control swapping in place grows from this scale.
   public static let swapScale: CGFloat = 0.5
-  /// The delete slide that stands in for the bar while chats are selected: a touch taller
-  /// than the composer, so the slide's knob has room.
-  public static let selectionBarHeight: CGFloat = 62
   /// A deleted or archived row fading out before the rows below close up: a
   /// micro-interaction.
   public static let rowFadeOut: Double = 0.12
   /// How long the list takes to close up after a row leaves, before the row's fade can be
   /// cleared for wherever it went (the archive, say).
   public static let rowSettle: Double = 0.35
-  /// The archive and delete slides, one above the other.
-  public static let selectionSlideGap: CGFloat = 8
   public static let sendPressScale: CGFloat = 0.86
   public static let headerPressScale: CGFloat = 0.97
   public static let emptyTitle = Font.system(size: 22, weight: .semibold)

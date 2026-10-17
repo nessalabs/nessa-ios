@@ -6,9 +6,6 @@ import SwiftUI
 /// each other.
 struct InboxToolbar: ToolbarContent {
   let editing: Bool
-  /// Select mode opened for one pinned chat's Delete or Archive, so leaving it backs out:
-  /// Cancel, not Done.
-  let cancelsDelete: Bool
   /// Seeds the reader's own disc, so it stays the same face for one gateway.
   let accountSeed: String
   let onEdit: () -> Void
@@ -22,7 +19,7 @@ struct InboxToolbar: ToolbarContent {
     // and while selecting, Done takes its place.
     ToolbarItem(placement: .cancellationAction) {
       if editing {
-        Button(cancelsDelete ? "Cancel" : "Done", action: onEdit).font(MessagesStyle.body)
+        Button("Done", action: onEdit).font(MessagesStyle.body)
           .disabled(disabled)
       } else {
         Menu {

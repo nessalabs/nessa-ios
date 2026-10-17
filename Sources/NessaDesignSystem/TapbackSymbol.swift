@@ -3,7 +3,13 @@ import SwiftUI
 /// Custom heart artwork, native emoji, and shared lettering for Messages Tapbacks.
 public struct TapbackSymbol: View {
   public let value: String
-  public init(value: String) { self.value = value }
+  /// Drawn on the applied badge's blue, where the cyan lettering of the picker would vanish,
+  /// so the lettering turns plain white there.
+  public let onBadge: Bool
+  public init(value: String, onBadge: Bool = false) {
+    self.value = value
+    self.onBadge = onBadge
+  }
   public var body: some View {
     Group {
       switch value {
@@ -12,10 +18,9 @@ public struct TapbackSymbol: View {
       case "😂":
         Text("HA\nHA").font(MessagesStyle.tapbackLetters).lineSpacing(-4)
           .foregroundStyle(
-            LinearGradient(
-              colors: [MessagesStyle.tapbackCyanLight, MessagesStyle.tapbackCyan], startPoint: .top,
-              endPoint: .bottom))
-      case "‼️": letters("!!", top: MessagesStyle.tapbackRedLight, bottom: MessagesStyle.tapbackRed)
+            fill(top: MessagesStyle.tapbackCyanLight, bottom: MessagesStyle.tapbackCyan))
+      case "‼️":
+        letters("!!", top: MessagesStyle.tapbackRedLight, bottom: MessagesStyle.tapbackRed)
       case "❓":
         letters("?", top: MessagesStyle.tapbackPurpleLight, bottom: MessagesStyle.tapbackPurple)
       default: Text(value).font(MessagesStyle.reactionFont)
@@ -25,7 +30,12 @@ public struct TapbackSymbol: View {
   }
   private func letters(_ text: String, top: Color, bottom: Color) -> some View {
     Text(text).font(MessagesStyle.tapbackPunctuation)
-      .foregroundStyle(LinearGradient(colors: [top, bottom], startPoint: .top, endPoint: .bottom))
+      .foregroundStyle(fill(top: top, bottom: bottom))
+  }
+  private func fill(top: Color, bottom: Color) -> AnyShapeStyle {
+    onBadge
+      ? AnyShapeStyle(NessaColor.foreground)
+      : AnyShapeStyle(LinearGradient(colors: [top, bottom], startPoint: .top, endPoint: .bottom))
   }
 }
 
@@ -35,7 +45,7 @@ public struct TapbackBadge: View {
   public var body: some View {
     ZStack(alignment: .topLeading) {
       TapbackThoughtShape().fill(MessagesStyle.tapbackBackground)
-      TapbackSymbol(value: value).scaleEffect(MessagesStyle.tapbackBadgeScale)
+      TapbackSymbol(value: value, onBadge: true).scaleEffect(MessagesStyle.tapbackBadgeScale)
         .frame(width: MessagesStyle.tapbackBadgeCircle, height: MessagesStyle.tapbackBadgeCircle)
     }.frame(width: MessagesStyle.tapbackBadgeWidth, height: MessagesStyle.tapbackBadgeHeight)
   }
