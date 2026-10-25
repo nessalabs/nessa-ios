@@ -1,6 +1,6 @@
 import Foundation
 
-public enum NessaGatewayError: LocalizedError {
+public enum NessaGatewayError: LocalizedError, Equatable {
   case invalidAddress, invalidFrame, incompatibleProtocol, disconnected, timeout
   case unknownSubscription
   case conversationNotFound
