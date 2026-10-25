@@ -19,7 +19,7 @@ private func receipt(
     receiver: receiver, resource: nil, terminalCause: cause)
 }
 
-private func status(_ receipt: RetainedEnrollmentReceipt) -> RetainedStatus {
+private func statusOf(_ receipt: RetainedEnrollmentReceipt) -> RetainedStatus {
   RetainedStatus(
     completionCaptured: false, failure: nil, purge: nil, purgeAttempted: false,
     purgeFailure: nil, receipt: receipt)
@@ -51,7 +51,7 @@ private actor Native: RetainedSession {
   }
   func refresh() -> RetainedRefresh {
     RetainedRefresh(
-      initial: status(receipt(.active, receiver: "r1")), read: nil, recheck: nil,
+      initial: statusOf(receipt(.active, receiver: "r1")), read: nil, recheck: nil,
       selectionFailure: nil)
   }
   func cataloguePage(after: RetainedEntryKey?, maximum: UInt32) -> RetainedCataloguePage? {
@@ -108,7 +108,10 @@ private func linking(_ native: Native, store: Store = Store(), locations: Locati
 @Test func pairingWaitsForApprovalThenKeepsTheDesktop() async throws {
   let native = Native(
     first: receipt(.claimed),
-    then: [status(receipt(.claimed)), status(receipt(.approved)), status(receipt(.active, receiver: "r1"))])
+    then: [
+      statusOf(receipt(.claimed)), statusOf(receipt(.approved)),
+      statusOf(receipt(.active, receiver: "r1")),
+    ])
   let store = Store()
   let locations = Locations()
   let heard = Heard()
@@ -126,7 +129,7 @@ private func linking(_ native: Native, store: Store = Store(), locations: Locati
 
 @Test func aDeniedPhoneIsToldAndKeepsNothing() async throws {
   let native = Native(
-    first: receipt(.claimed), then: [status(receipt(.terminal, cause: .denied))])
+    first: receipt(.claimed), then: [statusOf(receipt(.terminal, cause: .denied))])
   let store = Store()
   let locations = Locations()
   await #expect(throws: DesktopLinkFailure.denied) {
@@ -187,7 +190,7 @@ private func linking(_ native: Native, store: Store = Store(), locations: Locati
   #expect(chats.map(\.id) == ["c", "a"])
 }
 
-@Test func theViewModelPicksTheOnlyMacAndSaysFailuresPlainly() async throws {
+@MainActor @Test func theViewModelPicksTheOnlyMacAndSaysFailuresPlainly() async throws {
   #expect(DesktopLinkViewModel.sentence(.noDesktop).contains("Native linking"))
   #expect(!DesktopLinkViewModel.sentence(.other("wire")).contains("wire"))
 }

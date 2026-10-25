@@ -58,14 +58,12 @@ import Foundation
   private func pair(with gateway: FoundGateway) {
     guard let linking, let code = pendingCode else { return }
     phase = .enrolling(gateway)
+    let progress: @Sendable (DesktopLinkPhase) async -> Void = { [weak self] next in
+      await self?.advance(to: next)
+    }
     task = Task { [weak self] in
       do {
-        let desktop = try await linking.link(code: code, with: gateway) { next in
-          await MainActor.run { [weak self] in
-            guard let self, !Task.isCancelled else { return }
-            self.phase = next
-          }
-        }
+        let desktop = try await linking.link(code: code, with: gateway, progress: progress)
         guard let self, !Task.isCancelled else { return }
         self.pendingCode = nil
         self.linked = desktop
@@ -76,6 +74,11 @@ import Foundation
         self.phase = .failed(DesktopLinking.failure(error))
       }
     }
+  }
+
+  private func advance(to next: DesktopLinkPhase) {
+    guard !Task.isCancelled else { return }
+    phase = next
   }
 
   /// Back to scanning; a pairing in flight is abandoned on this phone.
