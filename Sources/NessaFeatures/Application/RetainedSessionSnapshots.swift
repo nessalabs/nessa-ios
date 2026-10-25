@@ -114,6 +114,8 @@ public enum RetainedReadFailure: String, Codable, Equatable, Sendable {
   case cacheUncertain
   case quota
   case stopped
+  case cursorAhead
+  case subscriptionCapacity
 }
 
 public enum RetainedSessionFailureKind: String, Codable, Equatable, Sendable {

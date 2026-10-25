@@ -139,6 +139,8 @@ enum NativeRetainedCapture {
     case .cacheUncertain: return .cacheUncertain
     case .quota: return .quota
     case .stopped: return .stopped
+    case .cursorAhead: return .cursorAhead
+    case .subscriptionCapacity: return .subscriptionCapacity
     }
   }
 
