@@ -10,6 +10,16 @@ extension View {
     #endif
   }
 
+  /// A pairing code: capitals, nothing corrected.
+  @ViewBuilder
+  func nessaCodeInput() -> some View {
+    #if os(iOS)
+      self.textInputAutocapitalization(.characters).autocorrectionDisabled()
+    #else
+      self.autocorrectionDisabled()
+    #endif
+  }
+
   @ViewBuilder
   func nessaCredentialInput() -> some View {
     #if os(iOS)

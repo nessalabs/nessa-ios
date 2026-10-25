@@ -12,6 +12,8 @@ import Foundation
   public let conversationSharing: PhoneConversationSharing?
   public let conversationDeletion: PhoneConversationDeletion?
   public let phoneChat: PhoneProductChat?
+  /// Pairing with a desktop by its code; live builds only.
+  public let desktopLinking: DesktopLinking?
   private let snapshots: PhoneSnapshotSession
   private let recovery: ConnectionRecovery
   private let speechFactory: @MainActor () -> any SpeechTranscribing
@@ -86,6 +88,15 @@ import Foundation
     } else {
       phoneChat = nil
     }
+    if mode == .live, let retainedSessions {
+      let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Nessa/LinkedDesktops", isDirectory: true)
+      desktopLinking = DesktopLinking(
+        finder: BonjourGatewayFinder(), store: LinkedDesktopFileStore(root: root),
+        locations: LinkedDesktopLocations(root: root), sessions: retainedSessions)
+    } else {
+      desktopLinking = nil
+    }
     self.launchConnection = launchConnection
     self.speechFactory =
       speechFactory ?? {
@@ -134,6 +145,9 @@ import Foundation
   }
   private static func liveRepository() -> NessaGatewayClient {
     NessaGatewayClient(journal: PhoneCommandJournal(store: PhoneCommandStore()))
+  }
+  public func makeDesktopLinkViewModel() -> DesktopLinkViewModel {
+    DesktopLinkViewModel(linking: desktopLinking)
   }
   public func makeDictationViewModel() -> DictationViewModel {
     DictationViewModel(transcriber: speechFactory())

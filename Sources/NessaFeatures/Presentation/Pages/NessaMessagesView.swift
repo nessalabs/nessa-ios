@@ -4,10 +4,13 @@ import SwiftUI
 /// Owns navigation and connection presentation; screen layouts live under Messages/.
 public struct NessaMessagesView: View {
   @StateObject private var store: MessagesViewModel
+  @StateObject private var linkStore: DesktopLinkViewModel
   private let dependencies: NessaDependencies
   @AppStorage("nessaGatewayAddress") private var address = "ws://127.0.0.1:7420/session"
   @AppStorage("nessaSurfaceInstance") private var instance = ""
   @State private var settings = false
+  @State private var pairing = false
+  @State private var linkedChats = false
   private struct Route: Hashable {
     let conversationID: String
     let focusComposer: Bool
@@ -17,6 +20,7 @@ public struct NessaMessagesView: View {
   public init(dependencies: NessaDependencies) {
     self.dependencies = dependencies
     _store = StateObject(wrappedValue: dependencies.makeMessagesViewModel())
+    _linkStore = StateObject(wrappedValue: dependencies.makeDesktopLinkViewModel())
   }
   public var body: some View {
     NavigationStack(path: $path) {
@@ -46,8 +50,28 @@ public struct NessaMessagesView: View {
           store: store, conversationID: route.conversationID,
           dictation: dependencies.makeDictationViewModel(), autoFocusComposer: route.focusComposer)
       }
+      .navigationDestination(isPresented: $linkedChats) {
+        LinkedDesktopChatsView(store: linkStore)
+          .navigationDestination(for: LinkedChatRoute.self) { route in
+            LinkedDesktopThreadView(store: linkStore, conversationID: route.conversationID)
+          }
+      }
       .sheet(isPresented: $settings) {
-        NessaConnectionView(store: store, address: $address, instance: instance)
+        NessaConnectionView(
+          store: store, address: $address, instance: instance, desktop: linkStore,
+          onPair: {
+            settings = false
+            linkStore.reset()
+            pairing = true
+          },
+          onShowChats: {
+            settings = false
+            linkedChats = true
+          })
+      }
+      .sheet(isPresented: $pairing) {
+        PairWithDesktopView(store: linkStore)
+          .presentationBackground(MessagesStyle.background)
       }
       .alert(
         "Nessa connection",
@@ -79,6 +103,7 @@ public struct NessaMessagesView: View {
         address: address, credential: "", instance: instance,
         restoringSavedProfile: true, automatically: true)
     }
+    .task { await linkStore.load() }
     .task(id: store.connectionRevision) {
       if store.connected { await store.watchInbox() }
     }
