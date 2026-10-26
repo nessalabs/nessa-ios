@@ -46,11 +46,24 @@ public final class MessagesViewModel: ObservableObject {
   /// Their rows also stay in `conversations`, so opening and previewing work the same.
   @Published public private(set) var archivedConversations: [NessaConversation] = []
   public var archivedChats: [String] { archivedConversations.map(\.id) }
-  /// The chats grouped as the Agents view shows them. A chat waits on the person while its
-  /// open view holds a permission review.
+  /// The reviews the connection last announced as waiting; nil before the first
+  /// announcement and once the connection ends.
+  @Published public private(set) var waitingReviews: WaitingReviews?
+  /// The chats grouped as the Agents view shows them. Which chats wait on the person is the
+  /// gateway's announcement, so a chat never opened here still shows, and one answered on
+  /// another device leaves. Views read here only fill in where there is no announcement yet,
+  /// or where a full one may have left newer reviews out.
   public var agentsGlance: AgentsGlance {
     let archived = Set(archivedChats)
-    let waiting = Set(views.filter { !$0.value.permissions.isEmpty }.keys)
+    let read = Set(views.filter { !$0.value.permissions.isEmpty }.keys)
+    let waiting: Set<String>
+    if let waitingReviews {
+      waiting =
+        waitingReviews.complete
+        ? waitingReviews.conversationIDs : waitingReviews.conversationIDs.union(read)
+    } else {
+      waiting = read
+    }
     return AgentsGlance(
       conversations: visibleConversations.filter { !archived.contains($0.id) },
       waiting: waiting, unread: Set(unreadChats))
@@ -285,6 +298,7 @@ public final class MessagesViewModel: ObservableObject {
     cancelPreviews()
     conversations = []
     views = [:]
+    waitingReviews = nil
     previewViews = [:]
     viewCursors = [:]
     readVersions = [:]
@@ -894,6 +908,7 @@ public final class MessagesViewModel: ObservableObject {
       nativeOfflineEligible = false
       conversations = []
       views = [:]
+      waitingReviews = nil
       previewViews = [:]
       replyProjections = [:]
       viewCursors = [:]
@@ -997,6 +1012,7 @@ public final class MessagesViewModel: ObservableObject {
       nativeCommandReady = false
       conversations = []
       views = [:]
+      waitingReviews = nil
       previewViews = [:]
       replyProjections = [:]
       phoneSyncFailure = error
@@ -1105,6 +1121,7 @@ public final class MessagesViewModel: ObservableObject {
     deletedIDs = []
     pendingDeletionIDs = []
     views = [:]
+    waitingReviews = nil
     readVersions = [:]
     viewCursors = [:]
     unlistedCreations = [:]
@@ -1156,6 +1173,7 @@ public final class MessagesViewModel: ObservableObject {
         if !ConnectionRecovery.retryable(error) {
           conversations = []
           views = [:]
+          waitingReviews = nil
           pinnedChats = []
           agentProfiles = []
         }
@@ -1298,6 +1316,7 @@ public final class MessagesViewModel: ObservableObject {
           self.phoneSyncFailure = error
           self.conversations = []
           self.views = [:]
+          self.waitingReviews = nil
           self.previewViews = [:]
           self.replyProjections = [:]
           self.phoneSyncError = "Phone sync unavailable."
@@ -1685,6 +1704,42 @@ public final class MessagesViewModel: ObservableObject {
     }
     guard phoneChat == nil || connected else { return }
     await watch(nil)
+  }
+  /// Follows the connection's waiting-review announcements, and reads each chat a review
+  /// waits in that has not been read with it, so its card can show what it asks.
+  public func watchReviews() async {
+    let expected = generation
+    guard connected, let stream = await service.waitingReviews() else { return }
+    for await reviews in stream {
+      guard generation == expected, !Task.isCancelled else { return }
+      waitingReviews = reviews
+      for review in reviews.reviews
+      where views[review.conversationId]?.permissions.contains(where: {
+        $0.permissionId == review.permissionId && $0.executionId == review.executionId
+      }) != true {
+        await readWaiting(review.conversationId, generation: expected)
+        guard generation == expected, !Task.isCancelled else { return }
+      }
+    }
+    // The connection ended: what it announced no longer holds.
+    if generation == expected { waitingReviews = nil }
+  }
+  /// Reads a chat only so its waiting review can be shown. Unlike opening it, this leaves
+  /// the chat unread, and a chat that cannot be read just shows as a plain row: the person
+  /// did not ask for it, so a failure is not theirs to see.
+  private func readWaiting(_ id: String, generation expected: Int) async {
+    guard connected, phoneChat != nil || !nativeConfigured, !deletedIDs.contains(id),
+      !pendingDeletionIDs.contains(id)
+    else { return }
+    let version = (readVersions[id] ?? 0) + 1
+    readVersions[id] = version
+    guard let view = try? await service.read(id), generation == expected,
+      readVersions[id] == version, !pendingDeletionIDs.contains(id)
+    else { return }
+    if views[id] != view {
+      replyProjections.removeValue(forKey: id)
+      views[id] = view
+    }
   }
   public func watchConversation(_ id: String) async {
     if phoneChat == nil && !automaticConnectionEnabled && !connected {

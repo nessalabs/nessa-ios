@@ -41,3 +41,48 @@ import Testing
   #expect(model.agentsGlance.ids(.needsYou).isEmpty)
   #expect(model.views[id]?.permissions.isEmpty == true)
 }
+
+private func eventually(_ predicate: @MainActor () -> Bool) async throws {
+  for _ in 0..<500 {
+    if await predicate() { return }
+    try await Task.sleep(for: .milliseconds(2))
+  }
+  throw NessaGatewayError.timeout
+}
+
+@Test @MainActor func anAnnouncedReviewShowsInNeedsYouWithoutTheChatBeingOpened() async throws {
+  let repository = MockRepository()
+  let model = MessagesViewModel(
+    service: MessagingService(repository: repository), credentials: InMemoryCredentialStore(),
+    preferences: InMemoryChatPreferences())
+  await model.connect(address: "mock://one", credential: "", instance: "phone")
+  let id = "00000000-0000-4000-8000-000000000002"
+  model.unreadChats = [id]
+  let watching = Task { await model.watchReviews() }
+  defer { watching.cancel() }
+  try await eventually { model.agentsGlance.ids(.needsYou) == [id] }
+  // Read so its card can show what it asks, but still unread: the person has not opened it.
+  try await eventually { model.views[id]?.permissions.isEmpty == false }
+  #expect(model.unreadChats.contains(id))
+}
+
+@Test @MainActor func aReviewAnsweredElsewhereLeavesNeedsYouThoughItsReadViewStillHoldsIt()
+  async throws
+{
+  let repository = MockRepository()
+  let model = MessagesViewModel(
+    service: MessagingService(repository: repository), credentials: InMemoryCredentialStore(),
+    preferences: InMemoryChatPreferences())
+  await model.connect(address: "mock://one", credential: "", instance: "phone")
+  let id = "00000000-0000-4000-8000-000000000002"
+  await model.refresh(id)
+  let watching = Task { await model.watchReviews() }
+  defer { watching.cancel() }
+  try await eventually { model.agentsGlance.ids(.needsYou) == [id] }
+  let permission = try #require(model.views[id]?.permissions.first)
+  let allow = try #require(permission.options.first { $0.effect == "allow" })
+  // Another device answers it; this phone's read view is now out of date.
+  try await repository.answer(permission, option: allow, conversationID: id)
+  try await eventually { model.agentsGlance.ids(.needsYou).isEmpty }
+  #expect(model.views[id]?.permissions.isEmpty == false)
+}

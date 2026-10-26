@@ -2,7 +2,8 @@ import CryptoKit
 import Foundation
 
 /// Native implementation of Nessa's product v1 req/res protocol. Commands are never replayed.
-public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDirectory, ConversationFollowing,
+public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDirectory,
+  ReviewNoticeSource, ConversationFollowing,
   ConnectionLeasing, PreparedCommandTransport, CommandRecoveryProviding,
   AuthenticatedGatewaySessionProviding, GatewayPairingManaging
 {
@@ -28,6 +29,10 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
   }
   private var pending: [String: PendingRequest] = [:]
   private var timeouts: [String: Task<Void, Never>] = [:]
+  /// The last waiting-reviews announcement on this connection, and who is listening for the
+  /// next. Both end with the connection.
+  private var latestReviews: WaitingReviews?
+  private var reviewListeners: [UUID: AsyncStream<WaitingReviews>.Continuation] = [:]
   private var subscriptions = GatewaySubscriptions()
   private struct RegistrationWaiter {
     let inbox: Bool?
@@ -300,6 +305,37 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
       archived ? "conversation.archive" : "conversation.unarchive",
       params: Archive(
         conversationId: conversationID, requestId: UUID().uuidString.lowercased()))
+  }
+  public func waitingReviews() -> AsyncStream<WaitingReviews> {
+    let (stream, continuation) = AsyncStream<WaitingReviews>.makeStream(
+      bufferingPolicy: .bufferingNewest(1))
+    // Without a connection there is nothing to announce; the stream ends at once.
+    guard authenticated else {
+      continuation.finish()
+      return stream
+    }
+    let id = UUID()
+    reviewListeners[id] = continuation
+    continuation.onTermination = { _ in Task { await self.stopListening(id) } }
+    if let latestReviews { continuation.yield(latestReviews) }
+    return stream
+  }
+  private func stopListening(_ id: UUID) { reviewListeners.removeValue(forKey: id) }
+  /// Takes a `permission.reviewWaiting` announcement, checked against the gateway's
+  /// PermissionReviewWaiting, as the new latest. False for any other event.
+  private func receiveReviews(_ name: String, payload: Data) throws -> Bool {
+    guard name == "permission.reviewWaiting" else { return false }
+    try validateGatewayWire(payload, named: "PermissionReviewWaiting")
+    let reviews = try JSONDecoder().decode(WaitingReviews.self, from: payload)
+    latestReviews = reviews
+    for listener in reviewListeners.values { listener.yield(reviews) }
+    return true
+  }
+  private func endReviews() {
+    latestReviews = nil
+    let listeners = reviewListeners.values
+    reviewListeners.removeAll()
+    for listener in listeners { listener.finish() }
   }
   public func channels() async throws -> [NessaChannel] {
     try requireConnection()
@@ -727,6 +763,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     socket?.cancel(with: .goingAway, reason: nil)
     socket = nil
     subscriptions.finishAll(error)
+    endReviews()
     failPending(error)
     challenge = nil
   }
@@ -885,6 +922,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
           let name = frame["event"] as? String, let payload = frame["payload"]
         else { throw NessaGatewayError.invalidFrame }
         let bytes = try JSONSerialization.data(withJSONObject: payload, options: .fragmentsAllowed)
+        if try receiveReviews(name, payload: bytes) { continue }
         if let stopped = subscriptions.receive(name, payload: bytes) {
           _ = beginCleanup(stopped, generation: generation)
         }
@@ -979,6 +1017,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
         let payload = frame["payload"]
       {
         let bytes = try JSONSerialization.data(withJSONObject: payload)
+        if try receiveReviews(name, payload: bytes) { return }
         if let stopped = subscriptions.receive(name, payload: bytes) {
           let generation = connectionGeneration
           _ = beginCleanup(stopped, generation: generation)

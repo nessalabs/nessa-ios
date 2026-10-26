@@ -323,3 +323,43 @@ private func channelPage(_ channels: [String], complete: Bool, cursor: String?) 
   #expect(await exchange.callCount("channel.list") == 3)
   await client.disconnect()
 }
+
+private func reviewsWaiting(_ conversations: [String]) -> Data {
+  let reviews = conversations.map {
+    "{\"conversationId\":\"\($0)\",\"executionId\":\"run\",\"permissionId\":\"p\",\"tool\":\"shell\"}"
+  }.joined(separator: ",")
+  return Data(
+    "{\"type\":\"event\",\"event\":\"permission.reviewWaiting\",\"payload\":{\"reviews\":[\(reviews)]}}"
+      .utf8)
+}
+
+@Test func reviewAnnouncementsReachListenersAndTheLatestGreetsALateOne() async throws {
+  let chat = "00000000-0000-4000-8000-000000000002"
+  let exchange = ProductExchangeFixture()
+  let client = NessaGatewayClient()
+  _ = try await connect(client, exchange)
+  var early = await client.waitingReviews().makeAsyncIterator()
+  try await eventually { await exchange.waitingForEvents() }
+  await exchange.emit(reviewsWaiting([chat]))
+  #expect(await early.next()?.conversationIDs == [chat])
+  // Someone listening only now still hears what waits.
+  var late = await client.waitingReviews().makeAsyncIterator()
+  #expect(await late.next()?.conversationIDs == [chat])
+  try await eventually { await exchange.waitingForEvents() }
+  await exchange.emit(reviewsWaiting([]))
+  #expect(await early.next()?.reviews.isEmpty == true)
+  // The connection ending ends every listener.
+  await client.disconnect()
+  #expect(await early.next() == nil)
+}
+
+@Test func aReviewAnnouncementOffTheGatewaysShapeEndsTheConnection() async throws {
+  let exchange = ProductExchangeFixture()
+  let client = NessaGatewayClient()
+  _ = try await connect(client, exchange)
+  var listener = await client.waitingReviews().makeAsyncIterator()
+  try await eventually { await exchange.waitingForEvents() }
+  await exchange.emit(reviewsWaiting(["not-a-conversation-id"]))
+  #expect(await listener.next() == nil)
+  try await eventually { await exchange.closeCount() > 0 }
+}

@@ -95,6 +95,9 @@ public struct NessaMessagesView: View {
     .task(id: store.connectionRevision) {
       if store.connected { await store.watchInbox() }
     }
+    .task(id: store.connectionRevision) {
+      if store.connected { await store.watchReviews() }
+    }
     .task(id: scenePhase) {
       guard !Task.isCancelled else { return }
       if scenePhase == .background {
