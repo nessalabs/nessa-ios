@@ -49,24 +49,32 @@ public final class MessagesViewModel: ObservableObject {
   /// The reviews the connection last announced as waiting; nil before the first
   /// announcement and once the connection ends.
   @Published public private(set) var waitingReviews: WaitingReviews?
-  /// The chats grouped as the Agents view shows them. Which chats wait on the person is the
-  /// gateway's announcement, so a chat never opened here still shows, and one answered on
-  /// another device leaves. Views read here only fill in where there is no announcement yet,
-  /// or where a full one may have left newer reviews out.
+  /// The reviews `watchReviews` already read a chat for on this connection.
+  private var reviewReadsTried: Set<String> = []
+  /// Counts announcements, so reads one queued give way to a newer one.
+  private var reviewAnnouncements = 0
+  /// The chats grouped as the Agents view shows them, from the listed chats. A chat waits
+  /// on the person when the gateway announces a review in it, so a chat never opened here
+  /// still shows, or when a view read here holds one. The announcement alone is not the
+  /// whole answer: the gateway names a bounded set and can drop older reviews that still
+  /// wait. So both count, and a view holding a review the announcement leaves out is read
+  /// again (`watchReviews`), which takes a review answered on another device away.
   public var agentsGlance: AgentsGlance {
     let archived = Set(archivedChats)
     let read = Set(views.filter { !$0.value.permissions.isEmpty }.keys)
-    let waiting: Set<String>
-    if let waitingReviews {
-      waiting =
-        waitingReviews.complete
-        ? waitingReviews.conversationIDs : waitingReviews.conversationIDs.union(read)
-    } else {
-      waiting = read
-    }
     return AgentsGlance(
       conversations: visibleConversations.filter { !archived.contains($0.id) },
-      waiting: waiting, unread: Set(unreadChats))
+      waiting: read.union(waitingReviews?.conversationIDs ?? []), unread: Set(unreadChats))
+  }
+  /// The review a chat's card asks about: the oldest one the gateway announced, when the
+  /// view read here holds it, otherwise the oldest the view holds.
+  public func waitingPermission(in id: String) -> NessaPermission? {
+    guard let permissions = views[id]?.permissions, !permissions.isEmpty else { return nil }
+    let announced = waitingReviews?.reviews.filter { $0.conversationId == id } ?? []
+    for review in announced {
+      if let permission = permissions.first(where: { review.matches($0) }) { return permission }
+    }
+    return permissions.first
   }
   /// The chats in a channel, newest first; a chat that names no channel is in the default one.
   public func conversations(inChannel id: String) -> [NessaConversation] {
@@ -1705,36 +1713,74 @@ public final class MessagesViewModel: ObservableObject {
     guard phoneChat == nil || connected else { return }
     await watch(nil)
   }
-  /// Follows the connection's waiting-review announcements, and reads each chat a review
-  /// waits in that has not been read with it, so its card can show what it asks.
+  /// Follows the connection's waiting-review announcements. Each one shows at once; then
+  /// the chats whose view here does not match it are read quietly: one with an announced
+  /// review the view lacks, so its card can show what it asks, and one whose view holds a
+  /// review the announcement leaves out, which may have been answered elsewhere. The next
+  /// announcement replaces the reads not yet started, and a review already read for is not
+  /// read for again on this connection, so a chat that cannot be read is not retried on every
+  /// announcement. Over the native link chats are not read this way, so its rows show
+  /// without cards.
   public func watchReviews() async {
     let expected = generation
     guard connected, let stream = await service.waitingReviews() else { return }
+    reviewReadsTried = []
+    var reads: Task<Void, Never>?
+    // Ends the reads not yet started; one under way finishes and shows what it read.
+    defer { reviewAnnouncements += 1 }
     for await reviews in stream {
       guard generation == expected, !Task.isCancelled else { return }
       waitingReviews = reviews
+      reviewAnnouncements += 1
+      let announcement = reviewAnnouncements
+      // Each chat to read once, with the reviews it is read for.
+      var chats: [(id: String, keys: [String])] = []
+      func read(_ id: String, for key: String) {
+        guard !reviewReadsTried.contains(key) else { return }
+        if let index = chats.firstIndex(where: { $0.id == id }) {
+          chats[index].keys.append(key)
+        } else {
+          chats.append((id, [key]))
+        }
+      }
       for review in reviews.reviews
-      where views[review.conversationId]?.permissions.contains(where: {
-        $0.permissionId == review.permissionId && $0.executionId == review.executionId
-      }) != true {
-        await readWaiting(review.conversationId, generation: expected)
-        guard generation == expected, !Task.isCancelled else { return }
+      where views[review.conversationId]?.permissions.contains(where: review.matches) != true {
+        read(review.conversationId, for: "announced " + review.key)
+      }
+      for (id, view) in views.sorted(by: { $0.key < $1.key }) {
+        for permission in view.permissions
+        where !reviews.reviews.contains(where: { $0.matches(permission) }) {
+          read(id, for: "left out " + WaitingReviews.Review.key(id, permission))
+        }
+      }
+      guard !chats.isEmpty else { continue }
+      reads = Task { [weak self, reads, chats] in
+        // One read at a time: the last announcement's reads go first.
+        await reads?.value
+        for chat in chats {
+          guard let self, self.reviewAnnouncements == announcement else { return }
+          // Counted as tried only once the read starts, so one a newer announcement
+          // replaced before it began is still read for then.
+          self.reviewReadsTried.formUnion(chat.keys)
+          await self.readWaiting(chat.id, generation: expected)
+        }
       }
     }
     // The connection ended: what it announced no longer holds.
-    if generation == expected { waitingReviews = nil }
+    if generation == expected, !Task.isCancelled { waitingReviews = nil }
   }
-  /// Reads a chat only so its waiting review can be shown. Unlike opening it, this leaves
-  /// the chat unread, and a chat that cannot be read just shows as a plain row: the person
-  /// did not ask for it, so a failure is not theirs to see.
+  /// Reads a chat only so its waiting reviews show as they are. Unlike opening it, this
+  /// leaves the chat unread, gives way to any other read of it, and a chat that cannot be
+  /// read just shows as it was: the person did not ask for it, so a failure is not theirs
+  /// to see.
   private func readWaiting(_ id: String, generation expected: Int) async {
     guard connected, phoneChat != nil || !nativeConfigured, !deletedIDs.contains(id),
       !pendingDeletionIDs.contains(id)
     else { return }
-    let version = (readVersions[id] ?? 0) + 1
-    readVersions[id] = version
+    let version = readVersions[id] ?? 0
     guard let view = try? await service.read(id), generation == expected,
-      readVersions[id] == version, !pendingDeletionIDs.contains(id)
+      (readVersions[id] ?? 0) == version, !pendingDeletionIDs.contains(id),
+      !deletedIDs.contains(id)
     else { return }
     if views[id] != view {
       replyProjections.removeValue(forKey: id)

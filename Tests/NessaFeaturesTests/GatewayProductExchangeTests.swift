@@ -353,12 +353,26 @@ private func reviewsWaiting(_ conversations: [String]) -> Data {
   #expect(await early.next() == nil)
 }
 
-@Test func aReviewAnnouncementOffTheGatewaysShapeEndsTheConnection() async throws {
+@Test func aReviewAnnouncementOffTheGatewaysShapeEndsOnlyTheReviewFeed() async throws {
+  let chat = "00000000-0000-4000-8000-000000000002"
   let exchange = ProductExchangeFixture()
   let client = NessaGatewayClient()
   _ = try await connect(client, exchange)
   var listener = await client.waitingReviews().makeAsyncIterator()
   try await eventually { await exchange.waitingForEvents() }
+  await exchange.emit(reviewsWaiting(["not-a-conversation-id"]))
+  #expect(await listener.next() == nil)
+  // Later notices on this connection are not trusted either, and nobody new hears them.
+  try await eventually { await exchange.waitingForEvents() }
+  await exchange.emit(reviewsWaiting([chat]))
+  try await eventually { await exchange.waitingForEvents() }
+  var late = await client.waitingReviews().makeAsyncIterator()
+  #expect(await late.next() == nil)
+  // The connection itself stays up.
+  #expect(await exchange.closeCount() == 0)
+  _ = try await client.list()
+  await client.disconnect()
+}
   await exchange.emit(reviewsWaiting(["not-a-conversation-id"]))
   #expect(await listener.next() == nil)
   try await eventually { await exchange.closeCount() > 0 }

@@ -33,6 +33,9 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
   /// next. Both end with the connection.
   private var latestReviews: WaitingReviews?
   private var reviewListeners: [UUID: AsyncStream<WaitingReviews>.Continuation] = [:]
+  /// Set once this connection sent a review notice this build cannot read; its feed stays
+  /// ended until the next connection.
+  private var reviewsUnreadable = false
   private var subscriptions = GatewaySubscriptions()
   private struct RegistrationWaiter {
     let inbox: Bool?
@@ -309,24 +312,35 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
   public func waitingReviews() -> AsyncStream<WaitingReviews> {
     let (stream, continuation) = AsyncStream<WaitingReviews>.makeStream(
       bufferingPolicy: .bufferingNewest(1))
-    // Without a connection there is nothing to announce; the stream ends at once.
-    guard authenticated else {
+    // Without a connection, or with a feed this build cannot read, nothing is announced;
+    // the stream ends at once.
+    guard authenticated, !reviewsUnreadable else {
       continuation.finish()
       return stream
     }
     let id = UUID()
     reviewListeners[id] = continuation
-    continuation.onTermination = { _ in Task { await self.stopListening(id) } }
+    continuation.onTermination = { [weak self] _ in Task { await self?.stopListening(id) } }
     if let latestReviews { continuation.yield(latestReviews) }
     return stream
   }
   private func stopListening(_ id: UUID) { reviewListeners.removeValue(forKey: id) }
   /// Takes a `permission.reviewWaiting` announcement, checked against the gateway's
   /// PermissionReviewWaiting, as the new latest. False for any other event.
-  private func receiveReviews(_ name: String, payload: Data) throws -> Bool {
+  ///
+  /// A notice off that shape (a newer gateway, say) ends only the review feed: the
+  /// connection and its chats are still sound, and each chat still shows its reviews once
+  /// read.
+  private func receiveReviews(_ name: String, payload: Data) -> Bool {
     guard name == "permission.reviewWaiting" else { return false }
-    try validateGatewayWire(payload, named: "PermissionReviewWaiting")
-    let reviews = try JSONDecoder().decode(WaitingReviews.self, from: payload)
+    guard !reviewsUnreadable else { return true }
+    guard (try? validateGatewayWire(payload, named: "PermissionReviewWaiting")) != nil,
+      let reviews = try? JSONDecoder().decode(WaitingReviews.self, from: payload)
+    else {
+      reviewsUnreadable = true
+      endReviews()
+      return true
+    }
     latestReviews = reviews
     for listener in reviewListeners.values { listener.yield(reviews) }
     return true
@@ -764,6 +778,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     socket = nil
     subscriptions.finishAll(error)
     endReviews()
+    reviewsUnreadable = false
     failPending(error)
     challenge = nil
   }
@@ -922,7 +937,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
           let name = frame["event"] as? String, let payload = frame["payload"]
         else { throw NessaGatewayError.invalidFrame }
         let bytes = try JSONSerialization.data(withJSONObject: payload, options: .fragmentsAllowed)
-        if try receiveReviews(name, payload: bytes) { continue }
+        if receiveReviews(name, payload: bytes) { continue }
         if let stopped = subscriptions.receive(name, payload: bytes) {
           _ = beginCleanup(stopped, generation: generation)
         }
@@ -1017,7 +1032,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
         let payload = frame["payload"]
       {
         let bytes = try JSONSerialization.data(withJSONObject: payload)
-        if try receiveReviews(name, payload: bytes) { return }
+        if receiveReviews(name, payload: bytes) { return }
         if let stopped = subscriptions.receive(name, payload: bytes) {
           let generation = connectionGeneration
           _ = beginCleanup(stopped, generation: generation)

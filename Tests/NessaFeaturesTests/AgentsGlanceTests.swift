@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import NessaFeatures
@@ -42,7 +43,7 @@ import Testing
   #expect(model.views[id]?.permissions.isEmpty == true)
 }
 
-private func eventually(_ predicate: @MainActor () -> Bool) async throws {
+private func eventually(_ predicate: @MainActor () async -> Bool) async throws {
   for _ in 0..<500 {
     if await predicate() { return }
     try await Task.sleep(for: .milliseconds(2))
@@ -84,5 +85,95 @@ private func eventually(_ predicate: @MainActor () -> Bool) async throws {
   // Another device answers it; this phone's read view is now out of date.
   try await repository.answer(permission, option: allow, conversationID: id)
   try await eventually { model.agentsGlance.ids(.needsYou).isEmpty }
-  #expect(model.views[id]?.permissions.isEmpty == false)
+  // The chat was read again quietly, so its view no longer shows the answered review.
+  #expect(model.views[id]?.permissions.isEmpty == true)
+}
+
+/// The development fixture, with announcements the test sends and reads it counts.
+private actor ScriptedReviews: MessagingRepository, ReviewNoticeSource {
+  let base = MockRepository()
+  private(set) var reads = 0
+  private var listener: AsyncStream<WaitingReviews>.Continuation?
+  func announce(_ reviews: [WaitingReviews.Review]) {
+    listener?.yield(WaitingReviews(reviews: reviews))
+  }
+  var listening: Bool { listener != nil }
+  func waitingReviews() -> AsyncStream<WaitingReviews> {
+    let (stream, continuation) = AsyncStream<WaitingReviews>.makeStream()
+    listener = continuation
+    return stream
+  }
+  func connect(address: String, credential: String, instance: String) async {
+    await base.connect(address: address, credential: credential, instance: instance)
+  }
+  func list() async throws -> NessaConversationList { try await base.list() }
+  func listArchived() async throws -> NessaConversationList { try await base.listArchived() }
+  func setArchived(_ archived: Bool, conversationID: String) async throws {
+    try await base.setArchived(archived, conversationID: conversationID)
+  }
+  func read(_ id: String) async throws -> NessaConversationView {
+    reads += 1
+    return try await base.read(id)
+  }
+  func create(agent: String?, model: String?) async throws -> String {
+    try await base.create(agent: agent, model: model)
+  }
+  func send(_ text: String, attachments: [DraftAttachment], conversationID: String) async throws
+    -> String
+  { try await base.send(text, attachments: attachments, conversationID: conversationID) }
+  func answer(_ permission: NessaPermission, option: NessaPermission.Option, conversationID: String)
+    async throws
+  { try await base.answer(permission, option: option, conversationID: conversationID) }
+  func delete(_ conversationID: String) async throws { try await base.delete(conversationID) }
+  func imageData(for attachment: NessaImageAttachment) async throws -> Data? {
+    try await base.imageData(for: attachment)
+  }
+  func disconnect() async { await base.disconnect() }
+}
+
+@Test @MainActor func aReviewTheAnnouncementLeavesOutStillWaitsAndIsReadForOnce() async throws {
+  // The gateway names a bounded set and drops the oldest, so a review a read view holds can
+  // still wait though no announcement names it.
+  let repository = ScriptedReviews()
+  let model = MessagesViewModel(
+    service: MessagingService(repository: repository), credentials: InMemoryCredentialStore(),
+    preferences: InMemoryChatPreferences())
+  await model.connect(address: "mock://one", credential: "", instance: "phone")
+  let id = "00000000-0000-4000-8000-000000000002"
+  await model.refresh(id)
+  let readsBefore = await repository.reads
+  let watching = Task { await model.watchReviews() }
+  defer { watching.cancel() }
+  try await eventually { await repository.listening }
+  await repository.announce([])
+  try await eventually { await repository.reads == readsBefore + 1 }
+  #expect(model.agentsGlance.ids(.needsYou) == [id])
+  // Announced again without it: that chat was already read for this review.
+  await repository.announce([])
+  try await Task.sleep(for: .milliseconds(50))
+  #expect(await repository.reads == readsBefore + 1)
+  #expect(model.agentsGlance.ids(.needsYou) == [id])
+}
+
+@Test @MainActor func theAgentsCardAsksAboutTheReviewTheGatewayAnnounced() async throws {
+  let repository = ScriptedReviews()
+  let model = MessagesViewModel(
+    service: MessagingService(repository: repository), credentials: InMemoryCredentialStore(),
+    preferences: InMemoryChatPreferences())
+  await model.connect(address: "mock://one", credential: "", instance: "phone")
+  let id = "00000000-0000-4000-8000-000000000002"
+  await model.refresh(id)
+  let held = try #require(model.views[id]?.permissions.first)
+  #expect(model.waitingPermission(in: id) == held)
+  let watching = Task { await model.watchReviews() }
+  defer { watching.cancel() }
+  try await eventually { await repository.listening }
+  await repository.announce([
+    .init(
+      conversationId: id, executionId: held.executionId, permissionId: held.permissionId,
+      tool: held.toolName, title: nil)
+  ])
+  try await eventually { model.waitingReviews?.reviews.count == 1 }
+  #expect(model.waitingPermission(in: id) == held)
+  #expect(model.waitingPermission(in: "00000000-0000-4000-8000-000000000009") == nil)
 }

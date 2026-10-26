@@ -30,7 +30,7 @@ struct AgentsView: View {
               .padding(.top, MessagesStyle.agentsSectionGap).padding(.bottom, NessaSpacing.xs)
               .accessibilityAddTraits(.isHeader)
             ForEach(ids, id: \.self) { id in
-              if group == .needsYou, let permission = store.views[id]?.permissions.first {
+              if group == .needsYou, let permission = store.waitingPermission(in: id) {
                 approval(id, permission: permission)
               } else {
                 row(id, group: group)
