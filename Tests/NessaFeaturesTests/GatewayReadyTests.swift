@@ -63,7 +63,7 @@ private func decode(_ value: [String: Any]) throws -> GatewaySessionSnapshot {
     ("principalId", String(repeating: "e\u{301}", count: 129)),
     ("expiresAt", -1), ("expiresAt", 1.5), ("expiresAt", UInt64(9_007_199_254_740_992)),
     ("grants", Array(repeating: (ready()["grants"] as! [[String: Any]])[0], count: 17)),
-    ("methods", Array(repeating: "", count: 68)),
+    ("methods", Array(repeating: "", count: 88)),
   ] {
     var wire = ready()
     wire[key] = invalid
@@ -72,9 +72,9 @@ private func decode(_ value: [String: Any]) throws -> GatewaySessionSnapshot {
   var wire = ready()
   wire["principalId"] = String(repeating: "e\u{301}", count: 128)
   wire["grants"] = []
-  wire["methods"] = Array(repeating: "", count: 67)
+  wire["methods"] = Array(repeating: "", count: 87)
   #expect(try decode(wire).identity.principalID == wire["principalId"] as? String)
-  #expect(try decode(wire).methods.count == 67)
+  #expect(try decode(wire).methods.count == 87)
   for field in ["action", "organizationId", "id"] {
     var invalid = ready()
     var grant = (invalid["grants"] as! [[String: Any]])[0]

@@ -109,7 +109,7 @@ private func connect(_ client: NessaGatewayClient, _ exchange: ProductExchangeFi
   -> GatewayConnectionLease
 {
   try await client.connectProduct(
-    exchange, address: "ws://127.0.0.1:19743/session",
+    exchange, uploads: "ws://127.0.0.1:19743/session",
     scope: .init(address: "native-original", credential: "public-device-key", instance: "phone"))
 }
 

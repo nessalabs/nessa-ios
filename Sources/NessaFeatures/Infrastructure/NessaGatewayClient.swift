@@ -101,8 +101,10 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   }
   /// Composition passes the child of the same retained native parent. Historical
   /// adoption and bootstrap authentication cannot manufacture this publication.
+  /// `uploads` is the gateway address attachments are sent to; with none,
+  /// attachments are not offered on this connection.
   func connectProduct(
-    _ exchange: any GatewayProductExchange, address: String, scope: PhoneCacheScope
+    _ exchange: any GatewayProductExchange, uploads address: String?, scope: PhoneCacheScope
   ) async throws -> GatewayConnectionLease {
     disconnect()
     let generation = connectionGeneration
@@ -118,7 +120,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
       authenticated = true
       connectionScope = scope
       imageCache = AttachmentImageCache(scope: scope.key)
-      try configureUploadEndpoint(address)
+      if let address { try configureUploadEndpoint(address) } else { uploadURL = nil }
       if let commands {
         do {
           let binding = try await commands.bind(scope: scope, connection: lease)
@@ -282,6 +284,22 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
   public func list() async throws -> NessaConversationList {
     try requireConnection()
     return try await request("conversation.list", params: Empty())
+  }
+  public func listArchived() async throws -> NessaConversationList {
+    try requireConnection()
+    struct Archived: Encodable { let archived = true }
+    return try await request("conversation.list", params: Archived())
+  }
+  public func setArchived(_ archived: Bool, conversationID: String) async throws {
+    try requireConnection()
+    struct Archive: Encodable {
+      let conversationId: String
+      let requestId: String
+    }
+    let _: Ignored = try await request(
+      archived ? "conversation.archive" : "conversation.unarchive",
+      params: Archive(
+        conversationId: conversationID, requestId: UUID().uuidString.lowercased()))
   }
   public func agents() async throws -> [AgentProfile] {
     try requireConnection()
@@ -1153,3 +1171,15 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
 }
 
 extension NessaGatewayClient: PhoneProductTransport {}
+
+extension NessaGatewayClient: LinkedProductConnecting {
+  /// The paired Mac's product session, over its native link. Attachments go
+  /// over HTTP to the gateway, which the link does not carry, so none are
+  /// offered here.
+  func connectLinked(_ exchange: any GatewayProductExchange, scope: PhoneCacheScope)
+    async throws -> GatewayConnectionLease
+  {
+    try await connectProduct(exchange, uploads: nil, scope: scope)
+  }
+  func drainLinked() async throws { try await awaitProductDrain() }
+}

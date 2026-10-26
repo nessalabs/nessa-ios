@@ -1099,6 +1099,152 @@ public func FfiConverterTypeNativeCataloguePage_lower(_ value: NativeCataloguePa
 
 
 /**
+ * Immutable confirmation from the actual native cleanup owner.
+ */
+public protocol NativeCloseObservationProtocol: AnyObject, Sendable {
+    
+    /**
+     * Original cleanup outcome; historical Product failure can coexist with release.
+     */
+    func failure()  -> NativeSessionFailure?
+    
+    /**
+     * Physical private-scope release, independent of a retained typed failure.
+     */
+    func released()  -> Bool
+    
+}
+/**
+ * Immutable confirmation from the actual native cleanup owner.
+ */
+open class NativeCloseObservation: NativeCloseObservationProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativecloseobservation(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativecloseobservation(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Original cleanup outcome; historical Product failure can coexist with release.
+     */
+open func failure() -> NativeSessionFailure?  {
+    return try!  FfiConverterOptionTypeNativeSessionFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativecloseobservation_failure(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Physical private-scope release, independent of a retained typed failure.
+     */
+open func released() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativecloseobservation_released(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeCloseObservation: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeCloseObservation
+
+    public static func lift(_ handle: UInt64) throws -> NativeCloseObservation {
+        return NativeCloseObservation(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeCloseObservation) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeCloseObservation {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeCloseObservation, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeCloseObservation_lift(_ handle: UInt64) throws -> NativeCloseObservation {
+    return try FfiConverterTypeNativeCloseObservation.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeCloseObservation_lower(_ value: NativeCloseObservation) -> UInt64 {
+    return FfiConverterTypeNativeCloseObservation.lower(value)
+}
+
+
+
+
+
+
+/**
  * The generated native session handle. Blocking calls run on the caller's
  * dedicated worker; close must drain there before releasing/replacing scope.
  */
@@ -1116,9 +1262,26 @@ public protocol NativeDeviceSessionProtocol: AnyObject, Sendable {
     func close() throws 
     
     /**
+     * Await actual cleanup and retain its separate physical release observation.
+     * This synchronous method belongs on the same cancellation-independent worker.
+     */
+    func closeObserved()  -> NativeCloseObservation
+    
+    /**
      * Pair using the existing code decoder and physical enrollment worker.
      */
     func enroll(code: String) throws  -> NativeEnrollmentReceipt
+    
+    /**
+     * Run status, binding, one `conversation.subscribe`, and an authority recheck.
+     * `after_incarnation` and `after_position` are both absent, or both a
+     * published `ConversationViewCursor`: incarnation within its character
+     * bound, position a decimal `u64`. Anything else is
+     * [`NativeCallError::InvalidArgument`] before a follow starts. The first
+     * view is returned and the subscription is closed. Checkpoints stay on
+     * [`Self::refresh`].
+     */
+    func follow(conversation: String, afterIncarnation: String?, afterPosition: String?, stop: NativeReadStop) throws  -> NativeFollow
     
     /**
      * Capture current local public correlation under the same physical admission.
@@ -1126,12 +1289,30 @@ public protocol NativeDeviceSessionProtocol: AnyObject, Sendable {
     func localEnrollment() throws  -> NativeLocalEnrollment?
     
     /**
+     * Install the original saved-key product child before its worker can dial.
+     * Returned Ready/settlement/event waits run off-UI on independent waiters.
+     */
+    func openProduct(instance: String) throws  -> NativeProductSession
+    
+    /**
+     * Initial preparation only for a newly allocated application reservation.
+     * Captures the exact original and durable key without network or issuance.
+     */
+    func prepareOwnerOriginal(requestId: Data, discoveryJson: String) throws  -> NativeOwnerPhonePreparation
+    
+    /**
      * Historical receipt recovery can select the prior receiver after key removal.
      */
     func purgeReceipt(receiver: String) throws  -> NativePurge?
     
     /**
-     * Run status, binding, bounded read and refusal recheck under one admission.
+     * Read the exact prepared original over pinned TLS without adoption or cache effects.
+     * Blocking work belongs off UI; canceling an observer does not release physical ownership.
+     */
+    func recoverOwnerOriginal(expected: NativeOwnerPhonePreparation) throws  -> NativeOwnerStatus
+    
+    /**
+     * Run status, binding, bounded checkpoint read and refusal recheck under one admission.
      */
     func refresh(stop: NativeReadStop) throws  -> NativeRefresh
     
@@ -1139,6 +1320,11 @@ public protocol NativeDeviceSessionProtocol: AnyObject, Sendable {
      * Signal closure before queueing drain; stop current core sockets.
      */
     func requestClose() throws 
+    
+    /**
+     * Existing reservations restore only; missing history never creates another key.
+     */
+    func restoreOwnerOriginal(requestId: Data, discoveryJson: String) throws  -> NativeOwnerPhonePreparation
     
     /**
      * Existing exact-operation retry; errors do not claim an original receipt.
@@ -1255,6 +1441,19 @@ open func close()throws   {try rustCallWithError(FfiConverterTypeNativeCallError
 }
     
     /**
+     * Await actual cleanup and retain its separate physical release observation.
+     * This synchronous method belongs on the same cancellation-independent worker.
+     */
+open func closeObserved() -> NativeCloseObservation  {
+    return try!  FfiConverterTypeNativeCloseObservation_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativedevicesession_close_observed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Pair using the existing code decoder and physical enrollment worker.
      */
 open func enroll(code: String)throws  -> NativeEnrollmentReceipt  {
@@ -1268,6 +1467,28 @@ open func enroll(code: String)throws  -> NativeEnrollmentReceipt  {
 }
     
     /**
+     * Run status, binding, one `conversation.subscribe`, and an authority recheck.
+     * `after_incarnation` and `after_position` are both absent, or both a
+     * published `ConversationViewCursor`: incarnation within its character
+     * bound, position a decimal `u64`. Anything else is
+     * [`NativeCallError::InvalidArgument`] before a follow starts. The first
+     * view is returned and the subscription is closed. Checkpoints stay on
+     * [`Self::refresh`].
+     */
+open func follow(conversation: String, afterIncarnation: String?, afterPosition: String?, stop: NativeReadStop)throws  -> NativeFollow  {
+    return try  FfiConverterTypeNativeFollow_lift(try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativedevicesession_follow(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversation),
+        FfiConverterOptionString.lower(afterIncarnation),
+        FfiConverterOptionString.lower(afterPosition),
+        FfiConverterTypeNativeReadStop_lower(stop),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Capture current local public correlation under the same physical admission.
      */
 open func localEnrollment()throws  -> NativeLocalEnrollment?  {
@@ -1275,6 +1496,35 @@ open func localEnrollment()throws  -> NativeLocalEnrollment?  {
         uniffiCallStatus in
     uniffi_nessa_device_client_fn_method_nativedevicesession_local_enrollment(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Install the original saved-key product child before its worker can dial.
+     * Returned Ready/settlement/event waits run off-UI on independent waiters.
+     */
+open func openProduct(instance: String)throws  -> NativeProductSession  {
+    return try  FfiConverterTypeNativeProductSession_lift(try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativedevicesession_open_product(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Initial preparation only for a newly allocated application reservation.
+     * Captures the exact original and durable key without network or issuance.
+     */
+open func prepareOwnerOriginal(requestId: Data, discoveryJson: String)throws  -> NativeOwnerPhonePreparation  {
+    return try  FfiConverterTypeNativeOwnerPhonePreparation_lift(try rustCallWithError(FfiConverterTypeNativeOwnerPreparationCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativedevicesession_prepare_owner_original(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(requestId),
+        FfiConverterString.lower(discoveryJson),uniffiCallStatus
     )
 })
 }
@@ -1293,7 +1543,21 @@ open func purgeReceipt(receiver: String)throws  -> NativePurge?  {
 }
     
     /**
-     * Run status, binding, bounded read and refusal recheck under one admission.
+     * Read the exact prepared original over pinned TLS without adoption or cache effects.
+     * Blocking work belongs off UI; canceling an observer does not release physical ownership.
+     */
+open func recoverOwnerOriginal(expected: NativeOwnerPhonePreparation)throws  -> NativeOwnerStatus  {
+    return try  FfiConverterTypeNativeOwnerStatus_lift(try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativedevicesession_recover_owner_original(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeNativeOwnerPhonePreparation_lower(expected),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Run status, binding, bounded checkpoint read and refusal recheck under one admission.
      */
 open func refresh(stop: NativeReadStop)throws  -> NativeRefresh  {
     return try  FfiConverterTypeNativeRefresh_lift(try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
@@ -1314,6 +1578,20 @@ open func requestClose()throws   {try rustCallWithError(FfiConverterTypeNativeCa
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Existing reservations restore only; missing history never creates another key.
+     */
+open func restoreOwnerOriginal(requestId: Data, discoveryJson: String)throws  -> NativeOwnerPhonePreparation  {
+    return try  FfiConverterTypeNativeOwnerPhonePreparation_lift(try rustCallWithError(FfiConverterTypeNativeOwnerPreparationCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativedevicesession_restore_owner_original(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(requestId),
+        FfiConverterString.lower(discoveryJson),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -2099,6 +2377,249 @@ public func FfiConverterTypeNativeEntryKey_lower(_ value: NativeEntryKey) -> UIn
 
 
 /**
+ * One admitted `conversation.subscribe` read. The view replaces what the
+ * device shows; it does not advance a physical checkpoint.
+ */
+public protocol NativeFollowProtocol: AnyObject, Sendable {
+    
+    /**
+     * Why no view was delivered, when a reader was selected.
+     * [`NativeReadFailure::CursorAhead`] means `after` is past the gateway
+     * head: follow again with no cursor.
+     * [`NativeReadFailure::SubscriptionCapacity`] means this connection's
+     * subscription limit is full: stop following something first. Neither is an ungranted conversation,
+     * and neither asks pinned status.
+     */
+    func failure()  -> NativeReadFailure?
+    
+    /**
+     * Cursor incarnation on that view.
+     */
+    func incarnation()  -> String?
+    
+    /**
+     * Original initial status and purge.
+     */
+    func initial()  -> NativeStatus
+    
+    /**
+     * Cursor position on that view. A later follow passes it back as `after`.
+     */
+    func position()  -> String?
+    
+    /**
+     * Authority-refusal recheck. A conversation this device was not granted does not ask.
+     */
+    func recheck()  -> NativeStatus?
+    
+    /**
+     * Exact current binding refusal before product selection.
+     */
+    func selectionFailure()  -> NativeEnrollmentFailure?
+    
+    /**
+     * Product view JSON when the first frame was a view.
+     */
+    func viewJson()  -> String?
+    
+}
+/**
+ * One admitted `conversation.subscribe` read. The view replaces what the
+ * device shows; it does not advance a physical checkpoint.
+ */
+open class NativeFollow: NativeFollowProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativefollow(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativefollow(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Why no view was delivered, when a reader was selected.
+     * [`NativeReadFailure::CursorAhead`] means `after` is past the gateway
+     * head: follow again with no cursor.
+     * [`NativeReadFailure::SubscriptionCapacity`] means this connection's
+     * subscription limit is full: stop following something first. Neither is an ungranted conversation,
+     * and neither asks pinned status.
+     */
+open func failure() -> NativeReadFailure?  {
+    return try!  FfiConverterOptionTypeNativeReadFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativefollow_failure(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Cursor incarnation on that view.
+     */
+open func incarnation() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativefollow_incarnation(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original initial status and purge.
+     */
+open func initial() -> NativeStatus  {
+    return try!  FfiConverterTypeNativeStatus_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativefollow_initial(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Cursor position on that view. A later follow passes it back as `after`.
+     */
+open func position() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativefollow_position(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Authority-refusal recheck. A conversation this device was not granted does not ask.
+     */
+open func recheck() -> NativeStatus?  {
+    return try!  FfiConverterOptionTypeNativeStatus.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativefollow_recheck(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Exact current binding refusal before product selection.
+     */
+open func selectionFailure() -> NativeEnrollmentFailure?  {
+    return try!  FfiConverterOptionTypeNativeEnrollmentFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativefollow_selection_failure(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Product view JSON when the first frame was a view.
+     */
+open func viewJson() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativefollow_view_json(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeFollow: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeFollow
+
+    public static func lift(_ handle: UInt64) throws -> NativeFollow {
+        return NativeFollow(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeFollow) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeFollow {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeFollow, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeFollow_lift(_ handle: UInt64) throws -> NativeFollow {
+    return try FfiConverterTypeNativeFollow.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeFollow_lower(_ value: NativeFollow) -> UInt64 {
+    return FfiConverterTypeNativeFollow.lower(value)
+}
+
+
+
+
+
+
+/**
  * Locally saved public correlation, to be checked against authenticated owner status.
  */
 public protocol NativeLocalEnrollmentProtocol: AnyObject, Sendable {
@@ -2425,6 +2946,1463 @@ public func FfiConverterTypeNativeLocalIssuedEnrollment_lower(_ value: NativeLoc
 
 
 /**
+ * Immutable storage receipt; callers cannot supply it as live authority.
+ */
+public protocol NativeOwnerAdoptionProtocol: AnyObject, Sendable {
+    
+    /**
+     * Historical stored record kind.
+     */
+    func kind()  -> NativeOwnerEnrollmentKind
+    
+    /**
+     * Exact reported public reference, including all original lineage fields.
+     */
+    func publicIntent()  -> NativePublicIntent
+    
+}
+/**
+ * Immutable storage receipt; callers cannot supply it as live authority.
+ */
+open class NativeOwnerAdoption: NativeOwnerAdoptionProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeowneradoption(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeowneradoption(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Historical stored record kind.
+     */
+open func kind() -> NativeOwnerEnrollmentKind  {
+    return try!  FfiConverterTypeNativeOwnerEnrollmentKind_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeowneradoption_kind(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Exact reported public reference, including all original lineage fields.
+     */
+open func publicIntent() -> NativePublicIntent  {
+    return try!  FfiConverterTypeNativePublicIntent_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeowneradoption_public_intent(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerAdoption: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeOwnerAdoption
+
+    public static func lift(_ handle: UInt64) throws -> NativeOwnerAdoption {
+        return NativeOwnerAdoption(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeOwnerAdoption) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerAdoption {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeOwnerAdoption, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerAdoption_lift(_ handle: UInt64) throws -> NativeOwnerAdoption {
+    return try FfiConverterTypeNativeOwnerAdoption.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerAdoption_lower(_ value: NativeOwnerAdoption) -> UInt64 {
+    return FfiConverterTypeNativeOwnerAdoption.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Original local failure and separately completed earlier acknowledgement.
+ */
+public protocol NativeOwnerAdoptionFailureProtocol: AnyObject, Sendable {
+    
+    /**
+     * Independently completed lineage acknowledgement, absent in earlier phases.
+     */
+    func acknowledgedLineage()  -> NativePublicIntent?
+    
+    /**
+     * Exact original owner phase.
+     */
+    func phase()  -> NativeOwnerAdoptionPhase
+    
+    /**
+     * Unchanged publication step, effect, primary, cleanup and reconciliation payload.
+     */
+    func privateState()  -> NativePrivateStateFailure
+    
+}
+/**
+ * Original local failure and separately completed earlier acknowledgement.
+ */
+open class NativeOwnerAdoptionFailure: NativeOwnerAdoptionFailureProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeowneradoptionfailure(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeowneradoptionfailure(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Independently completed lineage acknowledgement, absent in earlier phases.
+     */
+open func acknowledgedLineage() -> NativePublicIntent?  {
+    return try!  FfiConverterOptionTypeNativePublicIntent.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeowneradoptionfailure_acknowledged_lineage(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Exact original owner phase.
+     */
+open func phase() -> NativeOwnerAdoptionPhase  {
+    return try!  FfiConverterTypeNativeOwnerAdoptionPhase_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeowneradoptionfailure_phase(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Unchanged publication step, effect, primary, cleanup and reconciliation payload.
+     */
+open func privateState() -> NativePrivateStateFailure  {
+    return try!  FfiConverterTypeNativePrivateStateFailure_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeowneradoptionfailure_private_state(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerAdoptionFailure: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeOwnerAdoptionFailure
+
+    public static func lift(_ handle: UInt64) throws -> NativeOwnerAdoptionFailure {
+        return NativeOwnerAdoptionFailure(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeOwnerAdoptionFailure) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerAdoptionFailure {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeOwnerAdoptionFailure, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerAdoptionFailure_lift(_ handle: UInt64) throws -> NativeOwnerAdoptionFailure {
+    return try FfiConverterTypeNativeOwnerAdoptionFailure.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerAdoptionFailure_lower(_ value: NativeOwnerAdoptionFailure) -> UInt64 {
+    return FfiConverterTypeNativeOwnerAdoptionFailure.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Immutable signed historical original. It grants no remote or local authority.
+ */
+public protocol NativeOwnerPhonePreparationProtocol: AnyObject, Sendable {
+    
+    /**
+     * Actual permanent public device key, never a bearer or private seed.
+     */
+    func deviceKey()  -> Data
+    
+    /**
+     * Digest computed by that owner's proof verifier.
+     */
+    func digest()  -> Data
+    
+    /**
+     * Complete canonical public original, bounded before native copy growth.
+     */
+    func originalJson() throws  -> String
+    
+    /**
+     * Exact original UUID bytes.
+     */
+    func requestId()  -> Data
+    
+    /**
+     * Signature produced by the same canonical native crypto owner.
+     */
+    func signature()  -> Data
+    
+}
+/**
+ * Immutable signed historical original. It grants no remote or local authority.
+ */
+open class NativeOwnerPhonePreparation: NativeOwnerPhonePreparationProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeownerphonepreparation(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeownerphonepreparation(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Actual permanent public device key, never a bearer or private seed.
+     */
+open func deviceKey() -> Data  {
+    return try!  FfiConverterData.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerphonepreparation_device_key(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Digest computed by that owner's proof verifier.
+     */
+open func digest() -> Data  {
+    return try!  FfiConverterData.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerphonepreparation_digest(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Complete canonical public original, bounded before native copy growth.
+     */
+open func originalJson()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeNativeOwnerPreparationCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerphonepreparation_original_json(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Exact original UUID bytes.
+     */
+open func requestId() -> Data  {
+    return try!  FfiConverterData.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerphonepreparation_request_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Signature produced by the same canonical native crypto owner.
+     */
+open func signature() -> Data  {
+    return try!  FfiConverterData.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerphonepreparation_signature(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerPhonePreparation: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeOwnerPhonePreparation
+
+    public static func lift(_ handle: UInt64) throws -> NativeOwnerPhonePreparation {
+        return NativeOwnerPhonePreparation(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeOwnerPhonePreparation) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerPhonePreparation {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeOwnerPhonePreparation, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerPhonePreparation_lift(_ handle: UInt64) throws -> NativeOwnerPhonePreparation {
+    return try FfiConverterTypeNativeOwnerPhonePreparation.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerPhonePreparation_lower(_ value: NativeOwnerPhonePreparation) -> UInt64 {
+    return FfiConverterTypeNativeOwnerPhonePreparation.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Original typed payload, with no private bytes or readiness meaning.
+ */
+public protocol NativeOwnerPreparationFailureProtocol: AnyObject, Sendable {
+    
+    /**
+     * Original selected crypto refusal.
+     */
+    func crypto()  -> NativeCryptoFailure?
+    
+    /**
+     * Original family.
+     */
+    func kind()  -> NativeOwnerPreparationFailureKind
+    
+    /**
+     * Actual private-state error, including original publication/cleanup/reconciliation.
+     */
+    func privateState()  -> NativePrivateStateFailure?
+    
+}
+/**
+ * Original typed payload, with no private bytes or readiness meaning.
+ */
+open class NativeOwnerPreparationFailure: NativeOwnerPreparationFailureProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeownerpreparationfailure(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeownerpreparationfailure(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Original selected crypto refusal.
+     */
+open func crypto() -> NativeCryptoFailure?  {
+    return try!  FfiConverterOptionTypeNativeCryptoFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerpreparationfailure_crypto(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original family.
+     */
+open func kind() -> NativeOwnerPreparationFailureKind  {
+    return try!  FfiConverterTypeNativeOwnerPreparationFailureKind_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerpreparationfailure_kind(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Actual private-state error, including original publication/cleanup/reconciliation.
+     */
+open func privateState() -> NativePrivateStateFailure?  {
+    return try!  FfiConverterOptionTypeNativePrivateStateFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerpreparationfailure_private_state(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerPreparationFailure: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeOwnerPreparationFailure
+
+    public static func lift(_ handle: UInt64) throws -> NativeOwnerPreparationFailure {
+        return NativeOwnerPreparationFailure(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeOwnerPreparationFailure) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerPreparationFailure {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeOwnerPreparationFailure, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerPreparationFailure_lift(_ handle: UInt64) throws -> NativeOwnerPreparationFailure {
+    return try FfiConverterTypeNativeOwnerPreparationFailure.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerPreparationFailure_lower(_ value: NativeOwnerPreparationFailure) -> UInt64 {
+    return FfiConverterTypeNativeOwnerPreparationFailure.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Public preparation and the actual pinned compact status from one operation.
+ */
+public protocol NativeOwnerRecoveredProtocol: AnyObject, Sendable {
+    
+    /**
+     * Historical public proof, not current private-key possession or approval.
+     */
+    func preparation()  -> NativeOwnerPhonePreparation
+    
+    /**
+     * Actual historical pinned status, retained even when subsequent adoption failed.
+     */
+    func receipt()  -> NativeEnrollmentReceipt
+    
+}
+/**
+ * Public preparation and the actual pinned compact status from one operation.
+ */
+open class NativeOwnerRecovered: NativeOwnerRecoveredProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeownerrecovered(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeownerrecovered(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Historical public proof, not current private-key possession or approval.
+     */
+open func preparation() -> NativeOwnerPhonePreparation  {
+    return try!  FfiConverterTypeNativeOwnerPhonePreparation_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerrecovered_preparation(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Actual historical pinned status, retained even when subsequent adoption failed.
+     */
+open func receipt() -> NativeEnrollmentReceipt  {
+    return try!  FfiConverterTypeNativeEnrollmentReceipt_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerrecovered_receipt(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerRecovered: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeOwnerRecovered
+
+    public static func lift(_ handle: UInt64) throws -> NativeOwnerRecovered {
+        return NativeOwnerRecovered(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeOwnerRecovered) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerRecovered {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeOwnerRecovered, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerRecovered_lift(_ handle: UInt64) throws -> NativeOwnerRecovered {
+    return try FfiConverterTypeNativeOwnerRecovered.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerRecovered_lower(_ value: NativeOwnerRecovered) -> UInt64 {
+    return FfiConverterTypeNativeOwnerRecovered.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Original failure payload, with public facts only and no parent ownership.
+ */
+public protocol NativeOwnerRecoveryFailureProtocol: AnyObject, Sendable {
+    
+    /**
+     * Exact original family.
+     */
+    func kind()  -> NativeOwnerRecoveryFailureKind
+    
+    /**
+     * Original physical/handshake/wire/worker payload.
+     */
+    func native()  -> NativeEnrollmentFailure?
+    
+    /**
+     * Exact preparation failure, including actual publication/reconciliation payloads.
+     */
+    func preparation()  -> NativeOwnerPreparationFailure?
+    
+}
+/**
+ * Original failure payload, with public facts only and no parent ownership.
+ */
+open class NativeOwnerRecoveryFailure: NativeOwnerRecoveryFailureProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeownerrecoveryfailure(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeownerrecoveryfailure(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Exact original family.
+     */
+open func kind() -> NativeOwnerRecoveryFailureKind  {
+    return try!  FfiConverterTypeNativeOwnerRecoveryFailureKind_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerrecoveryfailure_kind(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original physical/handshake/wire/worker payload.
+     */
+open func native() -> NativeEnrollmentFailure?  {
+    return try!  FfiConverterOptionTypeNativeEnrollmentFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerrecoveryfailure_native(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Exact preparation failure, including actual publication/reconciliation payloads.
+     */
+open func preparation() -> NativeOwnerPreparationFailure?  {
+    return try!  FfiConverterOptionTypeNativeOwnerPreparationFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerrecoveryfailure_preparation(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerRecoveryFailure: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeOwnerRecoveryFailure
+
+    public static func lift(_ handle: UInt64) throws -> NativeOwnerRecoveryFailure {
+        return NativeOwnerRecoveryFailure(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeOwnerRecoveryFailure) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerRecoveryFailure {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeOwnerRecoveryFailure, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerRecoveryFailure_lift(_ handle: UInt64) throws -> NativeOwnerRecoveryFailure {
+    return try FfiConverterTypeNativeOwnerRecoveryFailure.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerRecoveryFailure_lower(_ value: NativeOwnerRecoveryFailure) -> UInt64 {
+    return FfiConverterTypeNativeOwnerRecoveryFailure.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Independent later failure; retaining it never erases the recovered receipt.
+ */
+public protocol NativeOwnerSettlementFailureProtocol: AnyObject, Sendable {
+    
+    /**
+     * Original Auth adoption failure and independent lineage fact.
+     */
+    func adoption()  -> NativeOwnerAdoptionFailure?
+    
+    /**
+     * Original terminal-record or bound-lineage correlation refusal.
+     */
+    func correlation()  -> NativeEnrollmentFailure?
+    
+    /**
+     * Original authenticated terminal cleanup's private failure.
+     */
+    func end()  -> NativePrivateStateFailure?
+    
+    /**
+     * Original family.
+     */
+    func kind()  -> NativeOwnerSettlementFailureKind
+    
+    /**
+     * Original preparation error, including current private-state refusal.
+     */
+    func preparation()  -> NativeOwnerPreparationFailure?
+    
+    /**
+     * The producer's nominal receipt retained beside its subsequent rejection.
+     */
+    func reportedAdoption()  -> NativeOwnerAdoption?
+    
+    /**
+     * Exact subsequent original/native saved-record refusal.
+     */
+    func selection()  -> NativeOwnerRecoveryFailure?
+    
+}
+/**
+ * Independent later failure; retaining it never erases the recovered receipt.
+ */
+open class NativeOwnerSettlementFailure: NativeOwnerSettlementFailureProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeownersettlementfailure(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeownersettlementfailure(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Original Auth adoption failure and independent lineage fact.
+     */
+open func adoption() -> NativeOwnerAdoptionFailure?  {
+    return try!  FfiConverterOptionTypeNativeOwnerAdoptionFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownersettlementfailure_adoption(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original terminal-record or bound-lineage correlation refusal.
+     */
+open func correlation() -> NativeEnrollmentFailure?  {
+    return try!  FfiConverterOptionTypeNativeEnrollmentFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownersettlementfailure_correlation(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original authenticated terminal cleanup's private failure.
+     */
+open func end() -> NativePrivateStateFailure?  {
+    return try!  FfiConverterOptionTypeNativePrivateStateFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownersettlementfailure_end(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original family.
+     */
+open func kind() -> NativeOwnerSettlementFailureKind  {
+    return try!  FfiConverterTypeNativeOwnerSettlementFailureKind_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownersettlementfailure_kind(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original preparation error, including current private-state refusal.
+     */
+open func preparation() -> NativeOwnerPreparationFailure?  {
+    return try!  FfiConverterOptionTypeNativeOwnerPreparationFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownersettlementfailure_preparation(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The producer's nominal receipt retained beside its subsequent rejection.
+     */
+open func reportedAdoption() -> NativeOwnerAdoption?  {
+    return try!  FfiConverterOptionTypeNativeOwnerAdoption.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownersettlementfailure_reported_adoption(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Exact subsequent original/native saved-record refusal.
+     */
+open func selection() -> NativeOwnerRecoveryFailure?  {
+    return try!  FfiConverterOptionTypeNativeOwnerRecoveryFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownersettlementfailure_selection(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerSettlementFailure: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeOwnerSettlementFailure
+
+    public static func lift(_ handle: UInt64) throws -> NativeOwnerSettlementFailure {
+        return NativeOwnerSettlementFailure(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeOwnerSettlementFailure) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerSettlementFailure {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeOwnerSettlementFailure, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerSettlementFailure_lift(_ handle: UInt64) throws -> NativeOwnerSettlementFailure {
+    return try FfiConverterTypeNativeOwnerSettlementFailure.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerSettlementFailure_lower(_ value: NativeOwnerSettlementFailure) -> UInt64 {
+    return FfiConverterTypeNativeOwnerSettlementFailure.lower(value)
+}
+
+
+
+
+
+
+/**
+ * One immutable original operation, including outer unconfirmed completion.
+ */
+public protocol NativeOwnerStatusProtocol: AnyObject, Sendable {
+    
+    /**
+     * Correlated local adoption receipt, not live product authority.
+     */
+    func adoption()  -> NativeOwnerAdoption?
+    
+    /**
+     * Whether the physical callback captured a completed aggregate.
+     */
+    func completionCaptured()  -> Bool
+    
+    /**
+     * Original successful purge, including when later credential removal failed.
+     */
+    func purge()  -> NativePurge?
+    
+    /**
+     * Original purge refusal, without a permission or deletion inference.
+     */
+    func purgeFailure()  -> NativeReadFailure?
+    
+    /**
+     * Actual pinned observation, independently of settlement success.
+     */
+    func recovered()  -> NativeOwnerRecovered?
+    
+    /**
+     * Original outer or captured recovery failure; no effects are inferred absent.
+     */
+    func recoveryFailure()  -> NativeOwnerRecoveryFailure?
+    
+    /**
+     * Exact later settlement refusal, independently of successful remote observation.
+     */
+    func settlementFailure()  -> NativeOwnerSettlementFailure?
+    
+    /**
+     * Actual successful historical settlement, absent for recovery-only or refusal.
+     */
+    func settlementKind()  -> NativeOwnerSettlementKind?
+    
+}
+/**
+ * One immutable original operation, including outer unconfirmed completion.
+ */
+open class NativeOwnerStatus: NativeOwnerStatusProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeownerstatus(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeownerstatus(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Correlated local adoption receipt, not live product authority.
+     */
+open func adoption() -> NativeOwnerAdoption?  {
+    return try!  FfiConverterOptionTypeNativeOwnerAdoption.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerstatus_adoption(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Whether the physical callback captured a completed aggregate.
+     */
+open func completionCaptured() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerstatus_completion_captured(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original successful purge, including when later credential removal failed.
+     */
+open func purge() -> NativePurge?  {
+    return try!  FfiConverterOptionTypeNativePurge.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerstatus_purge(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original purge refusal, without a permission or deletion inference.
+     */
+open func purgeFailure() -> NativeReadFailure?  {
+    return try!  FfiConverterOptionTypeNativeReadFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerstatus_purge_failure(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Actual pinned observation, independently of settlement success.
+     */
+open func recovered() -> NativeOwnerRecovered?  {
+    return try!  FfiConverterOptionTypeNativeOwnerRecovered.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerstatus_recovered(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original outer or captured recovery failure; no effects are inferred absent.
+     */
+open func recoveryFailure() -> NativeOwnerRecoveryFailure?  {
+    return try!  FfiConverterOptionTypeNativeOwnerRecoveryFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerstatus_recovery_failure(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Exact later settlement refusal, independently of successful remote observation.
+     */
+open func settlementFailure() -> NativeOwnerSettlementFailure?  {
+    return try!  FfiConverterOptionTypeNativeOwnerSettlementFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerstatus_settlement_failure(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Actual successful historical settlement, absent for recovery-only or refusal.
+     */
+open func settlementKind() -> NativeOwnerSettlementKind?  {
+    return try!  FfiConverterOptionTypeNativeOwnerSettlementKind.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeownerstatus_settlement_kind(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerStatus: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeOwnerStatus
+
+    public static func lift(_ handle: UInt64) throws -> NativeOwnerStatus {
+        return NativeOwnerStatus(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeOwnerStatus) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerStatus {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeOwnerStatus, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerStatus_lift(_ handle: UInt64) throws -> NativeOwnerStatus {
+    return try FfiConverterTypeNativeOwnerStatus.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerStatus_lower(_ value: NativeOwnerStatus) -> UInt64 {
+    return FfiConverterTypeNativeOwnerStatus.lower(value)
+}
+
+
+
+
+
+
+/**
  * Immutable private-state failure; expected effects are not flattened away.
  */
 public protocol NativePrivateStateFailureProtocol: AnyObject, Sendable {
@@ -2580,6 +4558,1057 @@ public func FfiConverterTypeNativePrivateStateFailure_lift(_ handle: UInt64) thr
 #endif
 public func FfiConverterTypeNativePrivateStateFailure_lower(_ value: NativePrivateStateFailure) -> UInt64 {
     return FfiConverterTypeNativePrivateStateFailure.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Original settlement retaining the native ticket permit until its final handle.
+ */
+public protocol NativeProductCompletionProtocol: AnyObject, Sendable {
+    
+    /**
+     * Original failure cause for unsent/uncertain variants.
+     */
+    func failure()  -> NativeProductFailure?
+    
+    /**
+     * Original native wire ID; never a new foreign correlation ID.
+     */
+    func id()  -> UInt64
+    
+    /**
+     * Original dispatch/result meaning.
+     */
+    func kind()  -> NativeProductCompletionKind
+    
+    /**
+     * Full canonical response including original payload/error/details/null meaning.
+     */
+    func responseJson() throws  -> String?
+    
+}
+/**
+ * Original settlement retaining the native ticket permit until its final handle.
+ */
+open class NativeProductCompletion: NativeProductCompletionProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeproductcompletion(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeproductcompletion(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Original failure cause for unsent/uncertain variants.
+     */
+open func failure() -> NativeProductFailure?  {
+    return try!  FfiConverterOptionTypeNativeProductFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductcompletion_failure(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original native wire ID; never a new foreign correlation ID.
+     */
+open func id() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductcompletion_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original dispatch/result meaning.
+     */
+open func kind() -> NativeProductCompletionKind  {
+    return try!  FfiConverterTypeNativeProductCompletionKind_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductcompletion_kind(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Full canonical response including original payload/error/details/null meaning.
+     */
+open func responseJson()throws  -> String?  {
+    return try  FfiConverterOptionString.lift(try rustCallWithError(FfiConverterTypeNativeProductCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductcompletion_response_json(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeProductCompletion: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeProductCompletion
+
+    public static func lift(_ handle: UInt64) throws -> NativeProductCompletion {
+        return NativeProductCompletion(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeProductCompletion) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeProductCompletion {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeProductCompletion, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductCompletion_lift(_ handle: UInt64) throws -> NativeProductCompletion {
+    return try FfiConverterTypeNativeProductCompletion.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductCompletion_lower(_ value: NativeProductCompletion) -> UInt64 {
+    return FfiConverterTypeNativeProductCompletion.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Immutable delivered batch retaining both native count and byte permits.
+ */
+public protocol NativeProductEventBatchProtocol: AnyObject, Sendable {
+    
+    /**
+     * Bounded canonical copies of original ordered frames. Copies are caller history;
+     * the batch retains its native permits until its last foreign handle release.
+     */
+    func framesJson() throws  -> [String]
+    
+}
+/**
+ * Immutable delivered batch retaining both native count and byte permits.
+ */
+open class NativeProductEventBatch: NativeProductEventBatchProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeproducteventbatch(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeproducteventbatch(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Bounded canonical copies of original ordered frames. Copies are caller history;
+     * the batch retains its native permits until its last foreign handle release.
+     */
+open func framesJson()throws  -> [String]  {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeNativeProductCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproducteventbatch_frames_json(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeProductEventBatch: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeProductEventBatch
+
+    public static func lift(_ handle: UInt64) throws -> NativeProductEventBatch {
+        return NativeProductEventBatch(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeProductEventBatch) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeProductEventBatch {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeProductEventBatch, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductEventBatch_lift(_ handle: UInt64) throws -> NativeProductEventBatch {
+    return try FfiConverterTypeNativeProductEventBatch.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductEventBatch_lower(_ value: NativeProductEventBatch) -> UInt64 {
+    return FfiConverterTypeNativeProductEventBatch.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Immutable original failure with its optional typed protocol payload.
+ */
+public protocol NativeProductFailureProtocol: AnyObject, Sendable {
+    
+    /**
+     * Exact reason when the original failure carried one; absent remains absent.
+     */
+    func closeReason()  -> NativeProductCloseReason?
+    
+    /**
+     * Original local failure family.
+     */
+    func kind()  -> NativeProductFailureKind
+    
+    /**
+     * The lifecycle class. A failure that is not a close has none.
+     */
+    func outcome()  -> NativeConnectionOutcome?
+    
+}
+/**
+ * Immutable original failure with its optional typed protocol payload.
+ */
+open class NativeProductFailure: NativeProductFailureProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeproductfailure(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeproductfailure(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Exact reason when the original failure carried one; absent remains absent.
+     */
+open func closeReason() -> NativeProductCloseReason?  {
+    return try!  FfiConverterOptionTypeNativeProductCloseReason.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductfailure_close_reason(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original local failure family.
+     */
+open func kind() -> NativeProductFailureKind  {
+    return try!  FfiConverterTypeNativeProductFailureKind_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductfailure_kind(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The lifecycle class. A failure that is not a close has none.
+     */
+open func outcome() -> NativeConnectionOutcome?  {
+    return try!  FfiConverterOptionTypeNativeConnectionOutcome.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductfailure_outcome(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeProductFailure: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeProductFailure
+
+    public static func lift(_ handle: UInt64) throws -> NativeProductFailure {
+        return NativeProductFailure(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeProductFailure) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeProductFailure {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeProductFailure, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductFailure_lift(_ handle: UInt64) throws -> NativeProductFailure {
+    return try FfiConverterTypeNativeProductFailure.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductFailure_lower(_ value: NativeProductFailure) -> UInt64 {
+    return FfiConverterTypeNativeProductFailure.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Actual immutable gateway Ready; its retained facts do not reopen admission.
+ */
+public protocol NativeProductReadyProtocol: AnyObject, Sendable {
+    
+    /**
+     * Original public issued credential identity, not a bearer.
+     */
+    func credentialId()  -> String
+    
+    /**
+     * Canonical full parsed Ready metadata, including original nullable expiry/grants.
+     */
+    func json() throws  -> String
+    
+    /**
+     * Actual advertised methods; no local policy list is substituted.
+     */
+    func methods()  -> [String]
+    
+    /**
+     * Actual protocol version.
+     */
+    func version()  -> UInt64
+    
+}
+/**
+ * Actual immutable gateway Ready; its retained facts do not reopen admission.
+ */
+open class NativeProductReady: NativeProductReadyProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeproductready(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeproductready(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Original public issued credential identity, not a bearer.
+     */
+open func credentialId() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductready_credential_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Canonical full parsed Ready metadata, including original nullable expiry/grants.
+     */
+open func json()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeNativeProductCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductready_json(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Actual advertised methods; no local policy list is substituted.
+     */
+open func methods() -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductready_methods(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Actual protocol version.
+     */
+open func version() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductready_version(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeProductReady: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeProductReady
+
+    public static func lift(_ handle: UInt64) throws -> NativeProductReady {
+        return NativeProductReady(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeProductReady) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeProductReady {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeProductReady, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductReady_lift(_ handle: UInt64) throws -> NativeProductReady {
+    return try FfiConverterTypeNativeProductReady.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductReady_lower(_ value: NativeProductReady) -> UInt64 {
+    return FfiConverterTypeNativeProductReady.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Escapable child handle with its independent physical owner, never its parent.
+ */
+public protocol NativeProductSessionProtocol: AnyObject, Sendable {
+    
+    /**
+     * Join physical ownership off-UI, retaining its original terminal failure.
+     */
+    func close() throws 
+    
+    /**
+     * Wait at most this relative duration on the native clock; zero takes queued
+     * events immediately. Core owns event delivery and terminal close decisions.
+     */
+    func events(timeoutMs: UInt64) throws  -> NativeProductEventBatch
+    
+    /**
+     * Original first terminal physical failure.
+     */
+    func failure()  -> NativeProductFailure?
+    
+    /**
+     * Historical actual Ready when captured, even after terminal close.
+     */
+    func ready()  -> NativeProductReady?
+    
+    /**
+     * Admit through core bounds, actual Ready.methods and native ID allocation.
+     */
+    func request(method: String, paramsJson: String) throws  -> NativeProductTicket
+    
+    /**
+     * Fence submission and interrupt I/O independently of a blocking waiter.
+     */
+    func requestClose() 
+    
+    /**
+     * Wait for actual opening independently of retained operations and submissions.
+     */
+    func waitReady() throws  -> NativeProductReady
+    
+}
+/**
+ * Escapable child handle with its independent physical owner, never its parent.
+ */
+open class NativeProductSession: NativeProductSessionProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeproductsession(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeproductsession(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Join physical ownership off-UI, retaining its original terminal failure.
+     */
+open func close()throws   {try rustCallWithError(FfiConverterTypeNativeProductCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductsession_close(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Wait at most this relative duration on the native clock; zero takes queued
+     * events immediately. Core owns event delivery and terminal close decisions.
+     */
+open func events(timeoutMs: UInt64)throws  -> NativeProductEventBatch  {
+    return try  FfiConverterTypeNativeProductEventBatch_lift(try rustCallWithError(FfiConverterTypeNativeProductCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductsession_events(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(timeoutMs),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original first terminal physical failure.
+     */
+open func failure() -> NativeProductFailure?  {
+    return try!  FfiConverterOptionTypeNativeProductFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductsession_failure(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Historical actual Ready when captured, even after terminal close.
+     */
+open func ready() -> NativeProductReady?  {
+    return try!  FfiConverterOptionTypeNativeProductReady.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductsession_ready(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Admit through core bounds, actual Ready.methods and native ID allocation.
+     */
+open func request(method: String, paramsJson: String)throws  -> NativeProductTicket  {
+    return try  FfiConverterTypeNativeProductTicket_lift(try rustCallWithError(FfiConverterTypeNativeProductCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductsession_request(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(method),
+        FfiConverterString.lower(paramsJson),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Fence submission and interrupt I/O independently of a blocking waiter.
+     */
+open func requestClose()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductsession_request_close(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Wait for actual opening independently of retained operations and submissions.
+     */
+open func waitReady()throws  -> NativeProductReady  {
+    return try  FfiConverterTypeNativeProductReady_lift(try rustCallWithError(FfiConverterTypeNativeProductCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductsession_wait_ready(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeProductSession: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeProductSession
+
+    public static func lift(_ handle: UInt64) throws -> NativeProductSession {
+        return NativeProductSession(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeProductSession) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeProductSession {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeProductSession, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductSession_lift(_ handle: UInt64) throws -> NativeProductSession {
+    return try FfiConverterTypeNativeProductSession.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductSession_lower(_ value: NativeProductSession) -> UInt64 {
+    return FfiConverterTypeNativeProductSession.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Original admitted ticket; dropping an observer does not cancel its worker.
+ */
+public protocol NativeProductTicketProtocol: AnyObject, Sendable {
+    
+    /**
+     * Original settlement if already captured.
+     */
+    func completion()  -> NativeProductCompletion?
+    
+    /**
+     * Native monotonic original wire ID.
+     */
+    func id()  -> UInt64
+    
+    /**
+     * Blocking settlement wait, run off-UI independently of submission/close.
+     */
+    func wait()  -> NativeProductCompletion
+    
+}
+/**
+ * Original admitted ticket; dropping an observer does not cancel its worker.
+ */
+open class NativeProductTicket: NativeProductTicketProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeproductticket(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeproductticket(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Original settlement if already captured.
+     */
+open func completion() -> NativeProductCompletion?  {
+    return try!  FfiConverterOptionTypeNativeProductCompletion.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductticket_completion(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Native monotonic original wire ID.
+     */
+open func id() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductticket_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Blocking settlement wait, run off-UI independently of submission/close.
+     */
+open func wait() -> NativeProductCompletion  {
+    return try!  FfiConverterTypeNativeProductCompletion_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeproductticket_wait(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeProductTicket: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeProductTicket
+
+    public static func lift(_ handle: UInt64) throws -> NativeProductTicket {
+        return NativeProductTicket(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeProductTicket) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeProductTicket {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeProductTicket, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductTicket_lift(_ handle: UInt64) throws -> NativeProductTicket {
+    return try FfiConverterTypeNativeProductTicket.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductTicket_lower(_ value: NativeProductTicket) -> UInt64 {
+    return FfiConverterTypeNativeProductTicket.lower(value)
 }
 
 
@@ -4298,9 +7327,24 @@ public protocol NativeSessionFailureProtocol: AnyObject, Sendable {
     func kind()  -> NativeSessionFailureKind
     
     /**
+     * Actual later selected-record refusal, separate from successful earlier status.
+     */
+    func ownerSelection()  -> NativeEnrollmentFailure?
+    
+    /**
+     * Entire owner recovery/settlement facts preserved when product selection refused.
+     */
+    func ownerStatus()  -> NativeStatus?
+    
+    /**
      * Original private-state failure.
      */
     func privateState()  -> NativePrivateStateFailure?
+    
+    /**
+     * Original product failure, including the original optional typed close reason.
+     */
+    func product()  -> NativeProductFailure?
     
     /**
      * OS ErrorKind for runtime diagnosis, not a policy selector.
@@ -4401,12 +7445,48 @@ open func kind() -> NativeSessionFailureKind  {
 }
     
     /**
+     * Actual later selected-record refusal, separate from successful earlier status.
+     */
+open func ownerSelection() -> NativeEnrollmentFailure?  {
+    return try!  FfiConverterOptionTypeNativeEnrollmentFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativesessionfailure_owner_selection(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Entire owner recovery/settlement facts preserved when product selection refused.
+     */
+open func ownerStatus() -> NativeStatus?  {
+    return try!  FfiConverterOptionTypeNativeStatus.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativesessionfailure_owner_status(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Original private-state failure.
      */
 open func privateState() -> NativePrivateStateFailure?  {
     return try!  FfiConverterOptionTypeNativePrivateStateFailure.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_nessa_device_client_fn_method_nativesessionfailure_private_state(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Original product failure, including the original optional typed close reason.
+     */
+open func product() -> NativeProductFailure?  {
+    return try!  FfiConverterOptionTypeNativeProductFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativesessionfailure_product(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -4488,6 +7568,12 @@ public protocol NativeStatusProtocol: AnyObject, Sendable {
      * Original outer or completed enrollment failure, without discarding purge.
      */
     func failure()  -> NativeEnrollmentFailure?
+    
+    /**
+     * Complete owner-specific observations and original independent local failures.
+     * Read-only scopes have no owner aggregate; ordinary failure() cannot flatten it.
+     */
+    func owner()  -> NativeOwnerStatus?
     
     /**
      * Original successful purge, independent of enrollment-removal acknowledgement.
@@ -4586,6 +7672,19 @@ open func failure() -> NativeEnrollmentFailure?  {
     return try!  FfiConverterOptionTypeNativeEnrollmentFailure.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_nessa_device_client_fn_method_nativestatus_failure(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Complete owner-specific observations and original independent local failures.
+     * Read-only scopes have no owner aggregate; ordinary failure() cannot flatten it.
+     */
+open func owner() -> NativeOwnerStatus?  {
+    return try!  FfiConverterOptionTypeNativeOwnerStatus.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativestatus_owner(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -5351,6 +8450,101 @@ public func FfiConverterTypeNativeCallError_lower(_ value: NativeCallError) -> R
 
 
 /**
+ * Client class of a close, projected from [`ConnectionOutcome`].
+ */
+
+public enum NativeConnectionOutcome: Equatable, Hashable {
+    
+    /**
+     * Same-named protocol class.
+     */
+    case retryable
+    /**
+     * Same-named protocol class.
+     */
+    case terminalRevoke
+    /**
+     * Same-named protocol class.
+     */
+    case terminalShutdown
+    /**
+     * Same-named protocol class.
+     */
+    case terminalProtocol
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeConnectionOutcome: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeConnectionOutcome: FfiConverterRustBuffer {
+    typealias SwiftType = NativeConnectionOutcome
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeConnectionOutcome {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .retryable
+        
+        case 2: return .terminalRevoke
+        
+        case 3: return .terminalShutdown
+        
+        case 4: return .terminalProtocol
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeConnectionOutcome, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .retryable:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .terminalRevoke:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .terminalShutdown:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .terminalProtocol:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeConnectionOutcome_lift(_ buf: RustBuffer) throws -> NativeConnectionOutcome {
+    return try FfiConverterTypeNativeConnectionOutcome.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeConnectionOutcome_lower(_ value: NativeConnectionOutcome) -> RustBuffer {
+    return FfiConverterTypeNativeConnectionOutcome.lower(value)
+}
+
+
+
+/**
  * Existing public consent classes, without manufacturing an enrollment grant.
  */
 
@@ -5368,6 +8562,10 @@ public enum NativeConsentClass: Equatable, Hashable {
      * A peer environment-serving identity.
      */
     case peerEnvironment
+    /**
+     * Explicit first-party owner phone consent.
+     */
+    case ownerPhoneReadWrite
 
 
 
@@ -5395,6 +8593,8 @@ public struct FfiConverterTypeNativeConsentClass: FfiConverterRustBuffer {
         
         case 3: return .peerEnvironment
         
+        case 4: return .ownerPhoneReadWrite
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -5413,6 +8613,10 @@ public struct FfiConverterTypeNativeConsentClass: FfiConverterRustBuffer {
         
         case .peerEnvironment:
             writeInt(&buf, Int32(3))
+        
+        
+        case .ownerPhoneReadWrite:
+            writeInt(&buf, Int32(4))
         
         }
     }
@@ -5946,6 +9150,807 @@ public func FfiConverterTypeNativeKeyPublication_lower(_ value: NativeKeyPublica
 
 
 /**
+ * Auth's finite first/second acknowledgement failure phase.
+ */
+
+public enum NativeOwnerAdoptionPhase: Equatable, Hashable {
+    
+    /**
+     * Validation/read refused before lineage acknowledgement.
+     */
+    case originalRead
+    /**
+     * Lineage acknowledgement did not complete.
+     */
+    case bindLineage
+    /**
+     * Lineage acknowledgement completed; enrollment acknowledgement refused.
+     */
+    case publishEnrollment
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeOwnerAdoptionPhase: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerAdoptionPhase: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerAdoptionPhase
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerAdoptionPhase {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .originalRead
+        
+        case 2: return .bindLineage
+        
+        case 3: return .publishEnrollment
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeOwnerAdoptionPhase, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .originalRead:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .bindLineage:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .publishEnrollment:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerAdoptionPhase_lift(_ buf: RustBuffer) throws -> NativeOwnerAdoptionPhase {
+    return try FfiConverterTypeNativeOwnerAdoptionPhase.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerAdoptionPhase_lower(_ value: NativeOwnerAdoptionPhase) -> RustBuffer {
+    return FfiConverterTypeNativeOwnerAdoptionPhase.lower(value)
+}
+
+
+
+/**
+ * Representation refusals; none authorizes preparation or changes a saved proof.
+ */
+
+public enum NativeOwnerArgumentFailure: Equatable, Hashable {
+    
+    /**
+     * Input exceeds the published protected response bound.
+     */
+    case tooLarge
+    /**
+     * Malformed, duplicate, over-budget or incompatible discovery JSON.
+     */
+    case json
+    /**
+     * Original UUID bytes have invalid width or value.
+     */
+    case requestId
+    /**
+     * Existing canonical conversion rejected an array width.
+     */
+    case length
+    /**
+     * Existing canonical conversion rejected a non-octet integer.
+     */
+    case octet
+    /**
+     * Existing canonical conversion rejected source identity/resource linkage.
+     */
+    case source
+    /**
+     * Existing canonical conversion rejected the numeric destination.
+     */
+    case endpoint
+    /**
+     * Existing canonical conversion rejected original correlation.
+     */
+    case original
+    /**
+     * Existing canonical conversion rejected complete consent correspondence.
+     */
+    case consent
+    /**
+     * A bounded public JSON copy exceeded its published limit.
+     */
+    case copyTooLarge
+    /**
+     * A public JSON copy could not represent its original value.
+     */
+    case copyInvalid
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeOwnerArgumentFailure: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerArgumentFailure: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerArgumentFailure
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerArgumentFailure {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .tooLarge
+        
+        case 2: return .json
+        
+        case 3: return .requestId
+        
+        case 4: return .length
+        
+        case 5: return .octet
+        
+        case 6: return .source
+        
+        case 7: return .endpoint
+        
+        case 8: return .original
+        
+        case 9: return .consent
+        
+        case 10: return .copyTooLarge
+        
+        case 11: return .copyInvalid
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeOwnerArgumentFailure, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .tooLarge:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .json:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .requestId:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .length:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .octet:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .source:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .endpoint:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .original:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .consent:
+            writeInt(&buf, Int32(9))
+        
+        
+        case .copyTooLarge:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .copyInvalid:
+            writeInt(&buf, Int32(11))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerArgumentFailure_lift(_ buf: RustBuffer) throws -> NativeOwnerArgumentFailure {
+    return try FfiConverterTypeNativeOwnerArgumentFailure.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerArgumentFailure_lower(_ value: NativeOwnerArgumentFailure) -> RustBuffer {
+    return FfiConverterTypeNativeOwnerArgumentFailure.lower(value)
+}
+
+
+
+/**
+ * Historical kind acknowledged by the local Auth owner.
+ */
+
+public enum NativeOwnerEnrollmentKind: Equatable, Hashable {
+    
+    /**
+     * Exact lineage without issued selectors.
+     */
+    case pending
+    /**
+     * Exact lineage and issued credential/receiver.
+     */
+    case issued
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeOwnerEnrollmentKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerEnrollmentKind: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerEnrollmentKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerEnrollmentKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .pending
+        
+        case 2: return .issued
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeOwnerEnrollmentKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .pending:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .issued:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerEnrollmentKind_lift(_ buf: RustBuffer) throws -> NativeOwnerEnrollmentKind {
+    return try FfiConverterTypeNativeOwnerEnrollmentKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerEnrollmentKind_lower(_ value: NativeOwnerEnrollmentKind) -> RustBuffer {
+    return FfiConverterTypeNativeOwnerEnrollmentKind.lower(value)
+}
+
+
+
+/**
+ * Foreign refusal keeps representation, parent lifecycle and preparation distinct.
+ */
+public 
+enum NativeOwnerPreparationCallError: Swift.Error, Foundation.LocalizedError {
+
+    
+    
+    /**
+     * Argument or bounded getter copy failed, without changing native facts.
+     */
+    case Argument(
+        /**
+         * Existing representation refusal.
+         */failure: NativeOwnerArgumentFailure
+    )
+    /**
+     * Original parent admission/lifecycle failure.
+     */
+    case Session(
+        /**
+         * Original typed payload.
+         */failure: NativeSessionFailure
+    )
+    /**
+     * Original preparation/publication refusal.
+     */
+    case Preparation(
+        /**
+         * Original typed payload.
+         */failure: NativeOwnerPreparationFailure
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension NativeOwnerPreparationCallError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerPreparationCallError: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerPreparationCallError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerPreparationCallError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Argument(
+            failure: try FfiConverterTypeNativeOwnerArgumentFailure.read(from: &buf)
+            )
+        case 2: return .Session(
+            failure: try FfiConverterTypeNativeSessionFailure.read(from: &buf)
+            )
+        case 3: return .Preparation(
+            failure: try FfiConverterTypeNativeOwnerPreparationFailure.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeOwnerPreparationCallError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Argument(failure):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeNativeOwnerArgumentFailure.write(failure, into: &buf)
+            
+        
+        case let .Session(failure):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeNativeSessionFailure.write(failure, into: &buf)
+            
+        
+        case let .Preparation(failure):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeNativeOwnerPreparationFailure.write(failure, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerPreparationCallError_lift(_ buf: RustBuffer) throws -> NativeOwnerPreparationCallError {
+    return try FfiConverterTypeNativeOwnerPreparationCallError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerPreparationCallError_lower(_ value: NativeOwnerPreparationCallError) -> RustBuffer {
+    return FfiConverterTypeNativeOwnerPreparationCallError.lower(value)
+}
+
+
+/**
+ * Existing canonical original preparation refusal family.
+ */
+
+public enum NativeOwnerPreparationFailureKind: Equatable, Hashable {
+    
+    /**
+     * Existing crypto owner refused.
+     */
+    case crypto
+    /**
+     * Original private publication/read refused.
+     */
+    case `private`
+    /**
+     * Existing reservation has no native original history.
+     */
+    case missing
+    /**
+     * Original was reserved but no seed was durably prepared.
+     */
+    case incomplete
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeOwnerPreparationFailureKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerPreparationFailureKind: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerPreparationFailureKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerPreparationFailureKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .crypto
+        
+        case 2: return .`private`
+        
+        case 3: return .missing
+        
+        case 4: return .incomplete
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeOwnerPreparationFailureKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .crypto:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .`private`:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .missing:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .incomplete:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerPreparationFailureKind_lift(_ buf: RustBuffer) throws -> NativeOwnerPreparationFailureKind {
+    return try FfiConverterTypeNativeOwnerPreparationFailureKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerPreparationFailureKind_lower(_ value: NativeOwnerPreparationFailureKind) -> RustBuffer {
+    return FfiConverterTypeNativeOwnerPreparationFailureKind.lower(value)
+}
+
+
+
+/**
+ * Original recovery refusal family; it does not establish absence of effects.
+ */
+
+public enum NativeOwnerRecoveryFailureKind: Equatable, Hashable {
+    
+    /**
+     * Canonical preparation or private acknowledgement refused.
+     */
+    case preparation
+    /**
+     * Physical admission, TLS, compact exchange or worker refused.
+     */
+    case native
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeOwnerRecoveryFailureKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerRecoveryFailureKind: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerRecoveryFailureKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerRecoveryFailureKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .preparation
+        
+        case 2: return .native
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeOwnerRecoveryFailureKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .preparation:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .native:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerRecoveryFailureKind_lift(_ buf: RustBuffer) throws -> NativeOwnerRecoveryFailureKind {
+    return try FfiConverterTypeNativeOwnerRecoveryFailureKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerRecoveryFailureKind_lower(_ value: NativeOwnerRecoveryFailureKind) -> RustBuffer {
+    return FfiConverterTypeNativeOwnerRecoveryFailureKind.lower(value)
+}
+
+
+
+/**
+ * A local settlement/selection failure preserves its own exact owner family.
+ */
+
+public enum NativeOwnerSettlementFailureKind: Equatable, Hashable {
+    
+    /**
+     * Restored current original refused before settlement.
+     */
+    case preparation
+    /**
+     * Actual Auth adoption refused.
+     */
+    case adoption
+    /**
+     * Reported success contradicted actual receipt or saved selection.
+     */
+    case savedRecord
+    /**
+     * Exact terminal private removal refused.
+     */
+    case end
+    /**
+     * Current terminal record contradicted the original observation.
+     */
+    case terminalRecord
+    /**
+     * Current bound lineage contradicted the owned recovery.
+     */
+    case correlation
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeOwnerSettlementFailureKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerSettlementFailureKind: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerSettlementFailureKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerSettlementFailureKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .preparation
+        
+        case 2: return .adoption
+        
+        case 3: return .savedRecord
+        
+        case 4: return .end
+        
+        case 5: return .terminalRecord
+        
+        case 6: return .correlation
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeOwnerSettlementFailureKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .preparation:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .adoption:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .savedRecord:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .end:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .terminalRecord:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .correlation:
+            writeInt(&buf, Int32(6))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerSettlementFailureKind_lift(_ buf: RustBuffer) throws -> NativeOwnerSettlementFailureKind {
+    return try FfiConverterTypeNativeOwnerSettlementFailureKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerSettlementFailureKind_lower(_ value: NativeOwnerSettlementFailureKind) -> RustBuffer {
+    return FfiConverterTypeNativeOwnerSettlementFailureKind.lower(value)
+}
+
+
+
+/**
+ * Historical completed settlement kind, never a current permission flag.
+ */
+
+public enum NativeOwnerSettlementKind: Equatable, Hashable {
+    
+    /**
+     * Exact local enrollment acknowledged and correlated to actual saved data.
+     */
+    case adopted
+    /**
+     * Exact authenticated terminal enrollment ended.
+     */
+    case ended
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeOwnerSettlementKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeOwnerSettlementKind: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerSettlementKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeOwnerSettlementKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .adopted
+        
+        case 2: return .ended
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeOwnerSettlementKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .adopted:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .ended:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerSettlementKind_lift(_ buf: RustBuffer) throws -> NativeOwnerSettlementKind {
+    return try FfiConverterTypeNativeOwnerSettlementKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeOwnerSettlementKind_lower(_ value: NativeOwnerSettlementKind) -> RustBuffer {
+    return FfiConverterTypeNativeOwnerSettlementKind.lower(value)
+}
+
+
+
+/**
  * Existing core enum values, translated by an exhaustive From implementation.
  */
 
@@ -6226,6 +10231,565 @@ public func FfiConverterTypeNativePrivateStateKind_lower(_ value: NativePrivateS
 
 
 /**
+ * Foreign product call refusal, carrying its original immutable typed cause.
+ */
+public 
+enum NativeProductCallError: Swift.Error, Foundation.LocalizedError {
+
+    
+    
+    /**
+     * Original product failure.
+     */
+    case Product(
+        /**
+         * Retained typed cause; a gateway error Response is not this variant.
+         */failure: NativeProductFailure
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension NativeProductCallError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeProductCallError: FfiConverterRustBuffer {
+    typealias SwiftType = NativeProductCallError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeProductCallError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Product(
+            failure: try FfiConverterTypeNativeProductFailure.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeProductCallError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Product(failure):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeNativeProductFailure.write(failure, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductCallError_lift(_ buf: RustBuffer) throws -> NativeProductCallError {
+    return try FfiConverterTypeNativeProductCallError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductCallError_lower(_ value: NativeProductCallError) -> RustBuffer {
+    return FfiConverterTypeNativeProductCallError.lower(value)
+}
+
+
+/**
+ * Original terminal close reason from the protocol owner.
+ */
+
+public enum NativeProductCloseReason: Equatable, Hashable {
+    
+    /**
+     * Same-named protocol reason.
+     */
+    case authenticationFailed
+    /**
+     * Same-named protocol reason.
+     */
+    case credentialRevoked
+    /**
+     * Same-named protocol reason.
+     */
+    case credentialExpired
+    /**
+     * Same-named protocol reason.
+     */
+    case authorizationLost
+    /**
+     * Same-named protocol reason.
+     */
+    case protocolIncompatible
+    /**
+     * Same-named protocol reason.
+     */
+    case handshakeTimeout
+    /**
+     * Same-named protocol reason.
+     */
+    case temporaryUnavailable
+    /**
+     * Same-named protocol reason.
+     */
+    case gatewayRestarting
+    /**
+     * Same-named protocol reason.
+     */
+    case gatewayOverloaded
+    /**
+     * Same-named protocol reason.
+     */
+    case serverShutdown
+    /**
+     * Same-named protocol reason.
+     */
+    case transportInterrupted
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeProductCloseReason: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeProductCloseReason: FfiConverterRustBuffer {
+    typealias SwiftType = NativeProductCloseReason
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeProductCloseReason {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .authenticationFailed
+        
+        case 2: return .credentialRevoked
+        
+        case 3: return .credentialExpired
+        
+        case 4: return .authorizationLost
+        
+        case 5: return .protocolIncompatible
+        
+        case 6: return .handshakeTimeout
+        
+        case 7: return .temporaryUnavailable
+        
+        case 8: return .gatewayRestarting
+        
+        case 9: return .gatewayOverloaded
+        
+        case 10: return .serverShutdown
+        
+        case 11: return .transportInterrupted
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeProductCloseReason, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .authenticationFailed:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .credentialRevoked:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .credentialExpired:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .authorizationLost:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .protocolIncompatible:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .handshakeTimeout:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .temporaryUnavailable:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .gatewayRestarting:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .gatewayOverloaded:
+            writeInt(&buf, Int32(9))
+        
+        
+        case .serverShutdown:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .transportInterrupted:
+            writeInt(&buf, Int32(11))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductCloseReason_lift(_ buf: RustBuffer) throws -> NativeProductCloseReason {
+    return try FfiConverterTypeNativeProductCloseReason.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductCloseReason_lower(_ value: NativeProductCloseReason) -> RustBuffer {
+    return FfiConverterTypeNativeProductCloseReason.lower(value)
+}
+
+
+
+/**
+ * Physical dispatch stage retained independently of success/error response.
+ */
+
+public enum NativeProductCompletionKind: Equatable, Hashable {
+    
+    /**
+     * Original correlated success or gateway error frame.
+     */
+    case response
+    /**
+     * The worker proved dispatch was not recorded.
+     */
+    case notDispatched
+    /**
+     * Dispatch was recorded; no correlated result was captured.
+     */
+    case uncertain
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeProductCompletionKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeProductCompletionKind: FfiConverterRustBuffer {
+    typealias SwiftType = NativeProductCompletionKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeProductCompletionKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .response
+        
+        case 2: return .notDispatched
+        
+        case 3: return .uncertain
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeProductCompletionKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .response:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .notDispatched:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .uncertain:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductCompletionKind_lift(_ buf: RustBuffer) throws -> NativeProductCompletionKind {
+    return try FfiConverterTypeNativeProductCompletionKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductCompletionKind_lower(_ value: NativeProductCompletionKind) -> RustBuffer {
+    return FfiConverterTypeNativeProductCompletionKind.lower(value)
+}
+
+
+
+/**
+ * Original local product failure variant, distinct from a gateway Response.
+ */
+
+public enum NativeProductFailureKind: Equatable, Hashable {
+    
+    /**
+     * Same-named core failure.
+     */
+    case invalidLimits
+    /**
+     * Same-named core failure.
+     */
+    case invalidRequest
+    /**
+     * Same-named core failure.
+     */
+    case unadvertisedMethod
+    /**
+     * Same-named core failure.
+     */
+    case capacity
+    /**
+     * Same-named core failure.
+     */
+    case requestTooLarge
+    /**
+     * Same-named core failure.
+     */
+    case responseTooLarge
+    /**
+     * Same-named core failure.
+     */
+    case timedOut
+    /**
+     * Same-named core failure.
+     */
+    case cancelled
+    /**
+     * Same-named core failure.
+     */
+    case transport
+    /**
+     * Original optional close reason is retained separately.
+     */
+    case closed
+    /**
+     * Same-named core failure.
+     */
+    case nativeHandshake
+    /**
+     * Same-named core failure.
+     */
+    case productRefused
+    /**
+     * Original close reason is retained separately.
+     */
+    case authentication
+    /**
+     * Same-named core failure.
+     */
+    case `protocol`
+    /**
+     * Same-named core failure.
+     */
+    case correlation
+    /**
+     * Same-named core failure.
+     */
+    case workerPanicked
+    /**
+     * Same-named core failure.
+     */
+    case notReady
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeProductFailureKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeProductFailureKind: FfiConverterRustBuffer {
+    typealias SwiftType = NativeProductFailureKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeProductFailureKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .invalidLimits
+        
+        case 2: return .invalidRequest
+        
+        case 3: return .unadvertisedMethod
+        
+        case 4: return .capacity
+        
+        case 5: return .requestTooLarge
+        
+        case 6: return .responseTooLarge
+        
+        case 7: return .timedOut
+        
+        case 8: return .cancelled
+        
+        case 9: return .transport
+        
+        case 10: return .closed
+        
+        case 11: return .nativeHandshake
+        
+        case 12: return .productRefused
+        
+        case 13: return .authentication
+        
+        case 14: return .`protocol`
+        
+        case 15: return .correlation
+        
+        case 16: return .workerPanicked
+        
+        case 17: return .notReady
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeProductFailureKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .invalidLimits:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .invalidRequest:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .unadvertisedMethod:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .capacity:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .requestTooLarge:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .responseTooLarge:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .timedOut:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .cancelled:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .transport:
+            writeInt(&buf, Int32(9))
+        
+        
+        case .closed:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .nativeHandshake:
+            writeInt(&buf, Int32(11))
+        
+        
+        case .productRefused:
+            writeInt(&buf, Int32(12))
+        
+        
+        case .authentication:
+            writeInt(&buf, Int32(13))
+        
+        
+        case .`protocol`:
+            writeInt(&buf, Int32(14))
+        
+        
+        case .correlation:
+            writeInt(&buf, Int32(15))
+        
+        
+        case .workerPanicked:
+            writeInt(&buf, Int32(16))
+        
+        
+        case .notReady:
+            writeInt(&buf, Int32(17))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductFailureKind_lift(_ buf: RustBuffer) throws -> NativeProductFailureKind {
+    return try FfiConverterTypeNativeProductFailureKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeProductFailureKind_lower(_ value: NativeProductFailureKind) -> RustBuffer {
+    return FfiConverterTypeNativeProductFailureKind.lower(value)
+}
+
+
+
+/**
  * Existing core enum values, translated by an exhaustive From implementation.
  */
 
@@ -6462,6 +11026,10 @@ public enum NativeReadFailure: Equatable, Hashable {
     /**
      * Existing same-named core variant.
      */
+    case away
+    /**
+     * Existing same-named core variant.
+     */
     case resetRequired
     /**
      * Existing same-named core variant.
@@ -6487,6 +11055,14 @@ public enum NativeReadFailure: Equatable, Hashable {
      * Existing same-named core variant.
      */
     case stopped
+    /**
+     * Existing same-named core variant.
+     */
+    case cursorAhead
+    /**
+     * Existing same-named core variant.
+     */
+    case subscriptionCapacity
 
 
 
@@ -6512,19 +11088,25 @@ public struct FfiConverterTypeNativeReadFailure: FfiConverterRustBuffer {
         
         case 2: return .unreachable
         
-        case 3: return .resetRequired
+        case 3: return .away
         
-        case 4: return .`protocol`
+        case 4: return .resetRequired
         
-        case 5: return .cache
+        case 5: return .`protocol`
         
-        case 6: return .cacheUncertain
+        case 6: return .cache
         
-        case 7: return .cacheDamaged
+        case 7: return .cacheUncertain
         
-        case 8: return .quota
+        case 8: return .cacheDamaged
         
-        case 9: return .stopped
+        case 9: return .quota
+        
+        case 10: return .stopped
+        
+        case 11: return .cursorAhead
+        
+        case 12: return .subscriptionCapacity
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -6542,32 +11124,44 @@ public struct FfiConverterTypeNativeReadFailure: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
         
         
-        case .resetRequired:
+        case .away:
             writeInt(&buf, Int32(3))
         
         
-        case .`protocol`:
+        case .resetRequired:
             writeInt(&buf, Int32(4))
         
         
-        case .cache:
+        case .`protocol`:
             writeInt(&buf, Int32(5))
         
         
-        case .cacheUncertain:
+        case .cache:
             writeInt(&buf, Int32(6))
         
         
-        case .cacheDamaged:
+        case .cacheUncertain:
             writeInt(&buf, Int32(7))
         
         
-        case .quota:
+        case .cacheDamaged:
             writeInt(&buf, Int32(8))
         
         
-        case .stopped:
+        case .quota:
             writeInt(&buf, Int32(9))
+        
+        
+        case .stopped:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .cursorAhead:
+            writeInt(&buf, Int32(11))
+        
+        
+        case .subscriptionCapacity:
+            writeInt(&buf, Int32(12))
         
         }
     }
@@ -6632,6 +11226,14 @@ public enum NativeSessionFailureKind: Equatable, Hashable {
      * Stop preceded status dispatch.
      */
     case stopped
+    /**
+     * Protected product opening or physical drain failed.
+     */
+    case product
+    /**
+     * Original recovery or later actual owner selection refused.
+     */
+    case owner
 
 
 
@@ -6670,6 +11272,10 @@ public struct FfiConverterTypeNativeSessionFailureKind: FfiConverterRustBuffer {
         case 8: return .noCredential
         
         case 9: return .stopped
+        
+        case 10: return .product
+        
+        case 11: return .owner
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -6713,6 +11319,14 @@ public struct FfiConverterTypeNativeSessionFailureKind: FfiConverterRustBuffer {
         
         case .stopped:
             writeInt(&buf, Int32(9))
+        
+        
+        case .product:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .owner:
+            writeInt(&buf, Int32(11))
         
         }
     }
@@ -7536,6 +12150,174 @@ fileprivate struct FfiConverterOptionTypeNativeLocalIssuedEnrollment: FfiConvert
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeNativeOwnerAdoption: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerAdoption?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeOwnerAdoption.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeOwnerAdoption.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativeOwnerAdoptionFailure: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerAdoptionFailure?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeOwnerAdoptionFailure.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeOwnerAdoptionFailure.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativeOwnerPreparationFailure: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerPreparationFailure?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeOwnerPreparationFailure.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeOwnerPreparationFailure.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativeOwnerRecovered: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerRecovered?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeOwnerRecovered.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeOwnerRecovered.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativeOwnerRecoveryFailure: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerRecoveryFailure?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeOwnerRecoveryFailure.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeOwnerRecoveryFailure.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativeOwnerSettlementFailure: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerSettlementFailure?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeOwnerSettlementFailure.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeOwnerSettlementFailure.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativeOwnerStatus: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerStatus?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeOwnerStatus.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeOwnerStatus.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeNativePrivateStateFailure: FfiConverterRustBuffer {
     typealias SwiftType = NativePrivateStateFailure?
 
@@ -7552,6 +12334,102 @@ fileprivate struct FfiConverterOptionTypeNativePrivateStateFailure: FfiConverter
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeNativePrivateStateFailure.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativeProductCompletion: FfiConverterRustBuffer {
+    typealias SwiftType = NativeProductCompletion?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeProductCompletion.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeProductCompletion.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativeProductFailure: FfiConverterRustBuffer {
+    typealias SwiftType = NativeProductFailure?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeProductFailure.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeProductFailure.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativeProductReady: FfiConverterRustBuffer {
+    typealias SwiftType = NativeProductReady?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeProductReady.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeProductReady.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativePublicIntent: FfiConverterRustBuffer {
+    typealias SwiftType = NativePublicIntent?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativePublicIntent.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativePublicIntent.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -7656,6 +12534,30 @@ fileprivate struct FfiConverterOptionTypeNativeScope: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeNativeSessionFailure: FfiConverterRustBuffer {
+    typealias SwiftType = NativeSessionFailure?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeSessionFailure.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeSessionFailure.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeNativeStatus: FfiConverterRustBuffer {
     typealias SwiftType = NativeStatus?
 
@@ -7752,6 +12654,30 @@ fileprivate struct FfiConverterOptionTypeNativeAttemptState: FfiConverterRustBuf
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeNativeConnectionOutcome: FfiConverterRustBuffer {
+    typealias SwiftType = NativeConnectionOutcome?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeConnectionOutcome.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeConnectionOutcome.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeNativeCryptoFailure: FfiConverterRustBuffer {
     typealias SwiftType = NativeCryptoFailure?
 
@@ -7800,6 +12726,30 @@ fileprivate struct FfiConverterOptionTypeNativeKeyPublication: FfiConverterRustB
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeNativeOwnerSettlementKind: FfiConverterRustBuffer {
+    typealias SwiftType = NativeOwnerSettlementKind?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeOwnerSettlementKind.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeOwnerSettlementKind.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeNativePairingFailure: FfiConverterRustBuffer {
     typealias SwiftType = NativePairingFailure?
 
@@ -7816,6 +12766,30 @@ fileprivate struct FfiConverterOptionTypeNativePairingFailure: FfiConverterRustB
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeNativePairingFailure.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativeProductCloseReason: FfiConverterRustBuffer {
+    typealias SwiftType = NativeProductCloseReason?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeProductCloseReason.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeProductCloseReason.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -8033,7 +13007,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nessa_device_client_checksum_method_nativesessionfailure_kind() != 38625) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nessa_device_client_checksum_method_nativesessionfailure_owner_selection() != 11389) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativesessionfailure_owner_status() != 7674) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nessa_device_client_checksum_method_nativesessionfailure_private_state() != 54943) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativesessionfailure_product() != 18394) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativesessionfailure_runtime_diagnostic() != 14476) {
@@ -8043,6 +13026,171 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativewirefailure_kind() != 49810) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerphonepreparation_device_key() != 58351) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerphonepreparation_digest() != 1180) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerphonepreparation_original_json() != 2338) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerphonepreparation_request_id() != 51748) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerphonepreparation_signature() != 63995) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerpreparationfailure_crypto() != 62723) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerpreparationfailure_kind() != 59773) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerpreparationfailure_private_state() != 36085) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeowneradoption_kind() != 34021) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeowneradoption_public_intent() != 49856) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeowneradoptionfailure_acknowledged_lineage() != 53230) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeowneradoptionfailure_phase() != 29006) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeowneradoptionfailure_private_state() != 11807) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerrecovered_preparation() != 4354) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerrecovered_receipt() != 2952) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerrecoveryfailure_kind() != 23575) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerrecoveryfailure_native() != 62097) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerrecoveryfailure_preparation() != 36980) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownersettlementfailure_adoption() != 29111) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownersettlementfailure_correlation() != 38426) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownersettlementfailure_end() != 54477) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownersettlementfailure_kind() != 35177) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownersettlementfailure_preparation() != 47000) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownersettlementfailure_reported_adoption() != 50699) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownersettlementfailure_selection() != 42359) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerstatus_adoption() != 32443) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerstatus_completion_captured() != 50248) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerstatus_purge() != 24610) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerstatus_purge_failure() != 59100) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerstatus_recovered() != 59673) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerstatus_recovery_failure() != 21883) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerstatus_settlement_failure() != 11239) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeownerstatus_settlement_kind() != 13365) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductcompletion_failure() != 41498) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductcompletion_id() != 469) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductcompletion_kind() != 34650) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductcompletion_response_json() != 4557) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproducteventbatch_frames_json() != 52688) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductfailure_close_reason() != 31884) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductfailure_kind() != 61553) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductfailure_outcome() != 59730) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductready_credential_id() != 62732) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductready_json() != 25918) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductready_methods() != 30148) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductready_version() != 15790) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductsession_close() != 5766) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductsession_events() != 62963) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductsession_failure() != 19116) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductsession_ready() != 44763) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductsession_request() != 14685) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductsession_request_close() != 57312) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductsession_wait_ready() != 54865) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductticket_completion() != 7984) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductticket_id() != 41325) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeproductticket_wait() != 17840) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativecatalogueentry_agent() != 63226) {
@@ -8096,25 +13244,49 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nessa_device_client_checksum_method_nativecataloguepage_scope() != 14018) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nessa_device_client_checksum_method_nativecloseobservation_failure() != 2017) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativecloseobservation_released() != 48671) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_catalogue_page() != 58619) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_close() != 33667) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_close_observed() != 26970) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_enroll() != 10563) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_follow() != 49578) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_local_enrollment() != 22862) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_open_product() != 35850) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_prepare_owner_original() != 63990) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_purge_receipt() != 16920) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_refresh() != 8657) {
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_recover_owner_original() != 54270) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_refresh() != 11534) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_request_close() != 27981) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_restore_owner_original() != 61506) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_retry() != 56394) {
@@ -8166,6 +13338,27 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativeentrykey_id() != 47163) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativefollow_failure() != 12886) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativefollow_incarnation() != 19998) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativefollow_initial() != 53652) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativefollow_position() != 20832) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativefollow_recheck() != 20068) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativefollow_selection_failure() != 21177) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativefollow_view_json() != 17148) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativelocalenrollment_device_key() != 55450) {
@@ -8265,6 +13458,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativestatus_failure() != 29424) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativestatus_owner() != 2880) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativestatus_purge() != 43497) {

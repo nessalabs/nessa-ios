@@ -155,7 +155,8 @@ private func intent(
 @Test func recoveryDoesNotSendWhenTheReceiptIsAbsent() async throws {
   let store = MemoryOutboxStore()
   let gateway = ScriptedGateway(
-    store: store, sendAnswers: [.lost], lookupAnswers: [.notFound, .notFound])
+    store: store, sendAnswers: [.lost],
+    lookupAnswers: Array(repeating: .notFound, count: phoneForegroundSends + 1))
   let outbox = PhoneOutbox(store: store, gateway: gateway)
   _ = try await outbox.hold(intent())
   _ = try await outbox.send("11111111-1111-4111-8111-111111111111")
@@ -170,8 +171,9 @@ private func intent(
 @Test func anExplicitRetryLooksUpBeforeItSends() async throws {
   let store = MemoryOutboxStore()
   let gateway = ScriptedGateway(
-    store: store, sendAnswers: [.lost, .receipt(.queued)],
-    lookupAnswers: [.notFound, .notFound])
+    store: store,
+    sendAnswers: Array(repeating: .lost, count: phoneForegroundSends) + [.receipt(.queued)],
+    lookupAnswers: Array(repeating: .notFound, count: phoneForegroundSends + 1))
   let outbox = PhoneOutbox(store: store, gateway: gateway)
   _ = try await outbox.hold(intent())
   _ = try await outbox.send("11111111-1111-4111-8111-111111111111")
@@ -243,7 +245,8 @@ private func intent(
 @Test func theFileOutboxSurvivesReopenWithoutSendingAgain() async throws {
   let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
   let gateway = ScriptedGateway(
-    store: MemoryOutboxStore(), sendAnswers: [.lost], lookupAnswers: [.notFound, .notFound])
+    store: MemoryOutboxStore(), sendAnswers: [.lost],
+    lookupAnswers: Array(repeating: .notFound, count: phoneForegroundSends + 1))
   let first = PhoneOutbox(store: PhoneOutboxFileStore(directory: directory), gateway: gateway)
   _ = try await first.hold(intent())
   _ = try await first.send("11111111-1111-4111-8111-111111111111")

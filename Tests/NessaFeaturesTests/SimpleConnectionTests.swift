@@ -113,6 +113,11 @@ private actor SimpleGateway: MessagingRepository, ConnectionLeasing, AgentDirect
   func answer(_ permission: NessaPermission, option: NessaPermission.Option, conversationID: String)
   {}
   func delete(_ conversationID: String) { deletions += 1 }
+  func listArchived() throws -> NessaConversationList {
+    try JSONDecoder().decode(
+      NessaConversationList.self, from: Data("{\"conversations\":[],\"complete\":true}".utf8))
+  }
+  func setArchived(_ archived: Bool, conversationID: String) {}
   func follow(_ id: String?, after: ConversationCursor?) -> AsyncThrowingStream<
     ConversationUpdate, Error
   > {

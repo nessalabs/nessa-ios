@@ -3,6 +3,10 @@ import SwiftUI
 
 struct MessagesInboxView: View {
   @ObservedObject var store: MessagesViewModel
+  /// The Mac this phone is paired with. Its chats come through the session;
+  /// the inbox only asks whether there is one, to offer pairing when not.
+  @ObservedObject var desktop: DesktopLinkViewModel
+  let onPair: () -> Void
   let onSettings: () -> Void
   let onOpen: (String) -> Void
   let onCompose: () -> Void
@@ -23,11 +27,14 @@ struct MessagesInboxView: View {
   @State private var leaving: Set<String> = []
   @State private var search = ""
   @State private var pinRefusals = 0
+  /// Reconnecting has taken long enough that the pill offers Try again.
+  @State private var reconnectSlow = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   var body: some View {
     List {
       Group {
-        if let status = store.phoneSyncError {
+        // Phone sync belongs to a gateway address; a paired Mac's link speaks in the pill.
+        if let status = store.phoneSyncError, desktop.linked == nil {
           Button(status, action: onSettings).font(MessagesStyle.caption)
             .foregroundStyle(MessagesStyle.secondary).padding(.vertical, NessaSpacing.md)
         }
@@ -41,9 +48,19 @@ struct MessagesInboxView: View {
             onArchive: { ask([$0], .archive) }, onDelete: { ask([$0], .delete) },
             enabled: !deleting, leaving: leaving)
         }
-        if !store.connected {
-          Button(store.reconnecting ? "Reconnecting…" : "Connect to Nessa", action: onSettings)
-            .font(MessagesStyle.body).padding(NessaSpacing.xl)
+        // While the link comes back the list keeps what it last showed; the pill at the
+        // bottom says what is happening.
+        if !store.connected, !store.reconnecting, desktop.linked == nil {
+          // Nothing to show yet: pairing with the Mac is the way in.
+          VStack(spacing: NessaSpacing.sm) {
+            Text("Pair with your Mac to see your chats here.")
+              .font(MessagesStyle.body).foregroundStyle(MessagesStyle.secondary)
+              .multilineTextAlignment(.center)
+            Button("Pair with your Mac", action: onPair).buttonStyle(.nessaPrimary)
+          }
+          .frame(maxWidth: .infinity).padding(NessaSpacing.xl)
+        } else if !store.connected {
+          EmptyView()
         } else if store.visibleConversations.isEmpty {
           InboxEmptyState(onCompose: onCompose)
             .disabled(
@@ -186,6 +203,8 @@ struct MessagesInboxView: View {
           onToggleArchived: {
             showingArchived.toggle()
             selected = []
+            // The gateway holds which chats are archived; read them each time they are shown.
+            if showingArchived { Task { await store.loadArchived() } }
           }, disabled: deleting
         )
       }
@@ -203,6 +222,10 @@ struct MessagesInboxView: View {
             .transition(.move(edge: .bottom).combined(with: .opacity))
           }
         } else {
+          VStack(spacing: NessaSpacing.xs) {
+          if waitingForLink {
+            reconnectPill.transition(.move(edge: .bottom).combined(with: .opacity))
+          }
           HStack(spacing: MessagesStyle.toolbarGap) {
             NessaSearchField(text: $search)
             Button(action: onCompose) {
@@ -221,9 +244,19 @@ struct MessagesInboxView: View {
                 || !store.pendingCreations.isEmpty
             )
             .accessibilityLabel(store.busy ? "Creating chat" : "New message")
+          }
           }.padding(.horizontal, MessagesStyle.horizontal).padding(
             .bottom, MessagesStyle.bottomInset)
+          .animation(reduceMotion ? nil : NessaMotion.enter, value: waitingForLink)
         }
+      }
+      // Try again appears only once a reconnect has run past a few seconds; a quick one
+      // shows the pill working and then just goes.
+      .task(id: waitingForLink && !store.busy) {
+        reconnectSlow = false
+        guard waitingForLink else { return }
+        try? await Task.sleep(for: .seconds(MessagesStyle.reconnectPatience))
+        if !Task.isCancelled, waitingForLink { reconnectSlow = true }
       }
       .onChange(of: store.connected) { _, _ in
         selected = []
@@ -231,8 +264,29 @@ struct MessagesInboxView: View {
         asking = nil
       }
       .refreshable {
+        if !store.connected, store.linkedDesktopID != nil {
+          await store.reconnectLinked()
+          return
+        }
+        guard store.connected || desktop.linked == nil else { return }
+        if showingArchived {
+          await store.loadArchived()
+          return
+        }
         do { try await store.refreshList() } catch { store.error = error.localizedDescription }
       }
+  }
+  /// "Reconnecting…" while the link comes back; once it has run long, Try again.
+  private var reconnectPill: MessagesStatusPill {
+    guard reconnectSlow else { return MessagesStatusPill("Reconnecting…", working: true) }
+    let store = store
+    let retry: () -> Void = { Task { await store.reconnectLinked() } }
+    return MessagesStatusPill(
+      "Can't reach your Mac", working: false, action: (title: "Try again", perform: retry))
+  }
+  /// Paired with a Mac, or bringing a saved connection back, and not connected yet.
+  private var waitingForLink: Bool {
+    !store.connected && (store.reconnecting || desktop.linked != nil)
   }
   private var askingShown: Binding<Bool> {
     Binding(get: { asking != nil }, set: { if !$0 { asking = nil } })
@@ -274,7 +328,7 @@ struct MessagesInboxView: View {
       // list mid-close.
       changeLayout { leaving.formUnion(ids) }
       try? await Task.sleep(for: .seconds(MessagesStyle.rowSettle))
-      for id in ids { store.setArchived(archived, conversationID: id) }
+      for id in ids { await store.setArchived(archived, conversationID: id) }
       leaving.subtract(ids)
       fading.subtract(ids)
     }

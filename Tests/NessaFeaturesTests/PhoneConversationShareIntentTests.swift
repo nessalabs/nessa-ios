@@ -123,7 +123,7 @@ private func sharingIntent(
   func frame(_ conversation: String, _ request: String) throws -> Data {
     try JSONSerialization.data(withJSONObject: [
       "conversationId": conversation, "requestId": request,
-      "credentialId": "native-credential", "role": "read",
+      "credentialId": "native-credential", "capabilities": ["read"],
     ])
   }
   try validateGatewayWire(

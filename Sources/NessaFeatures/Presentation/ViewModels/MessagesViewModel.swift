@@ -38,7 +38,12 @@ public final class MessagesViewModel: ObservableObject {
   @Published public var pinnedChats: [String] = []
   @Published public var unreadChats: [String] = []
   @Published public var mutedChats: [String] = []
-  @Published public private(set) var archivedChats: [String] = []
+  /// The chats the gateway holds archived, read when the Archived list is shown. The
+  /// gateway decides which chats are archived; a new message there unarchives one, and the
+  /// inbox feed (which lists only unarchived chats) showing it again takes it off this list.
+  /// Their rows also stay in `conversations`, so opening and previewing work the same.
+  @Published public private(set) var archivedConversations: [NessaConversation] = []
+  public var archivedChats: [String] { archivedConversations.map(\.id) }
   public enum PreviewState: Equatable {
     case available(NessaConversationView)
     case loading, empty, unavailable
@@ -114,13 +119,23 @@ public final class MessagesViewModel: ObservableObject {
     let address: String
     let credential: String
     let instance: String
+    /// The paired Mac this profile reaches over its native link, with no
+    /// credential of its own; `nil` for a gateway address.
+    var linked: UUID? = nil
     static func == (lhs: Self, rhs: Self) -> Bool {
       lhs.address.utf8.elementsEqual(rhs.address.utf8)
         && lhs.credential.utf8.elementsEqual(rhs.credential.utf8)
         && lhs.instance.utf8.elementsEqual(rhs.instance.utf8)
+        && lhs.linked == rhs.linked
     }
   }
   private var profile: Profile?
+  /// The paired Mac the product session goes to, and how to open it; set by
+  /// `connectLinked` and read again by every reconnect.
+  private var linkedDesktop: LinkedDesktop?
+  private var linkedProducts: (any LinkedProductOpening)?
+  /// The paired Mac this connection reaches, if it is a linked one.
+  public var linkedDesktopID: UUID? { profile?.linked }
   private let phoneSync: (any PhoneSyncRunning)?
   private let phoneChat: PhoneProductChat?
   private let conversationSharing: PhoneConversationSharing?
@@ -505,14 +520,50 @@ public final class MessagesViewModel: ObservableObject {
     preferences.save(unreadChats, forKey: statusKey + ".unread")
     preferences.save(mutedChats, forKey: statusKey + ".muted")
   }
-  public func setArchived(_ archived: Bool, conversationID: String) {
-    guard conversations.contains(where: { $0.id == conversationID }) else { return }
-    archivedChats.removeAll { $0 == conversationID }
-    if archived {
-      archivedChats.append(conversationID)
-      if isPinned(conversationID) { togglePin(conversationID) }
+  /// Reads the gateway's archived chats for the Archived list.
+  public func loadArchived() async {
+    guard connected else { return }
+    let expected = generation
+    do {
+      let list = try await service.listArchived()
+      guard generation == expected else { return }
+      archivedConversations = list.conversations.filter {
+        !deletedIDs.contains($0.id) && !pendingDeletionIDs.contains($0.id)
+      }
+      let listed = Set(conversations.map(\.id))
+      let missing = archivedConversations.filter { !listed.contains($0.id) }
+      if !missing.isEmpty { conversations += missing }
+    } catch {
+      guard generation == expected else { return }
+      self.error = error.localizedDescription
     }
-    preferences.save(archivedChats, forKey: statusKey + ".archived")
+  }
+  /// Archives or unarchives a chat on the gateway, then moves its row between the lists.
+  /// The inbox feed and the next archived read agree once the gateway has applied it.
+  public func setArchived(_ archived: Bool, conversationID: String) async {
+    guard connected else {
+      error = NessaGatewayError.disconnected.localizedDescription
+      return
+    }
+    let expected = generation
+    do {
+      try await service.setArchived(archived, conversationID: conversationID)
+    } catch {
+      guard generation == expected else { return }
+      self.error = error.localizedDescription
+      return
+    }
+    guard generation == expected else { return }
+    if archived {
+      if let row = conversations.first(where: { $0.id == conversationID }),
+        !archivedConversations.contains(where: { $0.id == conversationID })
+      {
+        archivedConversations.insert(row, at: 0)
+      }
+      if isPinned(conversationID) { togglePin(conversationID) }
+    } else {
+      archivedConversations.removeAll { $0.id == conversationID }
+    }
   }
   public func deleteConversations(_ ids: Set<String>) async {
     let expectedGeneration = generation
@@ -653,8 +704,7 @@ public final class MessagesViewModel: ObservableObject {
     previewViews.removeValue(forKey: id)
     unreadChats.removeAll { identifiers.contains($0) }
     mutedChats.removeAll { identifiers.contains($0) }
-    archivedChats.removeAll { $0 == id }
-    preferences.save(archivedChats, forKey: statusKey + ".archived")
+    archivedConversations.removeAll { $0.id == id }
     saveStatus()
     for identifier in identifiers where isPinned(identifier) { togglePin(identifier) }
     conversations.removeAll { $0.id == id }
@@ -843,7 +893,7 @@ public final class MessagesViewModel: ObservableObject {
       pinnedChats = []
       unreadChats = []
       mutedChats = []
-      archivedChats = []
+      archivedConversations = []
       reactions = [:]
       replyTargets = [:]
       agentProfiles = []
@@ -937,10 +987,43 @@ public final class MessagesViewModel: ObservableObject {
   }
 
   public func savedCredential() -> String { credentials.load() ?? "" }
+  /// Connect to the paired Mac over its native link: the whole product
+  /// session, as the owner's phone, with no gateway address or credential.
+  func connectLinked(
+    _ desktop: LinkedDesktop, instance: String, products: any LinkedProductOpening
+  ) async {
+    linkedDesktop = desktop
+    linkedProducts = products
+    await connect(
+      Profile(address: desktop.address, credential: "", instance: instance, linked: desktop.id),
+      restoringSavedProfile: false, automatically: false)
+  }
+  /// Try the paired Mac again after its connection failed.
+  public func reconnectLinked() async {
+    guard let desktop = linkedDesktop, let products = linkedProducts, !connected else { return }
+    await connectLinked(desktop, instance: profile?.instance ?? "", products: products)
+  }
+  /// Close the linked connection and wait until its native session let go of
+  /// the Mac's directory, so that directory can be removed.
+  public func forgetLinked() async {
+    guard profile?.linked != nil else { return }
+    await manualDisconnect()
+    linkedDesktop = nil
+    linkedProducts = nil
+    try? await service.drainLinked()
+  }
   public func connect(
     address: String, credential: String, instance: String,
     restoringSavedProfile: Bool = false, automatically: Bool = false
   ) async {
+    await connect(
+      Profile(address: address, credential: credential, instance: instance),
+      restoringSavedProfile: restoringSavedProfile, automatically: automatically)
+  }
+  private func connect(
+    _ requested: Profile, restoringSavedProfile: Bool, automatically: Bool
+  ) async {
+    let (address, instance) = (requested.address, requested.instance)
     if automatically && !automaticConnectionEnabled {
       await restoreDisconnectedHistory()
       return
@@ -952,7 +1035,7 @@ public final class MessagesViewModel: ObservableObject {
     recoveryTask?.cancel()
     recoveryTask = nil
     reconnecting = false
-    var next = Profile(address: address, credential: credential, instance: instance)
+    var next = requested
     if profile != next {
       deliveryScopeRevision += 1
       acknowledgedCommands = []
@@ -994,7 +1077,7 @@ public final class MessagesViewModel: ObservableObject {
     pinnedChats = []
     unreadChats = []
     mutedChats = []
-    archivedChats = []
+    archivedConversations = []
     reactions = [:]
     replyTargets = [:]
     replyProjections = [:]
@@ -1241,9 +1324,7 @@ public final class MessagesViewModel: ObservableObject {
       return
     }
     guard let snapshots else { return }
-    let (lease, saved) = try await snapshots.prepare(
-      PhoneCacheScope(
-        address: profile.address, credential: profile.credential, instance: profile.instance))
+    let (lease, saved) = try await snapshots.prepare(cacheScope(profile))
     guard generation == expected, !Task.isCancelled else { throw CancellationError() }
     snapshotLease = lease
     if let saved {
@@ -1266,7 +1347,7 @@ public final class MessagesViewModel: ObservableObject {
     statusKey = "nessa.status." + scope
     unreadChats = preferences.strings(forKey: statusKey + ".unread") ?? []
     mutedChats = preferences.strings(forKey: statusKey + ".muted") ?? []
-    archivedChats = preferences.strings(forKey: statusKey + ".archived") ?? []
+    archivedConversations = []
     previewViews = [:]
     let savedPins = preferences.strings(forKey: pinKey) ?? []
     pinnedChats = NessaPinPolicy.normalize(savedPins)
@@ -1293,8 +1374,15 @@ public final class MessagesViewModel: ObservableObject {
     guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
     var receipt: GatewayConnectionLease?
     do {
-      receipt = try await service.connect(
-        address: profile.address, credential: profile.credential, instance: profile.instance)
+      if let linked = profile.linked {
+        guard let desktop = linkedDesktop, desktop.id == linked, let products = linkedProducts
+        else { throw NessaGatewayError.disconnected }
+        let exchange = try await products.open(desktop, instance: profile.instance)
+        receipt = try await service.connectLinked(exchange, scope: cacheScope(profile))
+      } else {
+        receipt = try await service.connect(
+          address: profile.address, credential: profile.credential, instance: profile.instance)
+      }
       guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
       acceptedLease = receipt
       let agents = try await service.agents()
@@ -1319,7 +1407,8 @@ public final class MessagesViewModel: ObservableObject {
       let lease = snapshotLease
       if let lease { await snapshots?.recordAgents(agents, lease: lease) }
       guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
-      if !nativeConfigured {
+      // A linked Mac has no credential of its own to keep.
+      if !nativeConfigured && profile.linked == nil {
         try credentials.save(profile.credential)
         preferences.save(
           ["address": profile.address, "instance": profile.instance],
@@ -1500,6 +1589,14 @@ public final class MessagesViewModel: ObservableObject {
       ? result.conversations.filter { !deletedIDs.contains($0.id) }
       : PhoneProductChat.visible(result, hiding: deletedIDs)
     visible += unlistedCreations.values
+    // The feed lists only unarchived chats: one it lists is no longer archived, and the
+    // archived rows read for the Archived list stay beside it.
+    if archivedConversations.contains(where: { observed.contains($0.id) }) {
+      archivedConversations.removeAll { observed.contains($0.id) }
+    }
+    visible += archivedConversations.filter { row in
+      !deletedIDs.contains(row.id) && !visible.contains { $0.id == row.id }
+    }
     if !unlistedCreations.isEmpty { visible.sort { $0.updatedAtMs > $1.updatedAtMs } }
     if conversations != visible { conversations = visible }
     if listComplete != result.complete { listComplete = result.complete }
@@ -1705,9 +1802,14 @@ public final class MessagesViewModel: ObservableObject {
       self.error = error.localizedDescription
     }
   }
+  /// Where this profile's saved chats and sends live. A linked Mac is named
+  /// by its pairing, so pairing again starts a fresh cache.
   private func cacheScope(_ profile: Profile) -> PhoneCacheScope {
     PhoneCacheScope(
-      address: profile.address, credential: profile.credential, instance: profile.instance)
+      address: profile.address,
+      credential: profile.linked.map { "linked-desktop:" + $0.uuidString.lowercased() }
+        ?? profile.credential,
+      instance: profile.instance)
   }
 
   private func noteRevokedDeliveries(_ current: [PhoneOutboxView]) {

@@ -39,6 +39,10 @@ private actor DeleteGateRepository: MessagingRepository {
     }
     try await repository.delete(id)
   }
+  func listArchived() async throws -> NessaConversationList { try await repository.listArchived() }
+  func setArchived(_ archived: Bool, conversationID: String) async throws {
+    try await repository.setArchived(archived, conversationID: conversationID)
+  }
   func waitForDelete() async {
     if deletion != nil { return }
     await withCheckedContinuation { waiter = $0 }

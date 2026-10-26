@@ -7,6 +7,11 @@ struct NessaConnectionView: View {
   @ObservedObject var store: MessagesViewModel
   @Binding var address: String
   let instance: String
+  @ObservedObject var desktop: DesktopLinkViewModel
+  /// Open pairing with a Mac by its code.
+  let onPair: () -> Void
+  /// Open the chats the linked Mac shares.
+  let onShowChats: () -> Void
   @State private var draftAddress = ""
   @State private var credential = ""
   /// The sheet's height fitted to what it holds, so no empty half sheet hangs under the action.
@@ -53,6 +58,7 @@ struct NessaConnectionView: View {
           .buttonStyle(.nessaPrimary).disabled(store.busy || credential.isEmpty)
           errorText
         }
+        if desktop.available { desktopCard }
       }
       .padding(.horizontal, MessagesStyle.horizontal)
       // Measured on device, these keep the title-to-card, card-to-action and action-to-edge
@@ -124,6 +130,52 @@ struct NessaConnectionView: View {
       .padding(.horizontal, NessaSpacing.md)
     }
     .font(MessagesStyle.body).nessaCard()
+  }
+
+  /// The Mac this phone paired with by its code, or the way to pair one.
+  @ViewBuilder private var desktopCard: some View {
+    if let linked = desktop.linked {
+      VStack(spacing: 0) {
+        HStack(spacing: NessaSpacing.xs) {
+          Text("Mac").foregroundStyle(MessagesStyle.secondary)
+          Spacer(minLength: NessaSpacing.md)
+          Text(linked.name).lineLimit(1)
+        }
+        .modifier(ConnectionRow())
+        divider
+        Button(action: onShowChats) {
+          HStack {
+            Text("Shared chats")
+            Spacer()
+            Image(systemName: "chevron.right").font(MessagesStyle.smallIcon)
+              .foregroundStyle(MessagesStyle.separator)
+          }
+          .modifier(ConnectionRow())
+        }
+        .buttonStyle(.nessaPress)
+        divider
+        Button {
+          Task {
+            // The session lets go of the Mac first, then the Mac is forgotten.
+            await store.forgetLinked()
+            await desktop.unlink()
+          }
+        } label: {
+          Text("Forget this Mac").foregroundStyle(MessagesStyle.danger)
+            .modifier(ConnectionRow())
+        }
+        .buttonStyle(.nessaPress)
+      }
+      .font(MessagesStyle.body).nessaCard()
+    } else {
+      Button(action: onPair) {
+        Label("Pair with your Mac", systemImage: "qrcode.viewfinder")
+          .foregroundStyle(MessagesStyle.foreground)
+          .frame(maxWidth: .infinity, minHeight: MessagesStyle.controlHeight)
+          .background(MessagesStyle.control, in: Capsule())
+      }
+      .font(MessagesStyle.title).buttonStyle(.nessaPress)
+    }
   }
 
   private var divider: some View {

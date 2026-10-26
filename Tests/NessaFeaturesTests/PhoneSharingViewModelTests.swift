@@ -95,7 +95,7 @@ private actor VMSharingGateway: MessagingRepository, ConnectionLeasing,
       source: try authenticatedSession(for: lease),
       value: sharedIDs.contains(id)
         ? [
-          .init(credentialId: "native-credential", role: "read", policyRevision: 1, grantedAtMs: 1)
+          .init(credentialId: "native-credential", capabilities: ["read"], policyRevision: 1, grantedAtMs: 1)
         ] : [])
   }
   func setConversationRead(_ intent: PhoneConversationShareIntent, on lease: GatewayConnectionLease)
@@ -184,6 +184,11 @@ private actor VMSharingGateway: MessagingRepository, ConnectionLeasing,
     return "turn"
   }
   func delete(_ conversationID: String) {}
+  func listArchived() throws -> NessaConversationList {
+    try JSONDecoder().decode(
+      NessaConversationList.self, from: Data("{\"conversations\":[],\"complete\":true}".utf8))
+  }
+  func setArchived(_ archived: Bool, conversationID: String) {}
   func answer(_ permission: NessaPermission, option: NessaPermission.Option, conversationID: String)
   {}
 }

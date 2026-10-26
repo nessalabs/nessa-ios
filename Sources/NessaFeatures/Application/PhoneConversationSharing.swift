@@ -2,16 +2,17 @@ import Foundation
 
 public struct PhoneConversationShare: Codable, Sendable, Equatable {
   public let credentialId: String
-  public let role: String
+  /// What the grant allows: read; read and comment; or read, comment and drive.
+  public let capabilities: [String]
   public let policy: PhoneConversationToolPolicy?
   public let policyRevision: UInt64
   public let grantedAtMs: UInt64
   public init(
-    credentialId: String, role: String, policy: PhoneConversationToolPolicy? = nil,
+    credentialId: String, capabilities: [String], policy: PhoneConversationToolPolicy? = nil,
     policyRevision: UInt64, grantedAtMs: UInt64
   ) {
     self.credentialId = credentialId
-    self.role = role
+    self.capabilities = capabilities
     self.policy = policy
     self.policyRevision = policyRevision
     self.grantedAtMs = grantedAtMs

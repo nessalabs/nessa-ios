@@ -163,6 +163,10 @@ private actor ScriptedFeedRepository: MessagingRepository, ConversationFollowing
     try await base.send(text, attachments: attachments, conversationID: conversationID)
   }
   func delete(_ id: String) async throws { try await base.delete(id) }
+  func listArchived() async throws -> NessaConversationList { try await base.listArchived() }
+  func setArchived(_ archived: Bool, conversationID: String) async throws {
+    try await base.setArchived(archived, conversationID: conversationID)
+  }
   func answer(_ permission: NessaPermission, option: NessaPermission.Option, conversationID: String)
     async throws
   {

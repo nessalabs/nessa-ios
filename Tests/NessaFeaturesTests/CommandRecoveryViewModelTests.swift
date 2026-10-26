@@ -77,6 +77,8 @@ private actor RecoveryRepository: MessagingRepository, CommandRecoveryProviding 
   func answer(_ permission: NessaPermission, option: NessaPermission.Option, conversationID: String)
   {}
   func delete(_ conversationID: String) {}
+  func listArchived() -> NessaConversationList { .init(conversations: [], complete: true) }
+  func setArchived(_ archived: Bool, conversationID: String) {}
   func pendingCommands() async throws -> [PreparedConversationCommand] {
     let original = credential
     pendingCalls += 1

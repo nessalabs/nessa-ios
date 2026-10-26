@@ -151,6 +151,8 @@ public enum MessagesStyle {
   /// A deleted or archived row fading out before the rows below close up: a
   /// micro-interaction.
   public static let rowFadeOut: Double = 0.12
+  /// How long a reconnect runs before the inbox offers Try again.
+  public static let reconnectPatience: Double = 5
   /// How long the list takes to close up after a row leaves, before the row's fade can be
   /// cleared for wherever it went (the archive, say).
   public static let rowSettle: Double = 0.35
@@ -163,6 +165,24 @@ public enum MessagesStyle {
   /// A hairline between the rows of one card.
   public static let rowDivider: CGFloat = 0.5
   public static let body = Font.system(size: 17)
+  /// An agent reply's markdown, kept as tight as the bubble's own text.
+  public static let markdownBlockSpacing: CGFloat = 6
+  public static let markdownListIndent: CGFloat = 16
+  public static let markdownMarkerGap: CGFloat = 6
+  public static let markdownQuoteBar: CGFloat = 3
+  public static let markdownCodeRadius: CGFloat = 8
+  public static let markdownCodeInset: CGFloat = 8
+  public static let markdownCodeFill = NessaColor.foreground.opacity(0.06)
+  public static let markdownRule: CGFloat = 0.5
+  public static let markdownCode = Font.system(size: 14, design: .monospaced)
+  /// A heading steps up modestly from the body: weight first, then a little size.
+  public static func markdownHeading(_ level: Int) -> Font {
+    switch level {
+    case 1: return Font.system(size: 20, weight: .bold)
+    case 2: return Font.system(size: 18, weight: .semibold)
+    default: return Font.system(size: 17, weight: .semibold)
+    }
+  }
   public static let detailsTitle = Font.system(size: 28, weight: .bold)
   public static let headerName = Font.system(size: 15, weight: .semibold)
   public static let title = Font.system(size: 17, weight: .semibold)

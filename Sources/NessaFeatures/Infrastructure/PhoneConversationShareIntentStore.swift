@@ -30,7 +30,7 @@ public actor PhoneConversationShareIntentStore: PhoneConversationShareIntentStor
         JSONEncoder().encode(
           SharingRead(
             conversationId: i.conversationID,
-            requestId: i.requestID.uuidString.lowercased(), credentialId: credential, role: "read")),
+            requestId: i.requestID.uuidString.lowercased(), credentialId: credential)),
         named: "ConversationShareParams")
     }
   }

@@ -234,7 +234,7 @@ public actor PhoneOutbox {
   private let store: any PhoneOutboxStoring
   private let gateway: any PhoneOutboxAsking
   private let mint: @Sendable () -> (String, String)
-  public init(
+  init(
     store: any PhoneOutboxStoring, gateway: any PhoneOutboxAsking,
     mint: @escaping @Sendable () -> (String, String) = {
       (UUID().uuidString.lowercased(), UUID().uuidString.lowercased())

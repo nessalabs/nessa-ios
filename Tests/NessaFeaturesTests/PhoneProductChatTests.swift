@@ -27,6 +27,8 @@ private actor ProductListGateway: MessagingRepository, ConversationFollowing, Ag
     _ permission: NessaPermission, option: NessaPermission.Option, conversationID: String
   ) async throws {}
   func delete(_ conversationID: String) async throws {}
+  func listArchived() -> NessaConversationList { .init(conversations: [], complete: true) }
+  func setArchived(_ archived: Bool, conversationID: String) {}
   func disconnect() async {}
   func agents() async throws -> [AgentProfile] { [] }
   private var conversationFollows = 0

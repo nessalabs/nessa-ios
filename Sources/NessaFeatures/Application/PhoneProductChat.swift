@@ -45,7 +45,7 @@ public actor PhoneProductChat {
   /// When set, each `PhoneCacheScope` gets its own directory. Injected stores ignore it.
   private let root: URL?
   private var boundScope: String?
-  public init(
+  init(
     outbox: PhoneOutbox, transport: any PhoneProductTransport, stops: any PhoneStopStoring
   ) {
     self.outbox = outbox
@@ -55,7 +55,7 @@ public actor PhoneProductChat {
   }
 
   /// Live wiring. Records stay partitioned by the same connection scope as snapshots and commands.
-  public init(root: URL, transport: any PhoneProductTransport) {
+  init(root: URL, transport: any PhoneProductTransport) {
     self.root = root
     self.transport = transport
     let idle = root.appendingPathComponent("unbound", isDirectory: true)

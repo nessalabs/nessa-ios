@@ -31,7 +31,10 @@ private struct TextMessageContent: View {
   let outgoing: Bool
   let selectable: Bool
   var body: some View {
-    Text(.init(text))
+    // An agent writes markdown with headings and lists; a person's own text stays inline.
+    Group {
+      if outgoing { Text(.init(text)) } else { MessageMarkdown(text) }
+    }
       .font(MessagesStyle.body)
       .foregroundStyle(MessagesStyle.foreground)
       .tint(outgoing ? MessagesStyle.foreground : MessagesStyle.link)

@@ -151,6 +151,8 @@ private actor SwitchingGateway: MessagingRepository, AgentDirectory, Conversatio
     try await base.answer(permission, option: option, conversationID: conversationID)
   }
   func delete(_ conversationID: String) async throws { try await base.delete(conversationID) }
+  func listArchived() -> NessaConversationList { .init(conversations: [], complete: true) }
+  func setArchived(_ archived: Bool, conversationID: String) {}
   func follow(_ id: String?, after: ConversationCursor?) async throws -> AsyncThrowingStream<
     ConversationUpdate, Error
   > {
@@ -286,6 +288,10 @@ private actor LeasedGateway: MessagingRepository, AgentDirectory, ConnectionLeas
     try await base.answer(permission, option: option, conversationID: conversationID)
   }
   func delete(_ id: String) async throws { try await base.delete(id) }
+  func listArchived() async throws -> NessaConversationList { try await base.listArchived() }
+  func setArchived(_ archived: Bool, conversationID: String) async throws {
+    try await base.setArchived(archived, conversationID: conversationID)
+  }
 }
 @Test(arguments: [false, true]) @MainActor
 func obsoleteDialCleanupCannotDisconnectReadyReplacement(cancelAfterAgents: Bool) async throws {

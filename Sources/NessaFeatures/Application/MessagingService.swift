@@ -81,6 +81,20 @@ public struct MessagingService: Sendable, GatewayConversationSharingProviding,
     try await repository.connect(address: address, credential: credential, instance: instance)
     return nil
   }
+  /// The product session over the paired Mac's native link.
+  func connectLinked(_ exchange: any GatewayProductExchange, scope: PhoneCacheScope)
+    async throws -> GatewayConnectionLease
+  {
+    guard let linked = repository as? any LinkedProductConnecting else {
+      _ = await exchange.close()
+      throw NessaGatewayError.incompatibleProtocol
+    }
+    return try await linked.connectLinked(exchange, scope: scope)
+  }
+  /// Waits until the closed linked connections released their native session.
+  func drainLinked() async throws {
+    try await (repository as? any LinkedProductConnecting)?.drainLinked()
+  }
   public func retire(_ lease: GatewayConnectionLease?) async {
     guard let lease, let owner = repository as? any ConnectionLeasing else { return }
     await owner.retire(lease)
@@ -134,6 +148,12 @@ public struct MessagingService: Sendable, GatewayConversationSharingProviding,
     }
   }
   public func list() async throws -> NessaConversationList { try await repository.list() }
+  public func listArchived() async throws -> NessaConversationList {
+    try await repository.listArchived()
+  }
+  public func setArchived(_ archived: Bool, conversationID: String) async throws {
+    try await repository.setArchived(archived, conversationID: conversationID)
+  }
   public func read(_ id: String) async throws -> NessaConversationView {
     try await repository.read(id)
   }

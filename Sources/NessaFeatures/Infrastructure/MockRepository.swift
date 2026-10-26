@@ -53,6 +53,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ConversationFo
   }
   private var summaries: [NessaConversation]
   private var threads: [String: NessaConversationView]
+  private var archived: Set<String> = []
   private let profiles: [AgentProfile]
   public init(
     agents: [AgentProfile] = [
@@ -128,7 +129,18 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ConversationFo
   }
   public func list() throws -> NessaConversationList {
     try requireConnection()
-    return NessaConversationList(conversations: summaries, complete: true)
+    return NessaConversationList(
+      conversations: summaries.filter { !archived.contains($0.id) }, complete: true)
+  }
+  public func listArchived() throws -> NessaConversationList {
+    try requireConnection()
+    return NessaConversationList(
+      conversations: summaries.filter { archived.contains($0.id) }, complete: true)
+  }
+  public func setArchived(_ archive: Bool, conversationID: String) throws {
+    _ = try read(conversationID)
+    if archive { archived.insert(conversationID) } else { archived.remove(conversationID) }
+    changed(conversationID)
   }
   public func read(_ id: String) throws -> NessaConversationView {
     try requireConnection()

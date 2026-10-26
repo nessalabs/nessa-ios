@@ -24,6 +24,8 @@ private actor FixtureGateway: MessagingRepository, AgentDirectory {
   func answer(_ permission: NessaPermission, option: NessaPermission.Option, conversationID: String)
   {}
   func delete(_ conversationID: String) {}
+  func listArchived() -> NessaConversationList { .init(conversations: [], complete: true) }
+  func setArchived(_ archived: Bool, conversationID: String) {}
   func disconnect() {}
   private func decode<T: Decodable>(_ json: String) throws -> T {
     try JSONDecoder().decode(T.self, from: Data(json.utf8))
