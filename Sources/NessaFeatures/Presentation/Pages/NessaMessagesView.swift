@@ -110,6 +110,11 @@ public struct NessaMessagesView: View {
     .onChange(of: store.deliveryScopeRevision) { _, _ in
       path = []
     }
+    // A light tap on every step back, by the back button or the edge swipe: the stack lost
+    // its top and kept the rest. The sidebar replacing the stack is not a step back.
+    .sensoryFeedback(.impact(weight: .light), trigger: path) { old, new in
+      new.count < old.count && Array(old.prefix(new.count)) == new
+    }
   }
 
   private var stack: some View {
