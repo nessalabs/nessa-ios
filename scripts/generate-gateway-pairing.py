@@ -6,14 +6,14 @@ import json
 import pathlib
 import subprocess
 
-PIN = 'b4d9e9083956459fab38bd71b677a910561758b8'
+PIN = '48becb1870562ed694f28216716c6695d0dee140'
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOURCES = ['protocol/product/v1.json', 'protocol/product/pairing-values.generated.json',
            'protocol/schemas/v1/frames.json', 'protocol/schemas/v1/common.json']
 ENUMS = {'PairingOwnerPhase': 'GatewayPairingPhase', 'PairingTerminalCause': 'GatewayPairingTerminalCause',
          'PairingInitiatorKind': 'GatewayPairingInitiatorKind', 'PairingActivationStop': 'GatewayPairingActivationStop',
          'PairingErrorCode': 'GatewayPairingKnownError', 'PairingEnrollee': 'GatewayPairingEnrollee'}
-META = {'description', 'x-rust-type', 'x-pairing-byte-array', 'x-pairing-manual-code', 'tsType'}
+META = {'description', 'x-rust-type', 'x-pairing-byte-array', 'x-pairing-manual-code', 'tsType', 'x-maxGrants'}
 
 def literal(value):
     return json.dumps(value, ensure_ascii=False)
@@ -59,7 +59,8 @@ def rule(schema):
         assert keys == {'type'}, schema
         return '.boolean'
     if kind == 'array':
-        assert keys <= {'type', 'minItems', 'maxItems', 'items'}, schema
+        # Uniqueness is the gateway's to keep; the phone checks shape and bounds.
+        assert keys <= {'type', 'minItems', 'maxItems', 'items', 'uniqueItems'}, schema
         return f'.array(minimum: {schema.get("minItems", 0)}, maximum: {schema.get("maxItems", "nil")}, item: {rule(schema["items"])})'
     raise ValueError(f'Unsupported schema: {schema}')
 

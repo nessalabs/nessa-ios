@@ -99,7 +99,7 @@ private actor SharingProductProbe: GatewayConversationSharingProviding {
   func setExisting() {
     grants = [
       .init(
-        credentialId: "native-credential", role: "drive",
+        credentialId: "native-credential", capabilities: ["read", "comment", "drive"],
         policy: .init(preset: "all", allow: nil, deny: nil), policyRevision: 5, grantedAtMs: 1)
     ]
   }
@@ -167,7 +167,7 @@ private func sharingSnapshot() throws -> (
   let result = try await action.perform(
     .share(UUID().uuidString.lowercased()), context: context, current: {})
   #expect(result.intent == nil)
-  #expect(result.shares?.first?.role == "drive")
+  #expect(result.shares?.first?.capabilities.contains("drive") == true)
   #expect(await product.calls.isEmpty)
   #expect(try await store.load(profileID: snapshot.profile.id).isEmpty)
 }

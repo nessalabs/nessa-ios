@@ -11,10 +11,25 @@ extension NessaGatewayClient: GatewayConversationSharingProviding {
   public func conversationShares(_ id: String, on lease: GatewayConnectionLease) async throws
     -> PhoneConversationShareReceipt<[PhoneConversationShare]>
   {
-    let (source, value): (AuthenticatedGatewaySession, SharingGrantsDTO) = try await pairing(
-      "conversation.shares", params: SharingConversation(conversationId: id),
-      schema: "ConversationSharesParams", on: lease)
-    return .init(source: source, value: value.items)
+    // A conversation's grants can take several pages; every page of one read
+    // names the same revision, and a moved revision is a changed list.
+    var shares: [PhoneConversationShare] = []
+    var cursor: SharingCursor?
+    var first: (AuthenticatedGatewaySession, UInt64)?
+    repeat {
+      let (source, page): (AuthenticatedGatewaySession, SharingGrantsDTO) = try await pairing(
+        "conversation.shares",
+        params: SharingConversation(conversationId: id, pageSize: SharingConversation.page, cursor: cursor),
+        schema: "ConversationSharesParams", on: lease)
+      if let first, first.1 != page.changeRevision || first.0 != source {
+        throw PhoneConversationSharingRefusal.changed
+      }
+      first = first ?? (source, page.changeRevision)
+      shares += page.items
+      cursor = page.cursor
+      guard shares.count <= SharingConversation.limit else { throw NessaGatewayError.invalidFrame }
+    } while cursor != nil
+    return .init(source: first!.0, value: shares)
   }
   public func setConversationRead(
     _ intent: PhoneConversationShareIntent, on lease: GatewayConnectionLease
@@ -28,7 +43,7 @@ extension NessaGatewayClient: GatewayConversationSharingProviding {
       "conversation.share",
       params: SharingRead(
         conversationId: intent.conversationID,
-        requestId: intent.requestID.uuidString.lowercased(), credentialId: credential, role: "read"),
+        requestId: intent.requestID.uuidString.lowercased(), credentialId: credential),
       schema: "ConversationShareParams", on: lease)
     return .init(source: captured, value: value.value)
   }
@@ -37,10 +52,21 @@ struct SharingRead: Encodable {
   let conversationId: String
   let requestId: String
   let credentialId: String
-  let role: String
+  let capabilities = ["read"]
 }
 private struct SharingEmpty: Encodable {}
-private struct SharingConversation: Encodable { let conversationId: String }
+private struct SharingConversation: Encodable {
+  static let page = 8
+  /// The most grants one conversation holds.
+  static let limit = 64
+  let conversationId: String
+  let pageSize: Int
+  let cursor: SharingCursor?
+}
+private struct SharingCursor: Codable, Equatable {
+  let credentialId: String
+  let grantedAtMs: UInt64
+}
 private struct SharingListDTO: Decodable {
   let value: NessaConversationList
   init(from decoder: Decoder) throws {
@@ -50,11 +76,15 @@ private struct SharingListDTO: Decodable {
 }
 private struct SharingGrantsDTO: Decodable {
   let items: [PhoneConversationShare]
-  private enum CodingKeys: String, CodingKey { case items }
+  let changeRevision: UInt64
+  let cursor: SharingCursor?
+  private enum CodingKeys: String, CodingKey { case items, changeRevision, cursor }
   init(from decoder: Decoder) throws {
     try validateGatewayWire(decoder, named: "ConversationSharesResult")
-    items = try decoder.container(keyedBy: CodingKeys.self).decode(
-      [PhoneConversationShare].self, forKey: .items)
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    items = try values.decode([PhoneConversationShare].self, forKey: .items)
+    changeRevision = try values.decode(UInt64.self, forKey: .changeRevision)
+    cursor = try values.decodeIfPresent(SharingCursor.self, forKey: .cursor)
   }
 }
 private struct SharingMutationDTO: Decodable {

@@ -95,7 +95,7 @@ private actor VMSharingGateway: MessagingRepository, ConnectionLeasing,
       source: try authenticatedSession(for: lease),
       value: sharedIDs.contains(id)
         ? [
-          .init(credentialId: "native-credential", role: "read", policyRevision: 1, grantedAtMs: 1)
+          .init(credentialId: "native-credential", capabilities: ["read"], policyRevision: 1, grantedAtMs: 1)
         ] : [])
   }
   func setConversationRead(_ intent: PhoneConversationShareIntent, on lease: GatewayConnectionLease)
