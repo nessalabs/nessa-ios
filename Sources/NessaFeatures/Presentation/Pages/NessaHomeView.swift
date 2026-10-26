@@ -24,7 +24,7 @@ struct NessaHomeView: View {
   @State private var starting = false
   @State private var now = Date()
   /// Which light the ground is drawn in, while the look is still being chosen.
-  @AppStorage("nessaHomeLight") private var light = NessaHomeLightStyle.cornerLight.rawValue
+  @AppStorage("nessaHomeLight") private var light = NessaHomeLightStyle.horizon.rawValue
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
@@ -51,7 +51,7 @@ struct NessaHomeView: View {
     .padding(.horizontal, MessagesStyle.horizontal)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .contentShape(Rectangle())
-    .background { NessaHomeLight(style: NessaHomeLightStyle(rawValue: light) ?? .cornerLight) }
+    .background { NessaHomeLight(style: NessaHomeLightStyle(rawValue: light) ?? .horizon) }
     .safeAreaInset(edge: .top, spacing: 0) { topBar }
     .messagesBar(edge: .bottom) {
       VStack(spacing: NessaSpacing.xs) {

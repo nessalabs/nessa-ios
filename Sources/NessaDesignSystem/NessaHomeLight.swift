@@ -5,7 +5,7 @@ import SwiftUI
 public enum NessaHomeLightStyle: String, CaseIterable, Sendable {
   /// From the top trailing corner, a smooth falloff under a faint grain.
   case cornerLight
-  /// Rising behind the composer, in halftone dots.
+  /// A flat glow rising behind the composer, in halftone dots: the default.
   case horizon
   /// Straight down from the top, in an ordered pixel dither.
   case spotlight
@@ -19,7 +19,7 @@ public enum NessaHomeLightStyle: String, CaseIterable, Sendable {
 
 public struct NessaHomeLight: View {
   private let style: NessaHomeLightStyle
-  public init(style: NessaHomeLightStyle = .cornerLight) { self.style = style }
+  public init(style: NessaHomeLightStyle = .horizon) { self.style = style }
 
   public var body: some View {
     Canvas { context, size in
@@ -55,8 +55,13 @@ public struct NessaHomeLight: View {
     case .blueHour:
       return { p, s in ellipse(p, centre: .zero, rx: s.width * 1.2 * 0.66, ry: s.height * 0.7 * 0.66) }
     case .horizon:
-      return { p, s in ellipse(p, centre: CGPoint(x: s.width / 2, y: s.height * 1.04),
-        rx: s.width * 0.85 * 0.8, ry: s.height * 0.48 * 0.8) }
+      return { p, s in
+        // A wide, flat glow along the bottom: mostly how far up the screen, barely how far
+        // from the middle, so it reads as a horizon rather than a disc.
+        let rise = max(0, 1 - (s.height - p.y) / (s.height * 0.46))
+        let side = abs(p.x - s.width / 2) / (s.width / 2)
+        return pow(rise, 1.6) * (1 - 0.25 * side * side)
+      }
     case .spotlight:
       return { p, s in ellipse(p, centre: CGPoint(x: s.width / 2, y: 0), rx: s.width * 0.7 * 0.86,
         ry: s.height * 0.62 * 0.86) }
