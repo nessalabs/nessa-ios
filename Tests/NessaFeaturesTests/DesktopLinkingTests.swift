@@ -260,7 +260,35 @@ private func linking(
   #expect(await locations.discarded == [desktop.id])
 }
 
-@Test func aSessionThatWontCloseKeepsItsDirectory() async throws {
+@Test func aReadThatWontCloseKeepsItsDirectory() async throws {
+  let desktop = LinkedDesktop(
+    id: UUID(), name: "Studio", gateway: "gw-1", address: mac.address, receiver: "r1",
+    linkedAtMs: 1)
+  let store = Store()
+  await store.save(desktop)
+  let locations = Locations()
+  let native = Native(first: receipt(.claimed))
+  await native.failClose()
+  let linker = linking(native, store: store, locations: locations)
+  _ = try await linker.chats(of: desktop)
+  try await linker.unlink()
+  #expect(await store.desktop == nil)
+  #expect(await locations.discarded.isEmpty)
+}
+
+@Test func aPairingThatWontCloseKeepsItsDirectory() async throws {
+  let native = Native(first: receipt(.active, receiver: "r1"))
+  await native.failClose()
+  let store = Store()
+  let locations = Locations()
+  let linker = linking(native, store: store, locations: locations)
+  let desktop = try await linker.link(code: "ABCD-2345", with: mac)
+  #expect(await store.desktop == desktop)
+  try await linker.unlink()
+  #expect(await locations.discarded.isEmpty)
+}
+
+@Test func anAbandonedPairingThatWontCloseKeepsItsDirectory() async throws {
   let native = Native(first: receipt(.approved))
   await native.failClose()
   let locations = Locations()
@@ -284,4 +312,39 @@ private func linking(
   #expect(try await store.load() == paired)
   try await store.remove(paired.id)
   #expect(try await store.load() == nil)
+}
+
+@Test func sharedChatsAreReadNewestFirstWithoutDeletedOrArchived() async throws {
+  let native = Native(first: receipt(.claimed))
+  let scope = RetainedScope(
+    accessEpoch: "1", incarnation: "i", origin: "o", receiver: "r1", schema: "s", stream: "t")
+  func entry(_ id: String, at: UInt64, deleted: Bool = false, archived: Bool = false)
+    -> RetainedCatalogueEntry
+  {
+    RetainedCatalogueEntry(
+      agent: nil, archived: archived, createdAtMs: at, deleted: deleted,
+      key: RetainedEntryKey(creation: at, id: id), model: nil, preview: "p", revision: 1,
+      title: id, updatedAtMs: at)
+  }
+  let next = RetainedEntryKey(creation: 3, id: "c")
+  await native.setPages([
+    RetainedCataloguePage(
+      activeBoundary: nil, activeCursor: nil, completed: 1,
+      entries: [entry("a", at: 1), entry("gone", at: 9, deleted: true)], generation: 1,
+      next: next, scope: scope),
+    RetainedCataloguePage(
+      activeBoundary: nil, activeCursor: nil, completed: 2,
+      entries: [entry("c", at: 3), entry("old", at: 8, archived: true)], generation: 1,
+      next: nil, scope: scope),
+  ])
+  let desktop = LinkedDesktop(
+    id: UUID(), name: "Studio", gateway: "gw-1", address: mac.address, receiver: "r1",
+    linkedAtMs: 1)
+  let chats = try await linking(native).chats(of: desktop)
+  #expect(chats.map(\.id) == ["c", "a"])
+}
+
+@MainActor @Test func theViewModelPicksTheOnlyMacAndSaysFailuresPlainly() async throws {
+  #expect(DesktopLinkViewModel.sentence(.noDesktop).contains("Native linking"))
+  #expect(!DesktopLinkViewModel.sentence(.other("wire")).contains("wire"))
 }

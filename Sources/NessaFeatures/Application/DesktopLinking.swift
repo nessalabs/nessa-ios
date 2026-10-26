@@ -54,7 +54,7 @@ public actor DesktopLinking {
   /// writing there, so their directory is left in place.
   private var unclean: Set<UUID> = []
   /// Previous desktops being retired after a new pairing returned.
-  private var retiring: [Task<Void, Never>] = []
+  private var retiring: [UUID: Task<Void, Never>] = [:]
 
   public init(
     finder: any GatewayFinding, store: any LinkedDesktopStoring,
@@ -116,6 +116,7 @@ public actor DesktopLinking {
       throw Self.failure(error)
     }
     let closed = (try? await session.close()) != nil
+    if !closed { unclean.insert(id) }
     do {
       // A pairing cancelled on this phone keeps nothing, even once approved.
       try Task.checkCancellation()
@@ -125,7 +126,10 @@ public actor DesktopLinking {
       // network, and this pairing is done. New reads of it are refused now.
       if let previous, previous.id != desktop.id {
         forgotten.insert(previous.id)
-        retiring.append(Task { await self.retire(previous.id) })
+        retiring[previous.id] = Task {
+          await self.retire(previous.id)
+          self.retiring[previous.id] = nil
+        }
       }
       return desktop
     } catch {
@@ -179,9 +183,7 @@ public actor DesktopLinking {
 
   /// Waits for previous desktops still being retired.
   func settled() async {
-    let tasks = retiring
-    retiring = []
-    for task in tasks { await task.value }
+    for task in retiring.values { await task.value }
   }
 
   /// Stop new reads of `id`, wait for the ones under way, then remove its
