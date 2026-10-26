@@ -97,6 +97,12 @@ private actor Store: LinkedDesktopStoring {
   func remove(_ id: UUID) { if desktop?.id == id { desktop = nil } }
 }
 
+private struct BrokenStore: LinkedDesktopStoring {
+  func load() throws -> LinkedDesktop? { nil }
+  func save(_ desktop: LinkedDesktop) throws { throw DesktopLinkFailure.storage }
+  func remove(_ id: UUID) {}
+}
+
 private actor Locations: LinkedDesktopLocating {
   var prepared: [String] = []
   var discarded: [UUID] = []
@@ -113,7 +119,7 @@ private actor Heard {
 }
 
 private func linking(
-  _ native: Native, store: Store = Store(), locations: Locations = Locations(),
+  _ native: Native, store: any LinkedDesktopStoring = Store(), locations: Locations = Locations(),
   approvalSeconds: Double = 900
 ) -> DesktopLinking {
   DesktopLinking(
@@ -294,6 +300,40 @@ private func linking(
   let locations = Locations()
   await #expect(throws: DesktopLinkFailure.expired) {
     try await linking(native, locations: locations, approvalSeconds: 0)
+      .link(code: "ABCD-2345", with: mac)
+  }
+  #expect(await native.closes == 1)
+  #expect(await locations.discarded.isEmpty)
+}
+
+@Test func pairingDoesNotWaitForAReadOfThePreviousDesktop() async throws {
+  let old = LinkedDesktop(
+    id: UUID(), name: "Old", gateway: "gw-0", address: mac.address, receiver: "r1",
+    linkedAtMs: 1)
+  let store = Store()
+  await store.save(old)
+  let locations = Locations()
+  // Pairing never reads the catalogue, so only the old desktop's read is held.
+  let native = Native(first: receipt(.active, receiver: "r1"))
+  await native.hold()
+  let linker = linking(native, store: store, locations: locations)
+  let reading = Task { try await linker.chats(of: old) }
+  while await native.held == nil { await Task.yield() }
+  let desktop = try await linker.link(code: "ABCD-2345", with: mac)
+  #expect(await store.desktop == desktop)
+  #expect(await locations.discarded.isEmpty)
+  await native.release()
+  _ = try? await reading.value
+  await linker.settled()
+  #expect(await locations.discarded == [old.id])
+}
+
+@Test func aPairingThatCannotBeSavedOrClosedKeepsItsDirectory() async throws {
+  let native = Native(first: receipt(.active, receiver: "r1"))
+  await native.failClose()
+  let locations = Locations()
+  await #expect(throws: DesktopLinkFailure.storage) {
+    try await linking(native, store: BrokenStore(), locations: locations)
       .link(code: "ABCD-2345", with: mac)
   }
   #expect(await native.closes == 1)
