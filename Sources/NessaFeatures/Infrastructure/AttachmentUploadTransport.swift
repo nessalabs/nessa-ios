@@ -35,3 +35,27 @@ enum AttachmentUploadTransport {
     return try JSONDecoder().decode(NessaImageAttachment.self, from: data)
   }
 }
+
+/// Uploads over the session, for a connection with no upload address.
+enum AttachmentPieces {
+  /// The gateway's `attachment.write` piece size: base64 of it fits one frame.
+  static let maxBytes = 32 * 1024
+
+  /// A refused piece in plain words. Every refusal ends the upload, so the
+  /// draft stays and sending again begins a new one.
+  static func failure(_ rejection: GatewayProductRejection) -> any Error {
+    switch rejection.code {
+    case "unknown_method":
+      NessaGatewayError.rejected(
+        "Update Nessa on your Mac to send photos from your phone. Your draft has been kept.")
+    case "upload_ticket_invalid", "upload_failed":
+      NessaGatewayError.rejected("The photo didn’t finish sending. Your draft has been kept.")
+    case "unsupported_image":
+      NessaGatewayError.rejected("Your Mac couldn’t read this photo. Try another one.")
+    case "image_too_large":
+      NessaGatewayError.rejected("This photo is too large to send. Try a smaller one.")
+    case "image_input_unsupported": NessaGatewayError.imageInputUnsupported
+    default: rejection
+    }
+  }
+}

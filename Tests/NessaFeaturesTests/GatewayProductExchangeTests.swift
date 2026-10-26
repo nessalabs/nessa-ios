@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 
@@ -22,8 +23,12 @@ private actor ProductExchangeFixture: GatewayProductExchange {
   private var releaseConfirmed: Bool
   private let closeFailure: (any Error)?
   private var readyCalls = 0
+  /// Answers for any other method, one per call, in order.
+  private var scripted: [String: [Data]]
   init(ready: Data = productReady(), listResponse: Data? = nil, channelPages: [Data] = [],
+    scripted: [String: [Data]] = [:],
     releaseConfirmed: Bool = true, closeFailure: (any Error)? = nil) {
+    self.scripted = scripted
     readyBytes = ready
     self.listResponse = listResponse
     self.channelPages = channelPages
@@ -42,6 +47,11 @@ private actor ProductExchangeFixture: GatewayProductExchange {
       return Data(#"{"type":"res","id":"9007199254740993","ok":true,"payload":{"conversations":[],"complete":true}}"#.utf8)
     }
     if method == "channel.list", !channelPages.isEmpty { return channelPages.removeFirst() }
+    if var answers = scripted[method], !answers.isEmpty {
+      let answer = answers.removeFirst()
+      scripted[method] = answers
+      return answer
+    }
     if method == "conversation.create" {
       return try await withCheckedThrowingContinuation { creation = $0 }
     }
@@ -66,6 +76,7 @@ private actor ProductExchangeFixture: GatewayProductExchange {
   }
   func callCount(_ method: String) -> Int { calls.filter { $0.0 == method }.count }
   func parameters(_ method: String) -> Data? { calls.first { $0.0 == method }?.1 }
+  func allParameters(_ method: String) -> [Data] { calls.filter { $0.0 == method }.map(\.1) }
   func pendingRegistrations() -> Int { registrations.count }
   func waitingForEvents() -> Bool { eventWaiter != nil }
   func closeCount() -> Int { closes }
@@ -371,5 +382,80 @@ private func reviewsWaiting(_ conversations: [String]) -> Data {
   // The connection itself stays up.
   #expect(await exchange.closeCount() == 0)
   _ = try await client.list()
+  await client.disconnect()
+}
+
+private func answered(_ payload: String) -> Data {
+  Data("{\"type\":\"res\",\"id\":\"18446744073709551614\",\"ok\":true,\"payload\":\(payload)}".utf8)
+}
+private func refusedWith(_ code: String) -> Data {
+  Data("{\"type\":\"res\",\"id\":\"18446744073709551614\",\"ok\":false,\"error\":{\"code\":\"\(code)\",\"message\":\"internal words\"}}".utf8)
+}
+private let uploadTicket = String(repeating: "ab", count: 32)
+private func ticketAnswer() -> Data {
+  answered(
+    "{\"requestId\":\"r\",\"state\":\"upload_required\",\"ticket\":\"\(uploadTicket)\",\"expiresAtMs\":\(Int(Date().timeIntervalSince1970 * 1000) + 60_000),\"digest\":null,\"mimeType\":null,\"size\":null}"
+  )
+}
+private func connectLinked(_ client: NessaGatewayClient, _ exchange: ProductExchangeFixture)
+  async throws
+{
+  _ = try await client.connectLinked(
+    exchange, scope: .init(address: "native-original", credential: "public-device-key", instance: "phone"))
+}
+private struct WrittenPiece: Decodable {
+  let ticket: String
+  let offset: Int
+  let data: String
+  let last: Bool
+}
+
+@Test func overTheMacLinkAPhotoGoesUpInPiecesOverTheSession() async throws {
+  let bytes = Data((0..<(70 * 1024)).map { UInt8($0 % 251) })
+  let digest = "sha256:" + SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+  let exchange = ProductExchangeFixture(scripted: [
+    "attachment.begin": [ticketAnswer()],
+    "attachment.write": [
+      answered(#"{"received":32768,"digest":null,"mimeType":null,"size":null}"#),
+      answered(#"{"received":65536,"digest":null,"mimeType":null,"size":null}"#),
+      answered("{\"received\":\(bytes.count),\"digest\":\"\(digest)\",\"mimeType\":\"image/png\",\"size\":\(bytes.count)}"),
+    ],
+  ])
+  let client = NessaGatewayClient()
+  try await connectLinked(client, exchange)
+  let image = try await client.uploadPhoneImage(
+    DraftAttachment(name: "photo.png", mimeType: "image/png", data: bytes),
+    conversationID: "00000000-0000-4000-8000-000000000001")
+  #expect(image == NessaImageAttachment(digest: digest, mimeType: "image/png", size: bytes.count))
+  let pieces = try await exchange.allParameters("attachment.write").map {
+    try JSONDecoder().decode(WrittenPiece.self, from: $0)
+  }
+  #expect(pieces.map(\.offset) == [0, 32768, 65536])
+  #expect(pieces.map(\.last) == [false, false, true])
+  #expect(pieces.allSatisfy { $0.ticket == uploadTicket })
+  #expect(Data(pieces.compactMap { Data(base64Encoded: $0.data) }.joined()) == bytes)
+  await client.disconnect()
+}
+
+@Test(arguments: [
+  ("unknown_method", "Update Nessa on your Mac to send photos from your phone. Your draft has been kept."),
+  ("upload_failed", "The photo didn’t finish sending. Your draft has been kept."),
+  ("image_too_large", "This photo is too large to send. Try a smaller one."),
+])
+func aRefusedPieceIsToldInPlainWords(code: String, words: String) async throws {
+  let exchange = ProductExchangeFixture(scripted: [
+    "attachment.begin": [ticketAnswer()], "attachment.write": [refusedWith(code)],
+  ])
+  let client = NessaGatewayClient()
+  try await connectLinked(client, exchange)
+  do {
+    _ = try await client.uploadPhoneImage(
+      DraftAttachment(name: "photo.png", mimeType: "image/png", data: Data([1, 2, 3])),
+      conversationID: "00000000-0000-4000-8000-000000000001")
+    Issue.record("the upload should have been refused")
+  } catch {
+    #expect(error.localizedDescription == words)
+  }
+  #expect(await exchange.callCount("attachment.write") == 1)
   await client.disconnect()
 }

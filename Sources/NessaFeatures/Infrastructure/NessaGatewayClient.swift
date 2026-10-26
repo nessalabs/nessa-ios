@@ -615,7 +615,10 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
       let size: Int?
     }
     let currentGeneration = connectionGeneration
-    guard let uploadEndpoint = uploadURL else { throw NessaGatewayError.disconnected }
+    // A connection with no upload address (the Mac's native link) sends the
+    // bytes in pieces over the session itself.
+    let uploadEndpoint = uploadURL
+    guard uploadEndpoint != nil || product != nil else { throw NessaGatewayError.disconnected }
     let digest =
       "sha256:" + SHA256.hash(data: attachment.data).map { String(format: "%02x", $0) }.joined()
     let result: Ticket = try await request(
@@ -632,8 +635,12 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     } else if result.state == "upload_required", let ticket = result.ticket,
       let expiry = result.expiresAtMs, expiry > Date().timeIntervalSince1970 * 1000
     {
-      image = try await AttachmentUploadTransport.put(
-        attachment, ticket: ticket, url: uploadEndpoint)
+      if let uploadEndpoint {
+        image = try await AttachmentUploadTransport.put(
+          attachment, ticket: ticket, url: uploadEndpoint)
+      } else {
+        image = try await writePieces(attachment, ticket: ticket, generation: currentGeneration)
+      }
     } else {
       throw NessaGatewayError.invalidFrame
     }
@@ -650,6 +657,51 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     await imageCache?.store(attachment.data, digest: image.digest)
     guard currentGeneration == connectionGeneration else { throw NessaGatewayError.disconnected }
     return image
+  }
+  /// `attachment.write`: the bytes in order, one piece at a time, each at most
+  /// the gateway's piece size. The last piece answers with the stored file.
+  private func writePieces(_ attachment: DraftAttachment, ticket: String, generation: Int)
+    async throws -> NessaImageAttachment
+  {
+    struct Piece: Encodable {
+      let ticket: String
+      let offset: Int
+      let data: String
+      let last: Bool
+    }
+    struct Written: Decodable {
+      let received: Int
+      let digest: String?
+      let mimeType: String?
+      let size: Int?
+    }
+    let bytes = attachment.data
+    var offset = 0
+    while true {
+      let end = min(offset + AttachmentPieces.maxBytes, bytes.count)
+      let last = end == bytes.count
+      let written: Written
+      do {
+        written = try await request(
+          "attachment.write",
+          params: Piece(
+            ticket: ticket, offset: offset,
+            data: bytes.subdata(in: offset..<end).base64EncodedString(), last: last))
+      } catch let rejection as GatewayProductRejection {
+        throw AttachmentPieces.failure(rejection)
+      }
+      guard generation == connectionGeneration, !Task.isCancelled else {
+        throw NessaGatewayError.disconnected
+      }
+      guard written.received == end else { throw NessaGatewayError.invalidFrame }
+      if last {
+        guard let digest = written.digest, let mimeType = written.mimeType,
+          let size = written.size
+        else { throw NessaGatewayError.invalidFrame }
+        return NessaImageAttachment(digest: digest, mimeType: mimeType, size: size)
+      }
+      offset = end
+    }
   }
   public func answer(
     _ permission: NessaPermission, option: NessaPermission.Option, conversationID: String
@@ -1255,9 +1307,8 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
 extension NessaGatewayClient: PhoneProductTransport {}
 
 extension NessaGatewayClient: LinkedProductConnecting {
-  /// The paired Mac's product session, over its native link. Attachments go
-  /// over HTTP to the gateway, which the link does not carry, so none are
-  /// offered here.
+  /// The paired Mac's product session, over its native link. The link carries
+  /// no HTTP, so attachments go up in pieces over the session (`attachment.write`).
   func connectLinked(_ exchange: any GatewayProductExchange, scope: PhoneCacheScope)
     async throws -> GatewayConnectionLease
   {
