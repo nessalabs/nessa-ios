@@ -262,6 +262,21 @@ public enum MessagesStyle {
   public static let pinRowGap: CGFloat = 18
   public static let bottomInset: CGFloat = 8
   public static let toolbarGap: CGFloat = 12
+  /// The home screen's greeting: the one serif line in the app, set like a title page.
+  public static let greeting = Font.system(size: 30, weight: .regular, design: .serif)
+  /// The line under the greeting saying where a message will go.
+  public static let greetingDetail = Font.system(size: 15)
+  public static let greetingGap: CGFloat = 16
+  /// The Nessa mark above the greeting.
+  public static let homeMark: CGFloat = 40
+  /// The round buttons at the home screen's top corners.
+  public static let homeButton: CGFloat = 44
+  /// The sidebar's title and its section labels.
+  public static let sidebarTitle = Font.system(size: 28, weight: .regular, design: .serif)
+  public static let sidebarSection = Font.system(size: 14)
+  public static let sidebarRow = Font.system(size: 17)
+  public static let sidebarRowHeight: CGFloat = 44
+  public static let sidebarIcon: CGFloat = 22
 }
 
 public struct MessagesGlass: ViewModifier {

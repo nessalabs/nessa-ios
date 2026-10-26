@@ -1,7 +1,8 @@
 import NessaDesignSystem
 import SwiftUI
 
-/// Owns navigation and connection presentation; screen layouts live under Messages/.
+/// Owns navigation and connection presentation: the home screen with the sidebar under it,
+/// and the chats it opens. Screen layouts live in their own views.
 public struct NessaMessagesView: View {
   @StateObject private var store: MessagesViewModel
   @StateObject private var linkStore: DesktopLinkViewModel
@@ -11,84 +12,49 @@ public struct NessaMessagesView: View {
   @State private var settings = false
   @State private var pairing = false
   @State private var linkedChats = false
-  private struct Route: Hashable {
-    let conversationID: String
-    let focusComposer: Bool
+  /// The sidebar under the home screen is uncovered.
+  @State private var sidebar = false
+  /// Messages typed on the home screen, waiting for the chat each started to send them.
+  @State private var firstMessages: [String: HomeFirstMessage] = [:]
+  @StateObject private var homeDictation: DictationViewModel
+  private enum Route: Hashable {
+    case chat(id: String, focusComposer: Bool)
+    /// Every chat, with selecting, archiving and search: the inbox.
+    case allChats
+    var conversationID: String? {
+      if case .chat(let id, _) = self { return id }
+      return nil
+    }
   }
   @State private var path: [Route] = []
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   public init(dependencies: NessaDependencies) {
     self.dependencies = dependencies
     _store = StateObject(wrappedValue: dependencies.makeMessagesViewModel())
     _linkStore = StateObject(wrappedValue: dependencies.makeDesktopLinkViewModel())
+    _homeDictation = StateObject(wrappedValue: dependencies.makeDictationViewModel())
   }
   public var body: some View {
-    NavigationStack(path: $path) {
-      MessagesInboxView(
-        store: store, desktop: linkStore,
-        onPair: {
-          linkStore.reset()
-          pairing = true
-        },
-        onSettings: { settings = true },
-        onOpen: { identifier in
-          let id = store.existingConversationID(for: identifier) ?? identifier
-          if path.last?.conversationID != id {
-            path.append(Route(conversationID: id, focusComposer: false))
-          }
-        },
-        onCompose: {
-          Task {
-            if let id = await store.create() {
-              path.append(Route(conversationID: id, focusComposer: false))
-            }
-          }
-        },
-        onOpenComposer: { id in
-          if path.last?.conversationID != id {
-            path.append(Route(conversationID: id, focusComposer: true))
-          }
-        }
-      )
-      .navigationDestination(for: Route.self) { route in
-        NessaThreadView(
-          store: store, conversationID: route.conversationID,
-          dictation: dependencies.makeDictationViewModel(), autoFocusComposer: route.focusComposer)
-      }
-      .navigationDestination(isPresented: $linkedChats) {
-        LinkedDesktopChatsView(store: linkStore)
-          .navigationDestination(for: LinkedChatRoute.self) { route in
-            LinkedDesktopThreadView(store: linkStore, conversationID: route.conversationID)
-          }
-      }
-      .sheet(isPresented: $settings) {
-        NessaConnectionView(
-          store: store, address: $address, instance: instance, desktop: linkStore,
-          onPair: {
-            settings = false
-            linkStore.reset()
-            pairing = true
-          },
-          onShowChats: {
-            settings = false
-            linkedChats = true
-          })
-      }
-      .sheet(isPresented: $pairing) {
-        PairWithDesktopView(store: linkStore)
-          .presentationBackground(MessagesStyle.background)
-      }
-      .alert(
-        "Nessa connection",
-        isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })
-      ) {
-        Button("OK") { store.error = nil }
-      } message: {
-        Text(store.error ?? "")
-      }
+    // The edge drag opens the sidebar only on the home screen; anywhere deeper it is the
+    // system's swipe back.
+    NessaSideDrawer(isOpen: $sidebar, edgeDragEnabled: path.isEmpty && !linkedChats) {
+      NessaSidebar(
+        store: store, current: path.last?.conversationID,
+        onAllChats: { show([.allChats]) },
+        onOpen: { show([.chat(id: $0, focusComposer: false)]) },
+        onNewChat: compose,
+        onSettings: {
+          closeSidebar()
+          settings = true
+        })
+    } content: {
+      stack
     }
-    // On the stack, not the inbox: the inbox's own tasks run again each time a thread is
-    // popped, and connecting again would drop the live connection mid-transition.
+    .preferredColorScheme(.dark)
+    .tint(MessagesStyle.foreground)
+    // Above the stack, not on a screen in it: a screen's tasks run again each time it comes
+    // back into view, and connecting again would drop the live connection mid-transition.
     .task {
       if dependencies.mode == .development {
         await store.connect(
@@ -136,7 +102,107 @@ public struct NessaMessagesView: View {
     .onChange(of: store.deliveryScopeRevision) { _, _ in
       path = []
     }
-    .preferredColorScheme(.dark)
-    .tint(MessagesStyle.foreground)
+  }
+
+  private var stack: some View {
+    NavigationStack(path: $path) {
+      NessaHomeView(
+        store: store, desktop: linkStore, dictation: homeDictation,
+        onMenu: openSidebar,
+        onPair: pair,
+        onCompose: compose,
+        onStart: { id, first in
+          firstMessages[id] = first
+          path.append(.chat(id: id, focusComposer: false))
+        }
+      )
+      .navigationDestination(for: Route.self) { route in
+        switch route {
+        case .chat(let id, let focusComposer):
+          NessaThreadView(
+            store: store, conversationID: id,
+            dictation: dependencies.makeDictationViewModel(), autoFocusComposer: focusComposer,
+            firstMessage: firstMessages[id],
+            onFirstMessageTaken: { firstMessages[id] = nil })
+        case .allChats:
+          MessagesInboxView(
+            store: store, desktop: linkStore,
+            onPair: pair,
+            onSettings: { settings = true },
+            onOpen: { identifier in
+              let id = store.existingConversationID(for: identifier) ?? identifier
+              if path.last?.conversationID != id {
+                path.append(.chat(id: id, focusComposer: false))
+              }
+            },
+            onCompose: compose,
+            onOpenComposer: { id in
+              if path.last?.conversationID != id {
+                path.append(.chat(id: id, focusComposer: true))
+              }
+            }
+          )
+        }
+      }
+      .navigationDestination(isPresented: $linkedChats) {
+        LinkedDesktopChatsView(store: linkStore)
+          .navigationDestination(for: LinkedChatRoute.self) { route in
+            LinkedDesktopThreadView(store: linkStore, conversationID: route.conversationID)
+          }
+      }
+      .sheet(isPresented: $settings) {
+        NessaConnectionView(
+          store: store, address: $address, instance: instance, desktop: linkStore,
+          onPair: {
+            settings = false
+            pair()
+          },
+          onShowChats: {
+            settings = false
+            linkedChats = true
+          })
+      }
+      .sheet(isPresented: $pairing) {
+        PairWithDesktopView(store: linkStore)
+          .presentationBackground(MessagesStyle.background)
+      }
+      .alert(
+        "Nessa connection",
+        isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })
+      ) {
+        Button("OK") { store.error = nil }
+      } message: {
+        Text(store.error ?? "")
+      }
+    }
+  }
+
+  private func pair() {
+    linkStore.reset()
+    pairing = true
+  }
+
+  private func openSidebar() {
+    withAnimation(reduceMotion ? nil : NessaDrawerStyle.motion) { sidebar = true }
+  }
+
+  private func closeSidebar() {
+    withAnimation(reduceMotion ? nil : NessaDrawerStyle.motion) { sidebar = false }
+  }
+
+  /// Opens what the sidebar picked in place of whatever was open, as the sidebar closes.
+  private func show(_ routes: [Route]) {
+    linkedChats = false
+    path = routes
+    closeSidebar()
+  }
+
+  /// A new, empty chat, opened with its composer ready.
+  private func compose() {
+    Task {
+      if let id = await store.create() {
+        show([.chat(id: id, focusComposer: true)])
+      }
+    }
   }
 }
