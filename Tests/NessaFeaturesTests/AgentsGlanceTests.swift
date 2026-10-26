@@ -93,6 +93,9 @@ private func eventually(_ predicate: @MainActor () async -> Bool) async throws {
 private actor ScriptedReviews: MessagingRepository, ReviewNoticeSource {
   let base = MockRepository()
   private(set) var reads = 0
+  /// A second review the fixture chat's view holds, newer than its own.
+  private var extra: NessaPermission?
+  func holdAnother(_ permission: NessaPermission) { extra = permission }
   private var listener: AsyncStream<WaitingReviews>.Continuation?
   func announce(_ reviews: [WaitingReviews.Review]) {
     listener?.yield(WaitingReviews(reviews: reviews))
@@ -113,7 +116,12 @@ private actor ScriptedReviews: MessagingRepository, ReviewNoticeSource {
   }
   func read(_ id: String) async throws -> NessaConversationView {
     reads += 1
-    return try await base.read(id)
+    let view = try await base.read(id)
+    guard let extra, !view.permissions.isEmpty else { return view }
+    return NessaConversationView(
+      conversationId: view.conversationId, messages: view.messages,
+      permissions: view.permissions + [extra], truncated: view.truncated,
+      interactionViewError: view.interactionViewError, runtime: view.runtime)
   }
   func create(agent: String?, model: String?) async throws -> String {
     try await base.create(agent: agent, model: model)
@@ -162,18 +170,26 @@ private actor ScriptedReviews: MessagingRepository, ReviewNoticeSource {
     preferences: InMemoryChatPreferences())
   await model.connect(address: "mock://one", credential: "", instance: "phone")
   let id = "00000000-0000-4000-8000-000000000002"
+  let newer = NessaPermission(
+    executionId: "\(id)-8", permissionId: "newer", title: "Nessa wants to edit a file",
+    toolName: "edit", argumentsJson: "{}",
+    options: [NessaPermission.Option(id: "allow_once", label: "Allow once", effect: "allow")])
+  await repository.holdAnother(newer)
   await model.refresh(id)
-  let held = try #require(model.views[id]?.permissions.first)
-  #expect(model.waitingPermission(in: id) == held)
+  let oldest = try #require(model.views[id]?.permissions.first)
+  #expect(model.views[id]?.permissions.count == 2)
+  // With nothing announced, the oldest the view holds.
+  #expect(model.waitingPermission(in: id) == oldest)
   let watching = Task { await model.watchReviews() }
   defer { watching.cancel() }
   try await eventually { await repository.listening }
+  // The older one was answered elsewhere and the view here is behind: the announced one.
   await repository.announce([
     .init(
-      conversationId: id, executionId: held.executionId, permissionId: held.permissionId,
-      tool: held.toolName, title: nil)
+      conversationId: id, executionId: newer.executionId, permissionId: newer.permissionId,
+      tool: newer.toolName, title: nil)
   ])
   try await eventually { model.waitingReviews?.reviews.count == 1 }
-  #expect(model.waitingPermission(in: id) == held)
+  #expect(model.waitingPermission(in: id) == newer)
   #expect(model.waitingPermission(in: "00000000-0000-4000-8000-000000000009") == nil)
 }
