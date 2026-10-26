@@ -47,19 +47,27 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
   }
 
   public var body: some View {
-    GeometryReader { proxy in
-      let width = max(proxy.size.width - NessaDrawerStyle.peek, 1)
+    // Measured inside the safe area, to learn its insets; drawn edge to edge, so the pushed
+    // content is one whole card down to the screen's corners.
+    GeometryReader { outer in
+      let insets = outer.safeAreaInsets
+      let full = CGSize(
+        width: outer.size.width + insets.leading + insets.trailing,
+        height: outer.size.height + insets.top + insets.bottom)
+      let width = max(full.width - NessaDrawerStyle.peek, 1)
       let progress = progress(width: width)
       ZStack(alignment: .leading) {
         sidebar
-          .frame(width: width)
-          .frame(maxHeight: .infinity)
+          // The sidebar keeps clear of the status bar and the home indicator itself.
+          .padding(.top, insets.top)
+          .padding(.bottom, insets.bottom)
+          .frame(width: width, height: full.height)
           // Hidden from VoiceOver while closed, so swiping through the screen reads only the
           // content.
           .accessibilityHidden(!isOpen)
           .allowsHitTesting(isOpen)
         content
-          .frame(width: proxy.size.width, height: proxy.size.height)
+          .frame(width: full.width, height: full.height)
           .overlay {
             // The dim takes the tap that closes the drawer, so nothing behind it is pressed.
             Color.black.opacity(NessaDrawerStyle.contentDim * progress)
@@ -77,12 +85,11 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
           .accessibilityHidden(isOpen)
           .offset(x: width * progress)
       }
+      .frame(width: full.width, height: full.height, alignment: .topLeading)
       .contentShape(Rectangle())
       .simultaneousGesture(dragGesture(width: width), including: .all)
+      .ignoresSafeArea(.container)
     }
-    // Edge to edge, so the pushed content is one whole card down to the screen's corners;
-    // the views inside still read the safe area and keep clear of it themselves.
-    .ignoresSafeArea(.container)
   }
 
   private func progress(width: CGFloat) -> CGFloat {

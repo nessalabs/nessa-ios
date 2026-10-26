@@ -46,6 +46,13 @@ public final class MessagesViewModel: ObservableObject {
   /// Their rows also stay in `conversations`, so opening and previewing work the same.
   @Published public private(set) var archivedConversations: [NessaConversation] = []
   public var archivedChats: [String] { archivedConversations.map(\.id) }
+  /// The chats in a channel, newest first; a chat that names no channel is in the default one.
+  public func conversations(inChannel id: String) -> [NessaConversation] {
+    let archived = Set(archivedChats)
+    return visibleConversations.filter {
+      ($0.channelId ?? NessaChannel.defaultID) == id && !archived.contains($0.id)
+    }
+  }
   public enum PreviewState: Equatable {
     case available(NessaConversationView)
     case loading, empty, unavailable

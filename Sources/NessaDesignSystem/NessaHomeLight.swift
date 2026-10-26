@@ -32,7 +32,10 @@ public struct NessaHomeLight: View {
       case .cornerLight, .blueHour:
         Self.grain(context, size, shape: shape, color: Self.ink(style))
       case .horizon, .eclipse:
-        Self.halftone(context, size, shape: shape, color: Self.ink(style))
+        // Softer under the horizon, where the composer's text sits on it.
+        Self.halftone(
+          context, size, shape: shape,
+          color: Self.ink(style).opacity(style == .horizon ? 0.6 : 1))
       case .spotlight:
         Self.pixels(context, size, shape: shape, color: Self.ink(style))
       case .diagonal:

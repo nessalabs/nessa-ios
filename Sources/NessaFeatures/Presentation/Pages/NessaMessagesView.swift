@@ -21,6 +21,8 @@ public struct NessaMessagesView: View {
     case chat(id: String, focusComposer: Bool)
     /// Every chat, with selecting, archiving and search: the inbox.
     case allChats
+    /// One channel's chats.
+    case channel(NessaChannel)
     var conversationID: String? {
       if case .chat(let id, _) = self { return id }
       return nil
@@ -42,6 +44,7 @@ public struct NessaMessagesView: View {
       NessaSidebar(
         store: store, current: path.last?.conversationID,
         onAllChats: { show([.allChats]) },
+        onChannel: { show([.channel($0)]) },
         onOpen: { show([.chat(id: $0, focusComposer: false)]) },
         onNewChat: compose,
         onSettings: {
@@ -124,6 +127,10 @@ public struct NessaMessagesView: View {
             dictation: dependencies.makeDictationViewModel(), autoFocusComposer: focusComposer,
             firstMessage: firstMessages[id],
             onFirstMessageTaken: { firstMessages[id] = nil })
+        case .channel(let channel):
+          ChannelChatsView(store: store, channel: channel) { id in
+            path.append(.chat(id: id, focusComposer: false))
+          }
         case .allChats:
           MessagesInboxView(
             store: store, desktop: linkStore,

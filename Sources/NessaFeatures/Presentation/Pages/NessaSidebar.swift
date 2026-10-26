@@ -8,6 +8,7 @@ struct NessaSidebar: View {
   /// The chat on screen, marked in the list.
   let current: String?
   let onAllChats: () -> Void
+  let onChannel: (NessaChannel) -> Void
   let onOpen: (String) -> Void
   let onNewChat: () -> Void
   let onSettings: () -> Void
@@ -19,6 +20,12 @@ struct NessaSidebar: View {
           .padding(.horizontal, NessaSpacing.md).padding(.bottom, NessaSpacing.sm)
           .accessibilityAddTraits(.isHeader)
         row("Chats", icon: .chats, action: onAllChats)
+        if !store.channels.isEmpty {
+          section("Channels")
+          ForEach(store.channels) { channel in
+            row(channel.name, icon: .hash) { onChannel(channel) }
+          }
+        }
         if !pinned.isEmpty {
           section("Pinned")
           ForEach(pinned, id: \.self) { chatRow($0) }

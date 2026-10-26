@@ -76,6 +76,7 @@ struct MessageComposer: View {
           // As tall as the message field beside it, so the two share a centre line.
           NessaIcon(.plus)
             .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
+            .contentShape(Circle())
             .messagesGlass()
         }.buttonStyle(.nessaPress)
           .disabled(sending || dictation.active || preparing).accessibilityLabel("Message actions")

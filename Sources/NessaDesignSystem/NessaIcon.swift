@@ -36,6 +36,8 @@ public struct NessaIcon: View {
     NessaIconShape(name: name)
       .stroke(style: StrokeStyle(lineWidth: weight, lineCap: .round, lineJoin: .round))
       .frame(width: size, height: size)
+      // Hit-tested as its square, not as its hairline strokes.
+      .contentShape(Rectangle())
       .accessibilityHidden(true)
   }
 }

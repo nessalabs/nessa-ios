@@ -90,6 +90,8 @@ struct NessaHomeView: View {
       Button(action: onMenu) {
         NessaIcon(.menu)
           .frame(width: MessagesStyle.homeButton, height: MessagesStyle.homeButton)
+          // The whole disc takes the tap, not only the icon's thin strokes.
+          .contentShape(Circle())
           .messagesGlass()
       }
       .buttonStyle(.nessaPress)
@@ -98,6 +100,8 @@ struct NessaHomeView: View {
       Button(action: onCompose) {
         NessaIcon(.compose)
           .frame(width: MessagesStyle.homeButton, height: MessagesStyle.homeButton)
+          // The whole disc takes the tap, not only the icon's thin strokes.
+          .contentShape(Circle())
           .messagesGlass()
       }
       .buttonStyle(.nessaPress)
