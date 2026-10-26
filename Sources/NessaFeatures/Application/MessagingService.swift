@@ -148,6 +148,12 @@ public struct MessagingService: Sendable, GatewayConversationSharingProviding,
     }
   }
   public func list() async throws -> NessaConversationList { try await repository.list() }
+  public func listArchived() async throws -> NessaConversationList {
+    try await repository.listArchived()
+  }
+  public func setArchived(_ archived: Bool, conversationID: String) async throws {
+    try await repository.setArchived(archived, conversationID: conversationID)
+  }
   public func read(_ id: String) async throws -> NessaConversationView {
     try await repository.read(id)
   }

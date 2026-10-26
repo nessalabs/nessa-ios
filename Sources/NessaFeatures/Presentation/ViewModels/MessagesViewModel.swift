@@ -38,7 +38,12 @@ public final class MessagesViewModel: ObservableObject {
   @Published public var pinnedChats: [String] = []
   @Published public var unreadChats: [String] = []
   @Published public var mutedChats: [String] = []
-  @Published public private(set) var archivedChats: [String] = []
+  /// The chats the gateway holds archived, read when the Archived list is shown. The
+  /// gateway decides which chats are archived; a new message there unarchives one, and the
+  /// inbox feed (which lists only unarchived chats) showing it again takes it off this list.
+  /// Their rows also stay in `conversations`, so opening and previewing work the same.
+  @Published public private(set) var archivedConversations: [NessaConversation] = []
+  public var archivedChats: [String] { archivedConversations.map(\.id) }
   public enum PreviewState: Equatable {
     case available(NessaConversationView)
     case loading, empty, unavailable
@@ -515,14 +520,50 @@ public final class MessagesViewModel: ObservableObject {
     preferences.save(unreadChats, forKey: statusKey + ".unread")
     preferences.save(mutedChats, forKey: statusKey + ".muted")
   }
-  public func setArchived(_ archived: Bool, conversationID: String) {
-    guard conversations.contains(where: { $0.id == conversationID }) else { return }
-    archivedChats.removeAll { $0 == conversationID }
-    if archived {
-      archivedChats.append(conversationID)
-      if isPinned(conversationID) { togglePin(conversationID) }
+  /// Reads the gateway's archived chats for the Archived list.
+  public func loadArchived() async {
+    guard connected else { return }
+    let expected = generation
+    do {
+      let list = try await service.listArchived()
+      guard generation == expected else { return }
+      archivedConversations = list.conversations.filter {
+        !deletedIDs.contains($0.id) && !pendingDeletionIDs.contains($0.id)
+      }
+      let listed = Set(conversations.map(\.id))
+      let missing = archivedConversations.filter { !listed.contains($0.id) }
+      if !missing.isEmpty { conversations += missing }
+    } catch {
+      guard generation == expected else { return }
+      self.error = error.localizedDescription
     }
-    preferences.save(archivedChats, forKey: statusKey + ".archived")
+  }
+  /// Archives or unarchives a chat on the gateway, then moves its row between the lists.
+  /// The inbox feed and the next archived read agree once the gateway has applied it.
+  public func setArchived(_ archived: Bool, conversationID: String) async {
+    guard connected else {
+      error = NessaGatewayError.disconnected.localizedDescription
+      return
+    }
+    let expected = generation
+    do {
+      try await service.setArchived(archived, conversationID: conversationID)
+    } catch {
+      guard generation == expected else { return }
+      self.error = error.localizedDescription
+      return
+    }
+    guard generation == expected else { return }
+    if archived {
+      if let row = conversations.first(where: { $0.id == conversationID }),
+        !archivedConversations.contains(where: { $0.id == conversationID })
+      {
+        archivedConversations.insert(row, at: 0)
+      }
+      if isPinned(conversationID) { togglePin(conversationID) }
+    } else {
+      archivedConversations.removeAll { $0.id == conversationID }
+    }
   }
   public func deleteConversations(_ ids: Set<String>) async {
     let expectedGeneration = generation
@@ -663,8 +704,7 @@ public final class MessagesViewModel: ObservableObject {
     previewViews.removeValue(forKey: id)
     unreadChats.removeAll { identifiers.contains($0) }
     mutedChats.removeAll { identifiers.contains($0) }
-    archivedChats.removeAll { $0 == id }
-    preferences.save(archivedChats, forKey: statusKey + ".archived")
+    archivedConversations.removeAll { $0.id == id }
     saveStatus()
     for identifier in identifiers where isPinned(identifier) { togglePin(identifier) }
     conversations.removeAll { $0.id == id }
@@ -853,7 +893,7 @@ public final class MessagesViewModel: ObservableObject {
       pinnedChats = []
       unreadChats = []
       mutedChats = []
-      archivedChats = []
+      archivedConversations = []
       reactions = [:]
       replyTargets = [:]
       agentProfiles = []
@@ -1037,7 +1077,7 @@ public final class MessagesViewModel: ObservableObject {
     pinnedChats = []
     unreadChats = []
     mutedChats = []
-    archivedChats = []
+    archivedConversations = []
     reactions = [:]
     replyTargets = [:]
     replyProjections = [:]
@@ -1307,7 +1347,7 @@ public final class MessagesViewModel: ObservableObject {
     statusKey = "nessa.status." + scope
     unreadChats = preferences.strings(forKey: statusKey + ".unread") ?? []
     mutedChats = preferences.strings(forKey: statusKey + ".muted") ?? []
-    archivedChats = preferences.strings(forKey: statusKey + ".archived") ?? []
+    archivedConversations = []
     previewViews = [:]
     let savedPins = preferences.strings(forKey: pinKey) ?? []
     pinnedChats = NessaPinPolicy.normalize(savedPins)
@@ -1549,6 +1589,14 @@ public final class MessagesViewModel: ObservableObject {
       ? result.conversations.filter { !deletedIDs.contains($0.id) }
       : PhoneProductChat.visible(result, hiding: deletedIDs)
     visible += unlistedCreations.values
+    // The feed lists only unarchived chats: one it lists is no longer archived, and the
+    // archived rows read for the Archived list stay beside it.
+    if archivedConversations.contains(where: { observed.contains($0.id) }) {
+      archivedConversations.removeAll { observed.contains($0.id) }
+    }
+    visible += archivedConversations.filter { row in
+      !deletedIDs.contains(row.id) && !visible.contains { $0.id == row.id }
+    }
     if !unlistedCreations.isEmpty { visible.sort { $0.updatedAtMs > $1.updatedAtMs } }
     if conversations != visible { conversations = visible }
     if listComplete != result.complete { listComplete = result.complete }

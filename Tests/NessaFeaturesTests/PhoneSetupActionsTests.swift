@@ -70,6 +70,8 @@ private actor SetupGatewayProbe: MessagingRepository, AuthenticatedGatewaySessio
     "unused"
   }
   func delete(_ conversationID: String) {}
+  func listArchived() -> NessaConversationList { .init(conversations: [], complete: true) }
+  func setArchived(_ archived: Bool, conversationID: String) {}
   func answer(_ permission: NessaPermission, option: NessaPermission.Option, conversationID: String)
   {}
 }

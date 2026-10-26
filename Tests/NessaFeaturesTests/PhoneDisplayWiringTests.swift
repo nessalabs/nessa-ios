@@ -83,6 +83,8 @@ private actor DisplayGateway: MessagingRepository, ConnectionLeasing, AgentDirec
   func answer(_ permission: NessaPermission, option: NessaPermission.Option, conversationID: String)
   {}
   func delete(_ conversationID: String) {}
+  func listArchived() -> NessaConversationList { .init(conversations: [], complete: true) }
+  func setArchived(_ archived: Bool, conversationID: String) {}
   func follow(_ id: String?, after: ConversationCursor?) -> AsyncThrowingStream<
     ConversationUpdate, Error
   > {

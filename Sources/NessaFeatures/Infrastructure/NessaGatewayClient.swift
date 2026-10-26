@@ -285,6 +285,22 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
     try requireConnection()
     return try await request("conversation.list", params: Empty())
   }
+  public func listArchived() async throws -> NessaConversationList {
+    try requireConnection()
+    struct Archived: Encodable { let archived = true }
+    return try await request("conversation.list", params: Archived())
+  }
+  public func setArchived(_ archived: Bool, conversationID: String) async throws {
+    try requireConnection()
+    struct Archive: Encodable {
+      let conversationId: String
+      let requestId: String
+    }
+    let _: Ignored = try await request(
+      archived ? "conversation.archive" : "conversation.unarchive",
+      params: Archive(
+        conversationId: conversationID, requestId: UUID().uuidString.lowercased()))
+  }
   public func agents() async throws -> [AgentProfile] {
     try requireConnection()
     let result: GatewayAgentListDTO = try await request("agents.list", params: Empty())

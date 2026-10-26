@@ -145,6 +145,8 @@ private actor VMDeletionGateway: MessagingRepository, ConnectionLeasing, Gateway
     return "turn"
   }
   func delete(_ conversationID: String) { legacyDeletes += 1 }
+  func listArchived() -> NessaConversationList { .init(conversations: [], complete: true) }
+  func setArchived(_ archived: Bool, conversationID: String) {}
   func answer(_ permission: NessaPermission, option: NessaPermission.Option, conversationID: String)
   {}
 }
