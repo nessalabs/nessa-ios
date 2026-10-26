@@ -383,10 +383,14 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     return try await request("conversation.read", params: ConversationID(conversationId: id))
   }
   public func create(agent: String? = nil, model: String? = nil) async throws -> String {
+    try await create(agent: agent, model: model, channel: nil)
+  }
+  public func create(agent: String?, model: String?, channel: String?) async throws -> String {
     try await create(
       .init(
         requestID: UUID().uuidString.lowercased(),
-        conversationID: UUID().uuidString.lowercased(), agent: agent, model: model))
+        conversationID: UUID().uuidString.lowercased(), agent: agent, model: model,
+        channelID: channel))
   }
   public func create(_ intent: PreparedConversationCommand.Creation) async throws -> String {
     try requireConnection()
@@ -399,7 +403,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
       "conversation.create",
       params: Create(
         conversationId: intent.conversationID, requestId: intent.requestID,
-        agent: intent.agent, model: intent.model))
+        agent: intent.agent, model: intent.model, channelId: intent.channelID))
     return intent.conversationID
   }
   public func pendingCommands() async throws -> [PreparedConversationCommand] {
@@ -439,7 +443,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
           "conversation.create",
           params: Create(
             conversationId: value.conversationID, requestId: value.requestID,
-            agent: value.agent, model: value.model))
+            agent: value.agent, model: value.model, channelId: value.channelID))
         acknowledgment = .created(result.conversationId)
       case .submit(let value):
         struct Submission: Decodable {
@@ -1227,6 +1231,8 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     let requestId: String
     let agent: String?
     let model: String?
+    /// Left out for the default channel.
+    let channelId: String?
   }
   private struct Created: Decodable { let conversationId: String }
   private struct Send: Encodable {

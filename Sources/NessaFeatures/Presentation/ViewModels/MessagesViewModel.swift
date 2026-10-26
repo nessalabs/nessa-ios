@@ -1849,7 +1849,8 @@ public final class MessagesViewModel: ObservableObject {
     connected && conversationAuthorityReady && !busy && pendingLoadError == nil
       && pendingCreations.isEmpty
   }
-  public func create(agent: String? = nil) async -> String? {
+  /// Starts a chat, in `channel` when one is named (nil is the default channel).
+  public func create(agent: String? = nil, channel: String? = nil) async -> String? {
     guard canCreateChat else { return nil }
     let currentGeneration = generation
     let originalProfile = profile
@@ -1862,7 +1863,8 @@ public final class MessagesViewModel: ObservableObject {
         ?? (agent == nil && agentProfiles.count == 1 ? agentProfiles.first : nil)
       let intent = PreparedConversationCommand.Creation(
         requestID: UUID().uuidString.lowercased(),
-        conversationID: UUID().uuidString.lowercased(), agent: agent, model: profile?.phoneModel)
+        conversationID: UUID().uuidString.lowercased(), agent: agent, model: profile?.phoneModel,
+        channelID: channel)
       let id: String
       do { id = try await service.create(intent) } catch {
         if let failure = error as? CommandDeliveryFailure, let accepted = failure.acknowledgment,
@@ -1888,7 +1890,7 @@ public final class MessagesViewModel: ObservableObject {
       if !conversations.contains(where: { $0.id == id }) {
         let row = NessaConversation(
           conversationId: id, title: nil, preview: nil,
-          updatedAtMs: Date().timeIntervalSince1970 * 1000, running: false)
+          updatedAtMs: Date().timeIntervalSince1970 * 1000, running: false, channelId: channel)
         unlistedCreations[id] = row
         conversations.insert(row, at: 0)
       }
