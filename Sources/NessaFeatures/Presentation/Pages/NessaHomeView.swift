@@ -71,7 +71,9 @@ struct NessaHomeView: View {
       .padding(.bottom, MessagesStyle.bottomInset)
       .animation(reduceMotion ? nil : NessaMotion.enter, value: waitingForLink)
     }
-    .toolbar(.hidden, for: .navigationBar)
+    #if os(iOS)
+      .toolbar(.hidden, for: .navigationBar)
+    #endif
     // The greeting follows the clock while the app stays open across an hour.
     .task {
       while !Task.isCancelled {
