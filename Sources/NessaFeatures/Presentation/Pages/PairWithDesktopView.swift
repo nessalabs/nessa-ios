@@ -135,12 +135,12 @@ struct PairWithDesktopView: View {
     ZStack {
       RoundedRectangle(cornerRadius: PairingStyle.windowRadius).fill(MessagesStyle.control)
       switch camera {
-      case .ready:
+      case .ready where phaseKey == "idle":
         #if os(iOS)
           CameraPreview(session: reader.session)
             .clipShape(RoundedRectangle(cornerRadius: PairingStyle.windowRadius))
         #endif
-      case .asking:
+      case .ready, .asking:
         Image(systemName: "camera").font(MessagesStyle.icon)
           .foregroundStyle(MessagesStyle.secondary)
       case .denied:

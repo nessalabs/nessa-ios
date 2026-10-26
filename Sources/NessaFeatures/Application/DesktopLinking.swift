@@ -11,7 +11,9 @@ public protocol GatewayFinding: Sendable {
 public protocol LinkedDesktopStoring: Sendable {
   func load() async throws -> LinkedDesktop?
   func save(_ desktop: LinkedDesktop) async throws
-  func remove() async throws
+  /// Forget the kept desktop if it is still `id`; a desktop paired since
+  /// stays.
+  func remove(_ id: UUID) async throws
 }
 
 /// Prepares the private directory a desktop's native state lives in.
@@ -32,6 +34,8 @@ public actor DesktopLinking {
   private let sessions: any RetainedSessionFactory
   private let pause: @Sendable (Double) async throws -> Void
   private let now: @Sendable () -> UInt64
+  /// Milliseconds on a clock that never jumps, for timing the wait.
+  private let elapsed: @Sendable () -> UInt64
   /// How long a desktop has to answer the search.
   public let findSeconds: Double
   /// How often the desktop is asked whether the owner approved.
@@ -46,6 +50,11 @@ public actor DesktopLinking {
   private var drained: [UUID: [CheckedContinuation<Void, Never>]] = [:]
   /// Desktops forgotten on this phone: no new read opens their directory.
   private var forgotten: Set<UUID> = []
+  /// Desktops a read could not close cleanly: a native worker may still be
+  /// writing there, so their directory is left in place.
+  private var unclean: Set<UUID> = []
+  /// Previous desktops being retired after a new pairing returned.
+  private var retiring: [Task<Void, Never>] = []
 
   public init(
     finder: any GatewayFinding, store: any LinkedDesktopStoring,
@@ -56,6 +65,9 @@ public actor DesktopLinking {
     now: @escaping @Sendable () -> UInt64 = {
       UInt64(Date().timeIntervalSince1970 * 1_000)
     },
+    elapsed: @escaping @Sendable () -> UInt64 = {
+      DispatchTime.now().uptimeNanoseconds / 1_000_000
+    },
     findSeconds: Double = 3, statusSeconds: Double = 2, approvalSeconds: Double = 900
   ) {
     self.finder = finder
@@ -64,6 +76,7 @@ public actor DesktopLinking {
     self.sessions = sessions
     self.pause = pause
     self.now = now
+    self.elapsed = elapsed
     self.findSeconds = findSeconds
     self.statusSeconds = statusSeconds
     self.approvalSeconds = approvalSeconds
@@ -108,7 +121,12 @@ public actor DesktopLinking {
       try Task.checkCancellation()
       let previous = try? await store.load()
       try await store.save(desktop)
-      if let previous, previous.id != desktop.id { await retire(previous.id) }
+      // Retired in the background: a read of the old desktop may sit on the
+      // network, and this pairing is done. New reads of it are refused now.
+      if let previous, previous.id != desktop.id {
+        forgotten.insert(previous.id)
+        retiring.append(Task { await self.retire(previous.id) })
+      }
       return desktop
     } catch {
       if closed { await locations.discard(id: id) }
@@ -126,7 +144,7 @@ public actor DesktopLinking {
     _ session: any RetainedSession, code: String, id: UUID, gateway: FoundGateway,
     progress: @Sendable (DesktopLinkPhase) async -> Void
   ) async throws -> LinkedDesktop {
-    let deadline = now() + UInt64(approvalSeconds * 1_000)
+    let deadline = elapsed() + UInt64(approvalSeconds * 1_000)
     var receipt = try await session.enroll(code: code)
     var announced = false
     while true {
@@ -141,7 +159,7 @@ public actor DesktopLinking {
         announced = true
         await progress(.approving(gateway))
       }
-      if now() >= deadline { throw DesktopLinkFailure.expired }
+      if elapsed() >= deadline { throw DesktopLinkFailure.expired }
       try await pause(statusSeconds)
       let status = try await session.status()
       if let failure = status.failure, status.receipt == nil {
@@ -155,8 +173,15 @@ public actor DesktopLinking {
   /// the desktop, in Settings › Linked devices.
   public func unlink() async throws {
     guard let desktop = try await store.load() else { return }
-    try await store.remove()
+    try await store.remove(desktop.id)
     await retire(desktop.id)
+  }
+
+  /// Waits for previous desktops still being retired.
+  func settled() async {
+    let tasks = retiring
+    retiring = []
+    for task in tasks { await task.value }
   }
 
   /// Stop new reads of `id`, wait for the ones under way, then remove its
@@ -166,6 +191,7 @@ public actor DesktopLinking {
     if reads[id, default: 0] > 0 {
       await withCheckedContinuation { drained[id, default: []].append($0) }
     }
+    guard !unclean.contains(id) else { return }
     await locations.discard(id: id)
   }
 
@@ -238,13 +264,16 @@ public actor DesktopLinking {
     } catch {
       throw Self.failure(error)
     }
+    let result: Result<Value, Error>
     do {
-      let value = try await body(session)
-      try? await session.close()
-      return value
+      result = .success(try await body(session))
     } catch {
-      try? await session.close()
-      throw Self.failure(error)
+      result = .failure(error)
+    }
+    if (try? await session.close()) == nil { unclean.insert(desktop.id) }
+    switch result {
+    case .success(let value): return value
+    case .failure(let error): throw Self.failure(error)
     }
   }
 

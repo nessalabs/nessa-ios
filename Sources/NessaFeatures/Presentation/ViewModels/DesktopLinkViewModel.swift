@@ -8,7 +8,8 @@ import Foundation
   @Published public private(set) var phase: DesktopLinkPhase = .idle
   @Published public private(set) var linked: LinkedDesktop?
   @Published public private(set) var chats: [NessaConversation] = []
-  @Published public private(set) var chatsLoading = false
+  /// The desktop whose chats are being read, if any.
+  @Published private var loadingDesktop: UUID?
   @Published public private(set) var chatsError: String?
   /// The code being paired with, held while the person picks a desktop.
   private var pendingCode: String?
@@ -18,6 +19,8 @@ import Foundation
   public init(linking: DesktopLinking?) { self.linking = linking }
 
   public var available: Bool { linking != nil }
+  /// Chats are being read from the linked desktop.
+  public var chatsLoading: Bool { loadingDesktop != nil && loadingDesktop == linked?.id }
   public var busy: Bool {
     switch phase {
     case .finding, .enrolling, .approving: return true
@@ -66,6 +69,10 @@ import Foundation
         let desktop = try await linking.link(code: code, with: gateway, progress: progress)
         guard let self else { return }
         // Kept even when cancelled: the desktop saved it, so this phone shows it.
+        if self.linked?.id != desktop.id {
+          self.chats = []
+          self.chatsError = nil
+        }
         self.linked = desktop
         guard !Task.isCancelled else { return }
         self.pendingCode = nil
@@ -106,9 +113,9 @@ import Foundation
   }
 
   public func refreshChats() async {
-    guard let linking, let linked, !chatsLoading else { return }
-    chatsLoading = true
-    defer { chatsLoading = false }
+    guard let linking, let linked, loadingDesktop != linked.id else { return }
+    loadingDesktop = linked.id
+    defer { if loadingDesktop == linked.id { loadingDesktop = nil } }
     do {
       let read = try await linking.chats(of: linked)
       // Forgotten or replaced while reading: what was read is not this desktop's.

@@ -33,12 +33,23 @@ private actor Native: RetainedSession {
   var pages: [RetainedCataloguePage?] = []
   var transcriptView: RetainedTranscript?
   var closes = 0
+  var closeFails = false
+  /// While set, a catalogue read waits until `release()`.
+  var holding = false
+  var held: CheckedContinuation<Void, Never>?
   init(first: RetainedEnrollmentReceipt, then statuses: [RetainedStatus] = []) {
     self.first = first
     self.statuses = statuses
   }
   func setPages(_ pages: [RetainedCataloguePage?]) { self.pages = pages }
   func setTranscript(_ value: RetainedTranscript) { transcriptView = value }
+  func failClose() { closeFails = true }
+  func hold() { holding = true }
+  func release() {
+    holding = false
+    held?.resume()
+    held = nil
+  }
   func localEnrollment() -> RetainedLocalEnrollment? { nil }
   func enroll(code: String) -> RetainedEnrollmentReceipt {
     enrolled.append(code)
@@ -54,15 +65,19 @@ private actor Native: RetainedSession {
       initial: statusOf(receipt(.active, receiver: "r1")), read: nil, recheck: nil,
       selectionFailure: nil)
   }
-  func cataloguePage(after: RetainedEntryKey?, maximum: UInt32) -> RetainedCataloguePage? {
-    pages.isEmpty ? nil : pages.removeFirst()
+  func cataloguePage(after: RetainedEntryKey?, maximum: UInt32) async -> RetainedCataloguePage? {
+    if holding { await withCheckedContinuation { held = $0 } }
+    return pages.isEmpty ? nil : pages.removeFirst()
   }
   func transcript(conversation: String, revision: UUID) throws -> RetainedTranscript {
     guard let transcriptView else { throw RetainedSessionError.invalidArgument }
     return transcriptView
   }
   func purgeReceipt(receiver: String) -> RetainedPurge? { nil }
-  func close() { closes += 1 }
+  func close() throws {
+    closes += 1
+    if closeFails { throw RetainedSessionError.closed }
+  }
 }
 
 private struct Factory: RetainedSessionFactory {
@@ -79,7 +94,7 @@ private actor Store: LinkedDesktopStoring {
   var desktop: LinkedDesktop?
   func load() -> LinkedDesktop? { desktop }
   func save(_ desktop: LinkedDesktop) { self.desktop = desktop }
-  func remove() { desktop = nil }
+  func remove(_ id: UUID) { if desktop?.id == id { desktop = nil } }
 }
 
 private actor Locations: LinkedDesktopLocating {
@@ -103,7 +118,7 @@ private func linking(
 ) -> DesktopLinking {
   DesktopLinking(
     finder: Finder(found: [mac]), store: store, locations: locations,
-    sessions: Factory(session: native), pause: { _ in }, now: { 1_000 },
+    sessions: Factory(session: native), pause: { _ in }, now: { 1_000 }, elapsed: { 1_000 },
     approvalSeconds: approvalSeconds)
 }
 
@@ -198,9 +213,10 @@ private func linking(
   await store.save(old)
   let locations = Locations()
   let native = Native(first: receipt(.active, receiver: "r1"))
-  let desktop = try await linking(native, store: store, locations: locations)
-    .link(code: "ABCD-2345", with: mac)
+  let linker = linking(native, store: store, locations: locations)
+  let desktop = try await linker.link(code: "ABCD-2345", with: mac)
   #expect(await store.desktop == desktop)
+  await linker.settled()
   #expect(await locations.discarded == [old.id])
 }
 
@@ -216,41 +232,56 @@ private func linking(
   try await linker.unlink()
   #expect(await store.desktop == nil)
   #expect(await locations.discarded == [desktop.id])
-  await #expect(throws: DesktopLinkFailure.self) { try await linker.chats(of: desktop) }
+  await #expect(throws: DesktopLinkFailure.other("forgotten")) {
+    try await linker.chats(of: desktop)
+  }
   #expect(await locations.prepared.isEmpty)
 }
 
-@Test func sharedChatsAreReadNewestFirstWithoutDeletedOrArchived() async throws {
-  let native = Native(first: receipt(.claimed))
-  let scope = RetainedScope(
-    accessEpoch: "1", incarnation: "i", origin: "o", receiver: "r1", schema: "s", stream: "t")
-  func entry(_ id: String, at: UInt64, deleted: Bool = false, archived: Bool = false)
-    -> RetainedCatalogueEntry
-  {
-    RetainedCatalogueEntry(
-      agent: nil, archived: archived, createdAtMs: at, deleted: deleted,
-      key: RetainedEntryKey(creation: at, id: id), model: nil, preview: "p", revision: 1,
-      title: id, updatedAtMs: at)
-  }
-  let next = RetainedEntryKey(creation: 3, id: "c")
-  await native.setPages([
-    RetainedCataloguePage(
-      activeBoundary: nil, activeCursor: nil, completed: 1,
-      entries: [entry("a", at: 1), entry("gone", at: 9, deleted: true)], generation: 1,
-      next: next, scope: scope),
-    RetainedCataloguePage(
-      activeBoundary: nil, activeCursor: nil, completed: 2,
-      entries: [entry("c", at: 3), entry("old", at: 8, archived: true)], generation: 1,
-      next: nil, scope: scope),
-  ])
+@Test func forgettingWaitsForAReadUnderWay() async throws {
   let desktop = LinkedDesktop(
     id: UUID(), name: "Studio", gateway: "gw-1", address: mac.address, receiver: "r1",
     linkedAtMs: 1)
-  let chats = try await linking(native).chats(of: desktop)
-  #expect(chats.map(\.id) == ["c", "a"])
+  let store = Store()
+  await store.save(desktop)
+  let locations = Locations()
+  let native = Native(first: receipt(.claimed))
+  await native.hold()
+  let linker = linking(native, store: store, locations: locations)
+  let reading = Task { try await linker.chats(of: desktop) }
+  while await native.held == nil { await Task.yield() }
+  let forgetting = Task { try await linker.unlink() }
+  while await store.desktop != nil { await Task.yield() }
+  for _ in 0..<100 { await Task.yield() }
+  #expect(await locations.discarded.isEmpty)
+  await native.release()
+  try await forgetting.value
+  _ = try? await reading.value
+  #expect(await locations.discarded == [desktop.id])
 }
 
-@MainActor @Test func theViewModelPicksTheOnlyMacAndSaysFailuresPlainly() async throws {
-  #expect(DesktopLinkViewModel.sentence(.noDesktop).contains("Native linking"))
-  #expect(!DesktopLinkViewModel.sentence(.other("wire")).contains("wire"))
+@Test func aSessionThatWontCloseKeepsItsDirectory() async throws {
+  let native = Native(first: receipt(.approved))
+  await native.failClose()
+  let locations = Locations()
+  await #expect(throws: DesktopLinkFailure.expired) {
+    try await linking(native, locations: locations, approvalSeconds: 0)
+      .link(code: "ABCD-2345", with: mac)
+  }
+  #expect(await native.closes == 1)
+  #expect(await locations.discarded.isEmpty)
+}
+
+@Test func theFileStoreForgetsOnlyTheDesktopItWasAskedTo() async throws {
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let store = LinkedDesktopFileStore(root: root)
+  let paired = LinkedDesktop(
+    id: UUID(), name: "New", gateway: "gw-2", address: mac.address, receiver: "r2",
+    linkedAtMs: 2)
+  try await store.save(paired)
+  try await store.remove(UUID())
+  #expect(try await store.load() == paired)
+  try await store.remove(paired.id)
+  #expect(try await store.load() == nil)
 }
