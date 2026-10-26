@@ -11,6 +11,8 @@ public struct NessaMessagesView: View {
   @State private var settings = false
   @State private var pairing = false
   @State private var linkedChats = false
+  /// A shared chat opened from the inbox.
+  @State private var sharedChat: LinkedChatRoute?
   private struct Route: Hashable {
     let conversationID: String
     let focusComposer: Bool
@@ -25,7 +27,9 @@ public struct NessaMessagesView: View {
   public var body: some View {
     NavigationStack(path: $path) {
       MessagesInboxView(
-        store: store, onSettings: { settings = true },
+        store: store, desktop: linkStore,
+        onOpenShared: { sharedChat = LinkedChatRoute(conversationID: $0) },
+        onSettings: { settings = true },
         onOpen: { identifier in
           let id = store.existingConversationID(for: identifier) ?? identifier
           if path.last?.conversationID != id {
@@ -49,6 +53,9 @@ public struct NessaMessagesView: View {
         NessaThreadView(
           store: store, conversationID: route.conversationID,
           dictation: dependencies.makeDictationViewModel(), autoFocusComposer: route.focusComposer)
+      }
+      .navigationDestination(item: $sharedChat) { route in
+        LinkedDesktopThreadView(store: linkStore, conversationID: route.conversationID)
       }
       .navigationDestination(isPresented: $linkedChats) {
         LinkedDesktopChatsView(store: linkStore)

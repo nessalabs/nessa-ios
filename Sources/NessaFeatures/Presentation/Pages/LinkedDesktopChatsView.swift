@@ -34,6 +34,35 @@ struct LinkedDesktopChatsView: View {
   }
 }
 
+/// The paired Mac's shared chats as inbox rows, read again from the Mac when
+/// the pairing changes or the inbox asks.
+struct SharedChatsSection: View {
+  @ObservedObject var store: DesktopLinkViewModel
+  let onOpen: (String) -> Void
+  var body: some View {
+    Group {
+      if let mac = store.linked {
+        Text("Shared from \(mac.name)").font(MessagesStyle.caption)
+          .foregroundStyle(MessagesStyle.secondary).padding(.top, NessaSpacing.md)
+          .task(id: mac.id) { await store.refreshChats() }
+      }
+      if let error = store.chatsError {
+        Text(error).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
+      } else if store.chats.isEmpty, !store.chatsLoading {
+        Text("No chats shared yet. On your Mac, open a chat, then Share › this phone.")
+          .font(MessagesStyle.body).foregroundStyle(MessagesStyle.secondary)
+      }
+      ForEach(store.chats) { conversation in
+        Button { onOpen(conversation.id) } label: {
+          ConversationRow(conversation: conversation, agentName: "Nessa")
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+      }
+    }
+  }
+}
+
 /// A shared chat opened from the linked Mac's list.
 struct LinkedChatRoute: Hashable {
   let conversationID: String

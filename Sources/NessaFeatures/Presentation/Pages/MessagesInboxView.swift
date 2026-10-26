@@ -3,6 +3,10 @@ import SwiftUI
 
 struct MessagesInboxView: View {
   @ObservedObject var store: MessagesViewModel
+  /// The Mac this phone is paired with, whose shared chats the inbox lists
+  /// while no gateway connection is open.
+  @ObservedObject var desktop: DesktopLinkViewModel
+  let onOpenShared: (String) -> Void
   let onSettings: () -> Void
   let onOpen: (String) -> Void
   let onCompose: () -> Void
@@ -40,6 +44,9 @@ struct MessagesInboxView: View {
             store: store, onOpen: onOpen, onOpenComposer: onOpenComposer,
             onArchive: { ask([$0], .archive) }, onDelete: { ask([$0], .delete) },
             enabled: !deleting, leaving: leaving)
+        }
+        if !store.connected, desktop.linked != nil {
+          SharedChatsSection(store: desktop, onOpen: onOpenShared)
         }
         if !store.connected {
           Button(store.reconnecting ? "Reconnecting…" : "Connect to Nessa", action: onSettings)
@@ -231,6 +238,8 @@ struct MessagesInboxView: View {
         asking = nil
       }
       .refreshable {
+        if desktop.linked != nil { await desktop.refreshChats() }
+        guard store.connected || desktop.linked == nil else { return }
         do { try await store.refreshList() } catch { store.error = error.localizedDescription }
       }
   }
