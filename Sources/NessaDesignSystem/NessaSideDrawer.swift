@@ -121,6 +121,8 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
       .simultaneousGesture(dragGesture(width: width), including: .all)
       .ignoresSafeArea(.container)
     }
+    // A light tap as it opens, whether a drag or `isOpen` opened it; closing is silent.
+    .sensoryFeedback(.impact(weight: .light), trigger: isOpen) { _, open in open }
     // Opened or closed from outside; a drag that let go has already settled to match.
     .onChange(of: isOpen) { _, open in
       if settled != (open ? 1 : 0) { settle(open: open) }

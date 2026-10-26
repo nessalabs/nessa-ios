@@ -17,8 +17,6 @@ public struct NessaMessagesView: View {
   @StateObject private var homeDictation: DictationViewModel
   private enum Route: Hashable {
     case chat(id: String, focusComposer: Bool)
-    /// Every chat, with selecting, archiving and search: the inbox.
-    case allChats
     /// One channel's chats.
     case channel(NessaChannel)
     /// Every agent at a glance.
@@ -134,8 +132,7 @@ public struct NessaMessagesView: View {
             onFirstMessageTaken: { firstMessages[id] = nil })
         case .agents:
           AgentsView(
-            store: store, onOpen: { id in path.append(.chat(id: id, focusComposer: false)) },
-            onAllChats: { path.append(.allChats) })
+            store: store, onOpen: { id in path.append(.chat(id: id, focusComposer: false)) })
         case .channel(let channel):
           ChannelChatsView(store: store, channel: channel) { id in
             path.append(.chat(id: id, focusComposer: false))
@@ -150,24 +147,6 @@ public struct NessaMessagesView: View {
           LinkedDesktopChatsView(store: linkStore) { path.append(.linkedChat($0)) }
         case .linkedChat(let id):
           LinkedDesktopThreadView(store: linkStore, conversationID: id)
-        case .allChats:
-          MessagesInboxView(
-            store: store, desktop: linkStore,
-            onPair: pair,
-            onSettings: { path.append(.connection) },
-            onOpen: { identifier in
-              let id = store.existingConversationID(for: identifier) ?? identifier
-              if path.last?.conversationID != id {
-                path.append(.chat(id: id, focusComposer: false))
-              }
-            },
-            onCompose: compose,
-            onOpenComposer: { id in
-              if path.last?.conversationID != id {
-                path.append(.chat(id: id, focusComposer: true))
-              }
-            }
-          )
         }
       }
       .sheet(isPresented: $pairing) {
