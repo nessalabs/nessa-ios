@@ -15,7 +15,8 @@ struct AgentsView: View {
   var body: some View {
     let glance = store.agentsGlance
     // A chosen group that has emptied (its last review answered) shows everything again,
-    // rather than an empty screen with no chip chosen.
+    // rather than an empty screen with no chip chosen; the choice itself is cleared below,
+    // so a new review does not narrow the list back by itself.
     let showing = shown.flatMap { glance.count($0) > 0 ? $0 : nil }
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
@@ -40,6 +41,7 @@ struct AgentsView: View {
       }
       .padding(.bottom, NessaSpacing.xl)
     }
+    .onChange(of: showing) { _, now in if now == nil { shown = nil } }
     .messagesScrollEdges()
     .messagesAmbientGround()
     // The title sits in the bar beside the back button, not as a large title under it, so

@@ -125,6 +125,11 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
     .onChange(of: isOpen) { _, open in
       if settled != (open ? 1 : 0) { settle(open: open) }
     }
+    // A drag that ends with the drawer still closed (let go short, turned vertical, or taken
+    // by the system) uncovered the sidebar without settling: the same wait takes it out.
+    .onChange(of: drag == 0) { _, idle in
+      if idle, !isOpen { closings += 1 }
+    }
     .task(id: closings) {
       guard closings > 0 else { return }
       try? await Task.sleep(for: NessaDrawerStyle.linger)

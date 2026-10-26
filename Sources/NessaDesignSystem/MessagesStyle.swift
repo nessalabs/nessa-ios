@@ -203,7 +203,6 @@ public enum MessagesStyle {
   public static let sendButton: CGFloat = 30
   public static let bubbleGutter: CGFloat = 70
   public static let rowAvatar: CGFloat = 45
-  /// The reader's own disc in the inbox's navigation bar.
   /// The agent's disc in the thread's navigation bar title.
   public static let titleAvatar: CGFloat = 28
   public static let controlHeight: CGFloat = 44
