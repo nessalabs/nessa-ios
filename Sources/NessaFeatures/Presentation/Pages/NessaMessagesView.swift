@@ -10,7 +10,6 @@ public struct NessaMessagesView: View {
   @AppStorage("nessaGatewayAddress") private var address = "ws://127.0.0.1:7420/session"
   @AppStorage("nessaSurfaceInstance") private var instance = ""
   @State private var pairing = false
-  @State private var linkedChats = false
   /// The sidebar under the home screen is uncovered.
   @State private var sidebar = false
   /// Messages typed on the home screen, waiting for the chat each started to send them.
@@ -27,6 +26,9 @@ public struct NessaMessagesView: View {
     /// The person's settings, and the connection page under them.
     case settings
     case connection
+    /// The chats the paired Mac shares, and one of them, read-only.
+    case linkedChats
+    case linkedChat(String)
     var conversationID: String? {
       if case .chat(let id, _) = self { return id }
       return nil
@@ -44,7 +46,7 @@ public struct NessaMessagesView: View {
   public var body: some View {
     // The edge drag opens the sidebar only on the home screen; anywhere deeper it is the
     // system's swipe back.
-    NessaSideDrawer(isOpen: $sidebar, edgeDragEnabled: path.isEmpty && !linkedChats) {
+    NessaSideDrawer(isOpen: $sidebar, edgeDragEnabled: path.isEmpty) {
       NessaSidebar(
         store: store,
         onAgents: { show([.agents]) },
@@ -143,7 +145,11 @@ public struct NessaMessagesView: View {
         case .connection:
           NessaConnectionView(
             store: store, address: $address, instance: instance, desktop: linkStore,
-            onPair: pair, onShowChats: { linkedChats = true })
+            onPair: pair, onShowChats: { path.append(.linkedChats) })
+        case .linkedChats:
+          LinkedDesktopChatsView(store: linkStore) { path.append(.linkedChat($0)) }
+        case .linkedChat(let id):
+          LinkedDesktopThreadView(store: linkStore, conversationID: id)
         case .allChats:
           MessagesInboxView(
             store: store, desktop: linkStore,
@@ -163,12 +169,6 @@ public struct NessaMessagesView: View {
             }
           )
         }
-      }
-      .navigationDestination(isPresented: $linkedChats) {
-        LinkedDesktopChatsView(store: linkStore)
-          .navigationDestination(for: LinkedChatRoute.self) { route in
-            LinkedDesktopThreadView(store: linkStore, conversationID: route.conversationID)
-          }
       }
       .sheet(isPresented: $pairing) {
         PairWithDesktopView(store: linkStore)
@@ -200,7 +200,6 @@ public struct NessaMessagesView: View {
 
   /// Opens what the sidebar picked in place of whatever was open, as the sidebar closes.
   private func show(_ routes: [Route]) {
-    linkedChats = false
     path = routes
     closeSidebar()
   }

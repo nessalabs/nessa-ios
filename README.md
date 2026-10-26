@@ -18,7 +18,7 @@ The inherited screens, Nostr transport, and crypto dependencies have been remove
 ## Connect to the current backend
 
 See [backend connection details](docs/NESSA_BACKEND.md). In the application,
-open Messages options → Connection settings, enter the gateway's `/session` WebSocket URL and a
+open Settings (the disc at the sidebar's foot) → Connection, enter the gateway's `/session` WebSocket URL and a
 product credential, then Connect. Use the gateway's published endpoint. The
 isolated verification gateway uses `ws://127.0.0.1:19743/session`; a physical
 phone requires a gateway address reachable from that phone.

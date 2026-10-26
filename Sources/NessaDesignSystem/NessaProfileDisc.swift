@@ -8,32 +8,14 @@ public struct NessaProfileDisc: View {
 
   public var body: some View {
     Canvas { context, canvas in
-      context.fill(Path(CGRect(origin: .zero, size: canvas)), with: .color(.black))
-      let cell = ProfileDiscStyle.cell
-      var dots = Path()
-      var y: CGFloat = 0
-      while y < canvas.height {
-        var x: CGFloat = 0
-        while x < canvas.width {
-          let point = CGPoint(x: x + cell / 2, y: y + cell / 2)
-          let d = Self.light(point, canvas)
-          // As on the home screen: the dot's area follows the light, and specks are left out.
-          let diameter = cell * 0.95 * d.squareRoot()
-          if diameter > ProfileDiscStyle.smallestDot {
-            dots.addEllipse(
-              in: CGRect(
-                x: x + (cell - diameter) / 2, y: y + (cell - diameter) / 2, width: diameter,
-                height: diameter))
-          }
-          x += cell
-        }
-        y += cell
-      }
-      context.fill(dots, with: .color(MessagesStyle.channelLight))
+      NessaHalftone.fill(
+        context, canvas, cell: ProfileDiscStyle.cell, smallestDot: ProfileDiscStyle.smallestDot,
+        color: MessagesStyle.channelLight
+      ) { p in Self.light(p, canvas) }
     }
     .frame(width: size, height: size)
     .clipShape(Circle())
-    .overlay(Circle().strokeBorder(.white.opacity(0.1), lineWidth: 0.5))
+    .overlay(Circle().strokeBorder(MessagesStyle.litRim, lineWidth: 0.5))
     .accessibilityHidden(true)
   }
 

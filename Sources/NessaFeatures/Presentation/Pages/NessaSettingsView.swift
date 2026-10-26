@@ -45,7 +45,12 @@ struct NessaSettingsView: View {
 
   /// How the phone reaches its agents right now: the paired Mac by name when that is the way.
   private var status: String {
-    if store.connected { return desktop.linked?.name ?? "Connected" }
+    if store.connected {
+      guard let linked = desktop.linked, store.linkedDesktopID == linked.id else {
+        return "Connected"
+      }
+      return linked.name
+    }
     if store.reconnecting { return "Reconnecting…" }
     return "Not connected"
   }

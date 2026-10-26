@@ -6,6 +6,7 @@ import SwiftUI
 /// pairing's private native cache, which the Mac's revoke withdraws.
 struct LinkedDesktopChatsView: View {
   @ObservedObject var store: DesktopLinkViewModel
+  let onOpen: (String) -> Void
   var body: some View {
     List {
       if let error = store.chatsError {
@@ -18,9 +19,10 @@ struct LinkedDesktopChatsView: View {
           .listRowBackground(Color.clear)
       }
       ForEach(store.chats) { conversation in
-        NavigationLink(value: LinkedChatRoute(conversationID: conversation.id)) {
+        Button { onOpen(conversation.id) } label: {
           ConversationRow(conversation: conversation, agentName: "Nessa")
         }
+        .buttonStyle(.nessaPress)
         .listRowBackground(Color.clear)
       }
     }
@@ -32,11 +34,6 @@ struct LinkedDesktopChatsView: View {
     .task { await store.refreshChats() }
     .foregroundStyle(MessagesStyle.foreground)
   }
-}
-
-/// A shared chat opened from the linked Mac's list.
-struct LinkedChatRoute: Hashable {
-  let conversationID: String
 }
 
 /// One shared chat, read-only: the person's messages and Nessa's replies.
