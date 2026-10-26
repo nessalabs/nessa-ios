@@ -1734,10 +1734,13 @@ public final class MessagesViewModel: ObservableObject {
     }
     await cache(accepted)
   }
+  /// Whether a new chat can be made now; every New chat control is enabled by this alone.
+  public var canCreateChat: Bool {
+    connected && conversationAuthorityReady && !busy && pendingLoadError == nil
+      && pendingCreations.isEmpty
+  }
   public func create(agent: String? = nil) async -> String? {
-    guard connected, conversationAuthorityReady, !busy, pendingLoadError == nil,
-      pendingCreations.isEmpty
-    else { return nil }
+    guard canCreateChat else { return nil }
     let currentGeneration = generation
     let originalProfile = profile
     busy = true

@@ -23,8 +23,6 @@ struct NessaHomeView: View {
   @State private var attachments: [DraftAttachment] = []
   @State private var starting = false
   @State private var now = Date()
-  /// Which light the ground is drawn in, while the look is still being chosen.
-  @AppStorage("nessaHomeLight") private var light = NessaHomeLightStyle.horizon.rawValue
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
@@ -34,10 +32,6 @@ struct NessaHomeView: View {
         .font(MessagesStyle.greeting).foregroundStyle(MessagesStyle.foreground)
         .multilineTextAlignment(.center)
         .accessibilityAddTraits(.isHeader)
-        #if DEBUG
-          // Development builds step through the lights, to compare them on a real screen.
-          .onLongPressGesture { nextLight() }
-        #endif
       if needsPairing {
         // Nothing to talk to yet: pairing with the Mac is the way in.
         VStack(spacing: NessaSpacing.sm) {
@@ -51,7 +45,7 @@ struct NessaHomeView: View {
     .padding(.horizontal, MessagesStyle.horizontal)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .contentShape(Rectangle())
-    .background { NessaHomeLight(style: NessaHomeLightStyle(rawValue: light) ?? .horizon) }
+    .background { NessaHomeLight() }
     .safeAreaInset(edge: .top, spacing: 0) { topBar }
     .messagesBar(edge: .bottom) {
       VStack(spacing: NessaSpacing.xs) {
@@ -143,14 +137,7 @@ struct NessaHomeView: View {
 
   /// The same conditions the gateway puts on making a chat.
   private var canStart: Bool {
-    store.connected && store.conversationAuthorityReady && !store.busy && !starting
-      && store.pendingLoadError == nil && store.pendingCreations.isEmpty
-  }
-
-  private func nextLight() {
-    let all = NessaHomeLightStyle.allCases
-    let index = all.firstIndex { $0.rawValue == light } ?? 0
-    light = all[(index + 1) % all.count].rawValue
+    store.canCreateChat && !starting
   }
 
   private func start() {

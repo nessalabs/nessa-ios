@@ -96,19 +96,21 @@ struct MessageComposer: View {
               Button {
                 dictation.toggle()
               } label: {
-                Group {
+                // The two glyphs cross-fade as dictation starts and stops.
+                ZStack {
                   if dictation.active {
                     Image(systemName: "stop.circle.fill").font(MessagesStyle.icon)
+                      .transition(.opacity)
                   } else {
-                    NessaIcon(.wave)
+                    NessaIcon(.wave).transition(.opacity)
                   }
                 }
+                  .animation(reduceMotion ? nil : NessaMotion.standard(), value: dictation.active)
                   .foregroundStyle(
                     dictation.active ? MessagesStyle.danger : MessagesStyle.secondary
                   )
                   .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
                   .contentShape(Rectangle())
-                  .transition(.opacity)
               }
               .buttonStyle(.nessaPress)
               .disabled(sending || dictation.state == .finishing)

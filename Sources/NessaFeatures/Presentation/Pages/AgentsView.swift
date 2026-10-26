@@ -14,16 +14,19 @@ struct AgentsView: View {
 
   var body: some View {
     let glance = store.agentsGlance
+    // A chosen group that has emptied (its last review answered) shows everything again,
+    // rather than an empty screen with no chip chosen.
+    let showing = shown.flatMap { glance.count($0) > 0 ? $0 : nil }
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
-        chips(glance)
+        chips(glance, showing: showing)
         ForEach(AgentsGroup.allCases, id: \.self) { group in
           let ids = glance.ids(group)
-          if !ids.isEmpty && (shown == nil || shown == group) {
+          if !ids.isEmpty && (showing == nil || showing == group) {
             Text(group.title).font(MessagesStyle.sidebarSection)
               .foregroundStyle(MessagesStyle.secondary)
               .padding(.horizontal, MessagesStyle.horizontal)
-              .padding(.top, AgentsStyle.sectionGap).padding(.bottom, NessaSpacing.xs)
+              .padding(.top, MessagesStyle.agentsSectionGap).padding(.bottom, NessaSpacing.xs)
               .accessibilityAddTraits(.isHeader)
             ForEach(ids, id: \.self) { id in
               if group == .needsYou, let permission = store.views[id]?.permissions.first {
@@ -59,18 +62,18 @@ struct AgentsView: View {
       permission: permission,
       source: .init(chatName: store.chatName(id), channelName: channelName, onOpen: { onOpen(id) })
     ) { option in Task { await store.answer(permission, option: option, in: id) } }
-    .padding(.horizontal, AgentsStyle.cardGutter)
+    .padding(.horizontal, MessagesStyle.agentsCardGutter)
   }
 
-  private func chips(_ glance: AgentsGlance) -> some View {
+  private func chips(_ glance: AgentsGlance, showing: AgentsGroup?) -> some View {
     ScrollView(.horizontal) {
       HStack(spacing: NessaSpacing.xs) {
-        chip("All", selected: shown == nil) { shown = nil }
+        chip("All", selected: showing == nil) { shown = nil }
         ForEach(AgentsGroup.allCases, id: \.self) { group in
           let count = glance.count(group)
           if count > 0 {
-            chip("\(group.title) \(count)", selected: shown == group) {
-              shown = shown == group ? nil : group
+            chip("\(group.title) \(count)", selected: showing == group) {
+              shown = showing == group ? nil : group
             }
           }
         }
@@ -86,8 +89,8 @@ struct AgentsView: View {
       withAnimation(reduceMotion ? nil : NessaMotion.standard()) { action() }
     } label: {
       Text(title).font(MessagesStyle.preview.weight(selected ? .semibold : .regular))
-        .padding(.horizontal, AgentsStyle.chipInset)
-        .frame(height: AgentsStyle.chipHeight)
+        .padding(.horizontal, MessagesStyle.chipInset)
+        .frame(height: MessagesStyle.chipHeight)
         .foregroundStyle(selected ? MessagesStyle.background : MessagesStyle.foreground)
         .background(
           selected ? AnyShapeStyle(MessagesStyle.foreground) : AnyShapeStyle(NessaColor.card),
@@ -101,10 +104,10 @@ struct AgentsView: View {
   private func row(_ id: String, group: AgentsGroup) -> some View {
     let conversation = store.conversations.first { $0.id == id }
     return Button { onOpen(id) } label: {
-      HStack(spacing: AgentsStyle.rowGap) {
-        NessaIcon(.chats, size: MessagesStyle.sidebarIcon - 2)
+      HStack(spacing: MessagesStyle.agentsRowGap) {
+        NessaIcon(.chats, size: MessagesStyle.rowIcon)
           .foregroundStyle(group == .earlier ? MessagesStyle.secondary : MessagesStyle.foreground)
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: MessagesStyle.rowLineGap) {
           Text(store.chatName(id)).font(MessagesStyle.sidebarRow)
             .fontWeight(group == .finished ? .semibold : .regular)
             .lineLimit(1)
@@ -120,7 +123,7 @@ struct AgentsView: View {
       }
       .foregroundStyle(MessagesStyle.foreground)
       .padding(.horizontal, MessagesStyle.horizontal)
-      .padding(.vertical, AgentsStyle.rowInset)
+      .padding(.vertical, MessagesStyle.agentsRowInset)
       .contentShape(Rectangle())
     }
     .buttonStyle(.nessaPress)
@@ -154,17 +157,6 @@ private struct AgentsTitle: ToolbarContent {
   }
   private var title: some View {
     // At its own width: a bar item is otherwise measured narrow and the title cut to "A…".
-    Text("Agents").font(AgentsStyle.title).fixedSize().accessibilityAddTraits(.isHeader)
+    Text("Agents").font(MessagesStyle.barTitle).fixedSize().accessibilityAddTraits(.isHeader)
   }
-}
-
-private enum AgentsStyle {
-  static let title = Font.system(size: 22, weight: .bold)
-  static let chipHeight: CGFloat = 34
-  static let chipInset: CGFloat = 14
-  /// Room above each group's label, and around each row and the cards.
-  static let sectionGap: CGFloat = 30
-  static let rowGap: CGFloat = 14
-  static let rowInset: CGFloat = 13
-  static let cardGutter: CGFloat = 16
 }

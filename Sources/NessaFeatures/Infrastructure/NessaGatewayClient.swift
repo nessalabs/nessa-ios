@@ -306,12 +306,20 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     struct After: Encodable { let after: String? }
     var channels: [NessaChannel] = []
     var after: String?
-    // Pages follow the cursor until the gateway says the list is complete; a cursor that
-    // does not move would loop, so it ends the read.
+    var seen: Set<String> = []
+    // Pages follow the cursor until the gateway says the list is complete. An unfinished
+    // list must name where to go on, and a cursor seen before would go round for ever: both
+    // are a broken answer, not a short list.
     while true {
-      let page: NessaChannelPage = try await request("channel.list", params: After(after: after))
+      let params = After(after: after)
+      try validateGatewayWire(JSONEncoder().encode(params), named: "ChannelListParams")
+      let dto: GatewayChannelPageDTO = try await request("channel.list", params: params)
+      let page = dto.page
       channels += page.channels
-      guard !page.complete, let cursor = page.cursor, cursor != after else { return channels }
+      if page.complete { return channels }
+      guard let cursor = page.cursor, seen.insert(cursor).inserted else {
+        throw NessaGatewayError.invalidFrame
+      }
       after = cursor
     }
   }

@@ -17,6 +17,11 @@ public enum NessaDrawerStyle {
   public static let contentDim: Double = 0.35
   /// A drawer opening or closing: the motion guide's sheets-and-drawers band.
   public static let motion = Animation.spring(duration: 0.28, bounce: 0)
+  /// How long a closed drawer keeps its sidebar: past the close's motion, so the sidebar is
+  /// there behind the content until it has slid home. Timed rather than taken from an
+  /// animation's completion, because a drag let go short of the threshold springs back on
+  /// the gesture's own reset, which reports no completion.
+  public static let linger: Duration = .milliseconds(400)
 }
 
 /// A sidebar under the content, uncovered by pushing the content aside: a drag from the
@@ -36,15 +41,17 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
   let edgeDragEnabled: Bool
   let sidebar: Sidebar
   let content: Content
-  /// Let go without crossing over, a drag springs back rather than jumping.
+  /// How far the finger has moved the drawer while it is down. Let go without crossing
+  /// over, it springs back rather than jumping.
   @GestureState(resetTransaction: Transaction(animation: NessaDrawerStyle.motion))
   private var drag: CGFloat = 0
-  /// Where the drawer rests, 0 or 1: follows `isOpen`, animated here so the close can say
-  /// when it has finished.
+  /// Where the drawer rests, 0 or 1. Every move to rest goes through `settle`.
   @State private var settled: CGFloat
-  /// Whether the sidebar is in the tree: from the moment the drawer starts to open until it
-  /// has finished closing.
+  /// Whether the sidebar is in the tree: from the moment the drawer starts to open (by a drag
+  /// or by `isOpen`) until it has been closed for `NessaDrawerStyle.linger`.
   @State private var live: Bool
+  /// Counts settles at closed; each one starts the wait that takes the sidebar out.
+  @State private var closings = 0
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.layoutDirection) private var layoutDirection
 
@@ -71,7 +78,7 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
       let width = max(full.width - NessaDrawerStyle.peek, 1)
       let progress = progress(width: width)
       ZStack(alignment: .leading) {
-        if live || drag != 0 {
+        if live {
           sidebar
             // The sidebar keeps clear of the status bar and the home indicator itself.
             .padding(.top, insets.top)
@@ -114,15 +121,24 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
       .simultaneousGesture(dragGesture(width: width), including: .all)
       .ignoresSafeArea(.container)
     }
+    // Opened or closed from outside; a drag that let go has already settled to match.
     .onChange(of: isOpen) { _, open in
-      if open { live = true }
-      withAnimation(reduceMotion ? nil : NessaDrawerStyle.motion) {
-        settled = open ? 1 : 0
-      } completion: {
-        // Opened again before the close finished: the sidebar stays.
-        if !isOpen { live = false }
-      }
+      if settled != (open ? 1 : 0) { settle(open: open) }
     }
+    .task(id: closings) {
+      guard closings > 0 else { return }
+      try? await Task.sleep(for: NessaDrawerStyle.linger)
+      // Opened again, or picked up by a new drag, while it waited: the sidebar stays.
+      guard !Task.isCancelled, !isOpen, drag == 0 else { return }
+      live = false
+    }
+  }
+
+  /// Carries the drawer to rest, open or closed: the one place `settled` and `live` move.
+  private func settle(open: Bool) {
+    if open { live = true }
+    withAnimation(reduceMotion ? nil : NessaDrawerStyle.motion) { settled = open ? 1 : 0 }
+    if !open { closings += 1 }
   }
 
   private func progress(width: CGFloat) -> CGFloat {
@@ -135,6 +151,10 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
       .updating($drag) { value, state, _ in
         guard accepts(value) else { return }
         state = value.translation.width
+      }
+      .onChanged { value in
+        // The sidebar comes into the tree as soon as a drag can uncover it.
+        if accepts(value), !live { live = true }
       }
       .onEnded { value in
         guard accepts(value) else { return }
@@ -149,9 +169,9 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
           open = isOpen ? moved > -NessaDrawerStyle.settleFraction
             : moved > NessaDrawerStyle.settleFraction
         }
-        // Settled in the same transaction the drag lets go in, so the content carries on
-        // from where the finger left it.
-        withAnimation(reduceMotion ? nil : NessaDrawerStyle.motion) { settled = open ? 1 : 0 }
+        // Settled in the same update the drag resets in, so the drawer carries on from where
+        // it was let go.
+        settle(open: open)
         isOpen = open
       }
   }

@@ -59,7 +59,7 @@ struct NessaSidebar: View {
       Spacer()
       Button(action: onNewChat) {
         HStack(spacing: NessaSpacing.xs) {
-          NessaIcon(.plus, size: 18, weight: 1.8)
+          NessaIcon(.plus, size: MessagesStyle.newChatIcon, weight: MessagesStyle.newChatIconWeight)
           Text("New chat")
         }
           .font(MessagesStyle.sidebarRow.weight(.medium))
@@ -69,9 +69,7 @@ struct NessaSidebar: View {
           .background(MessagesStyle.foreground, in: Capsule())
       }
       .buttonStyle(.nessaPress)
-      .disabled(
-        !store.connected || !store.conversationAuthorityReady || store.busy
-          || store.pendingLoadError != nil || !store.pendingCreations.isEmpty)
+      .disabled(!store.canCreateChat)
     }
     .padding(.horizontal, NessaSpacing.md)
     .padding(.bottom, NessaSpacing.xs)

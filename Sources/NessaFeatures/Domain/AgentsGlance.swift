@@ -18,7 +18,7 @@ public enum AgentsGroup: String, CaseIterable, Sendable {
 /// Every chat in exactly one group, each newest first. The one rule: waiting on the person
 /// beats working, working beats finished, and finished means unread.
 public struct AgentsGlance: Equatable, Sendable {
-  public private(set) var groups: [AgentsGroup: [String]] = [:]
+  private var groups: [AgentsGroup: [String]] = [:]
 
   public init(conversations: [NessaConversation], waiting: Set<String>, unread: Set<String>) {
     for conversation in conversations.sorted(by: { $0.updatedAtMs > $1.updatedAtMs }) {

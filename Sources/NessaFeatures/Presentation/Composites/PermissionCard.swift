@@ -16,8 +16,8 @@ struct PermissionCard: View {
   let onAnswer: (NessaPermission.Option) -> Void
 
   var body: some View {
-    let card = RoundedRectangle(cornerRadius: PermissionCardStyle.radius, style: .continuous)
-    VStack(alignment: .leading, spacing: PermissionCardStyle.gap) {
+    let card = RoundedRectangle(cornerRadius: MessagesStyle.permissionCardRadius, style: .continuous)
+    VStack(alignment: .leading, spacing: MessagesStyle.permissionCardGap) {
       if let source {
         Button(action: source.onOpen) {
           VStack(alignment: .leading, spacing: NessaSpacing.xxs) {
@@ -41,14 +41,14 @@ struct PermissionCard: View {
           .accessibilityAddTraits(.isHeader)
       }
       // The exact request, never a summary of it: what is allowed is what is shown.
-      Text(permission.argumentsJson).font(NessaType.mono).lineSpacing(3)
-        .lineLimit(source == nil ? nil : PermissionCardStyle.requestLines).truncationMode(.tail)
+      Text(permission.argumentsJson).font(NessaType.mono).lineSpacing(MessagesStyle.permissionRequestLineSpacing)
+        .lineLimit(source == nil ? nil : MessagesStyle.permissionRequestLines).truncationMode(.tail)
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, NessaSpacing.sm).padding(.vertical, NessaSpacing.sm)
         .background(
-          .white.opacity(0.06),
-          in: RoundedRectangle(cornerRadius: PermissionCardStyle.requestRadius, style: .continuous))
+          MessagesStyle.permissionRequestFill,
+          in: RoundedRectangle(cornerRadius: MessagesStyle.permissionRequestRadius, style: .continuous))
       // Two answers sit side by side; more stack, each a whole row.
       let layout = permission.options.count > 2
         ? AnyLayout(VStackLayout(spacing: NessaSpacing.xs))
@@ -59,7 +59,7 @@ struct PermissionCard: View {
           Button { onAnswer(option) } label: {
             Text(option.label).font(MessagesStyle.body.weight(primary ? .semibold : .medium))
               .lineLimit(1).minimumScaleFactor(0.8)
-              .frame(maxWidth: .infinity).frame(height: PermissionCardStyle.buttonHeight)
+              .frame(maxWidth: .infinity).frame(height: MessagesStyle.permissionButtonHeight)
               .foregroundStyle(primary ? MessagesStyle.background : MessagesStyle.foreground)
               .background(primary ? MessagesStyle.foreground : NessaColor.muted, in: Capsule())
           }
@@ -68,9 +68,9 @@ struct PermissionCard: View {
       }
       .padding(.top, NessaSpacing.xxs)
     }
-    .padding(.horizontal, PermissionCardStyle.inset)
-    .padding(.top, PermissionCardStyle.inset + NessaSpacing.xxs)
-    .padding(.bottom, PermissionCardStyle.inset)
+    .padding(.horizontal, MessagesStyle.permissionCardInset)
+    .padding(.top, MessagesStyle.permissionCardInset + NessaSpacing.xxs)
+    .padding(.bottom, MessagesStyle.permissionCardInset)
     .background(MessagesStyle.incoming, in: card)
     .overlay(card.strokeBorder(NessaColor.hairline, lineWidth: 1))
   }
@@ -84,13 +84,4 @@ extension PermissionCard {
   }
   /// The narrowest allowing answer is the bright one: the first the agent offered.
   var brightest: NessaPermission.Option? { permission.options.first { $0.effect == "allow" } }
-}
-
-private enum PermissionCardStyle {
-  static let radius: CGFloat = 26
-  static let inset: CGFloat = 18
-  static let gap: CGFloat = 14
-  static let requestRadius: CGFloat = 12
-  static let requestLines = 4
-  static let buttonHeight: CGFloat = 46
 }

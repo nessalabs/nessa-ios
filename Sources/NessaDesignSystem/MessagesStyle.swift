@@ -204,7 +204,6 @@ public enum MessagesStyle {
   public static let bubbleGutter: CGFloat = 70
   public static let rowAvatar: CGFloat = 45
   /// The reader's own disc in the inbox's navigation bar.
-  public static let accountAvatar: CGFloat = 32
   /// The agent's disc in the thread's navigation bar title.
   public static let titleAvatar: CGFloat = 28
   public static let controlHeight: CGFloat = 44
@@ -267,8 +266,6 @@ public enum MessagesStyle {
   /// The line under the greeting saying where a message will go.
   public static let greetingDetail = Font.system(size: 15)
   public static let greetingGap: CGFloat = 16
-  /// The Nessa mark above the greeting.
-  public static let homeMark: CGFloat = 40
   /// The round buttons at the home screen's top corners.
   public static let homeButton: CGFloat = 44
   /// The sidebar's title and its section labels.
@@ -277,6 +274,32 @@ public enum MessagesStyle {
   public static let sidebarRow = Font.system(size: 17)
   public static let sidebarRowHeight: CGFloat = 44
   public static let sidebarIcon: CGFloat = 22
+  /// A screen's title set in its bar beside the back button, as Agents does.
+  public static let barTitle = Font.system(size: 22, weight: .bold)
+  /// The filter chips above a list.
+  public static let chipHeight: CGFloat = 34
+  public static let chipInset: CGFloat = 14
+  /// The Agents list: room above each group's label, between a row's icon and text, around
+  /// each row, and either side of a card; and the gap between a row's two lines.
+  public static let agentsSectionGap: CGFloat = 30
+  public static let agentsRowGap: CGFloat = 14
+  public static let agentsRowInset: CGFloat = 13
+  public static let agentsCardGutter: CGFloat = 16
+  public static let rowLineGap: CGFloat = 2
+  public static let rowIcon: CGFloat = 20
+  /// A permission review's card: its corner, insets and spacing, the box holding the exact
+  /// request (at most so many lines where the card only previews it), and its answers.
+  public static let permissionCardRadius: CGFloat = 26
+  public static let permissionCardInset: CGFloat = 18
+  public static let permissionCardGap: CGFloat = 14
+  public static let permissionRequestRadius: CGFloat = 12
+  public static let permissionRequestFill = Color.white.opacity(0.06)
+  public static let permissionRequestLineSpacing: CGFloat = 3
+  public static let permissionRequestLines = 4
+  public static let permissionButtonHeight: CGFloat = 46
+  /// The New chat pill's plus.
+  public static let newChatIcon: CGFloat = 18
+  public static let newChatIconWeight: CGFloat = 1.8
   /// A channel's row in the sidebar: its name in serif beside a lettered tile lit in the
   /// home screen's halftone.
   public static let channelRowHeight: CGFloat = 56

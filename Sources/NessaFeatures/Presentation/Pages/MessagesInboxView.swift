@@ -237,11 +237,7 @@ struct MessagesInboxView: View {
               }
               .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
               .messagesGlass()
-            }.buttonStyle(.nessaPress).disabled(
-              !store.connected || !store.conversationAuthorityReady || store.busy
-                || store.pendingLoadError != nil
-                || !store.pendingCreations.isEmpty
-            )
+            }.buttonStyle(.nessaPress).disabled(!store.canCreateChat)
             .accessibilityLabel(store.busy ? "Creating chat" : "New message")
           }
           }.padding(.horizontal, MessagesStyle.horizontal).padding(
