@@ -61,6 +61,7 @@ struct NessaHomeView: View {
             attachmentPolicy: store.attachmentPolicy,
             submissionAllowed: canStart,
             placeholder: "Message \(recipient) or hold to talk",
+            endsEditingOnSend: true,
             onSend: start)
         }
       }
