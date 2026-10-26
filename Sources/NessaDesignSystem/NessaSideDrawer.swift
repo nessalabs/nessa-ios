@@ -25,6 +25,10 @@ public enum NessaDrawerStyle {
 ///
 /// One value, `progress` (0 closed, 1 open), places everything: the content's offset,
 /// its corner and its dim. A drag only moves that value; letting go settles it.
+///
+/// The sidebar is in the view tree only while some of it can be seen. Laid under a closed
+/// drawer, it still took taps meant for the content above it, so a closed drawer drops it
+/// rather than trusting it to stay out of the way.
 public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
   @Binding var isOpen: Bool
   /// Whether a drag from the edge may open it. Off where the edge drag means something
@@ -32,7 +36,15 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
   let edgeDragEnabled: Bool
   let sidebar: Sidebar
   let content: Content
-  @GestureState private var drag: CGFloat = 0
+  /// Let go without crossing over, a drag springs back rather than jumping.
+  @GestureState(resetTransaction: Transaction(animation: NessaDrawerStyle.motion))
+  private var drag: CGFloat = 0
+  /// Where the drawer rests, 0 or 1: follows `isOpen`, animated here so the close can say
+  /// when it has finished.
+  @State private var settled: CGFloat
+  /// Whether the sidebar is in the tree: from the moment the drawer starts to open until it
+  /// has finished closing.
+  @State private var live: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.layoutDirection) private var layoutDirection
 
@@ -41,6 +53,8 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
     @ViewBuilder sidebar: () -> Sidebar, @ViewBuilder content: () -> Content
   ) {
     _isOpen = isOpen
+    _settled = State(initialValue: isOpen.wrappedValue ? 1 : 0)
+    _live = State(initialValue: isOpen.wrappedValue)
     self.edgeDragEnabled = edgeDragEnabled
     self.sidebar = sidebar()
     self.content = content()
@@ -57,15 +71,17 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
       let width = max(full.width - NessaDrawerStyle.peek, 1)
       let progress = progress(width: width)
       ZStack(alignment: .leading) {
-        sidebar
-          // The sidebar keeps clear of the status bar and the home indicator itself.
-          .padding(.top, insets.top)
-          .padding(.bottom, insets.bottom)
-          .frame(width: width, height: full.height)
-          // Hidden from VoiceOver while closed, so swiping through the screen reads only the
-          // content.
-          .accessibilityHidden(!isOpen)
-          .allowsHitTesting(isOpen)
+        if live || drag != 0 {
+          sidebar
+            // The sidebar keeps clear of the status bar and the home indicator itself.
+            .padding(.top, insets.top)
+            .padding(.bottom, insets.bottom)
+            .frame(width: width, height: full.height)
+            // Mid-drag or mid-close it is drawn but not pressed, and VoiceOver reads only
+            // the content.
+            .accessibilityHidden(!isOpen)
+            .allowsHitTesting(isOpen)
+        }
         content
           .frame(width: full.width, height: full.height)
           .overlay {
@@ -98,12 +114,20 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
       .simultaneousGesture(dragGesture(width: width), including: .all)
       .ignoresSafeArea(.container)
     }
+    .onChange(of: isOpen) { _, open in
+      if open { live = true }
+      withAnimation(reduceMotion ? nil : NessaDrawerStyle.motion) {
+        settled = open ? 1 : 0
+      } completion: {
+        // Opened again before the close finished: the sidebar stays.
+        if !isOpen { live = false }
+      }
+    }
   }
 
   private func progress(width: CGFloat) -> CGFloat {
     let travel = layoutDirection == .rightToLeft ? -drag : drag
-    let base: CGFloat = isOpen ? 1 : 0
-    return min(max(base + travel / width, 0), 1)
+    return min(max(settled + travel / width, 0), 1)
   }
 
   private func dragGesture(width: CGFloat) -> some Gesture {
@@ -125,7 +149,10 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
           open = isOpen ? moved > -NessaDrawerStyle.settleFraction
             : moved > NessaDrawerStyle.settleFraction
         }
-        withAnimation(reduceMotion ? nil : NessaDrawerStyle.motion) { isOpen = open }
+        // Settled in the same transaction the drag lets go in, so the content carries on
+        // from where the finger left it.
+        withAnimation(reduceMotion ? nil : NessaDrawerStyle.motion) { settled = open ? 1 : 0 }
+        isOpen = open
       }
   }
 
@@ -138,7 +165,5 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
     return value.startLocation.x <= NessaDrawerStyle.edgeGrab
   }
 
-  private func close() {
-    withAnimation(reduceMotion ? nil : NessaDrawerStyle.motion) { isOpen = false }
-  }
+  private func close() { isOpen = false }
 }

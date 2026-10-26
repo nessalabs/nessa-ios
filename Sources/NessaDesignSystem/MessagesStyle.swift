@@ -277,6 +277,19 @@ public enum MessagesStyle {
   public static let sidebarRow = Font.system(size: 17)
   public static let sidebarRowHeight: CGFloat = 44
   public static let sidebarIcon: CGFloat = 22
+  /// A channel's card in the sidebar, and the lettered tile at its corner.
+  public static let channelCardHeight: CGFloat = 96
+  public static let channelCardRadius: CGFloat = 18
+  public static let channelCardFill = LinearGradient(
+    colors: [Color(hex: 0x1A1A1B), Color(hex: 0x111112)], startPoint: .topLeading,
+    endPoint: .bottomTrailing)
+  public static let channelName = Font.system(size: 15, weight: .semibold)
+  public static let channelTile: CGFloat = 34
+  public static let channelTileRadius: CGFloat = 10
+  public static let channelTileFill = LinearGradient(
+    colors: [Color(hex: 0x3A3A3C), Color(hex: 0x1C1C1E)], startPoint: .topLeading,
+    endPoint: .bottomTrailing)
+  public static let channelInitial = Font.system(size: 18, weight: .regular, design: .serif)
 }
 
 public struct MessagesGlass: ViewModifier {

@@ -19,32 +19,64 @@ public enum NessaHomeLightStyle: String, CaseIterable, Sendable {
 
 public struct NessaHomeLight: View {
   private let style: NessaHomeLightStyle
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.scenePhase) private var scenePhase
+  /// Whether the ground is on screen: a pushed screen covers it but keeps it alive.
+  @State private var onScreen = false
   public init(style: NessaHomeLightStyle = .horizon) { self.style = style }
 
   public var body: some View {
-    Canvas { context, size in
-      context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
-      let shape = Self.shape(style)
-      // The smooth light under the pattern, so the dither reads as texture on a glow rather
-      // than as dots on black.
-      Self.glow(context, size, shape: shape, color: Self.ink(style), strength: Self.glow(style))
-      switch style {
-      case .cornerLight, .blueHour:
-        Self.grain(context, size, shape: shape, color: Self.ink(style))
-      case .horizon, .eclipse:
-        // Softer under the horizon, where the composer's text sits on it.
-        Self.halftone(
-          context, size, shape: shape,
-          color: Self.ink(style).opacity(style == .horizon ? 0.6 : 1))
-      case .spotlight:
-        Self.pixels(context, size, shape: shape, color: Self.ink(style))
-      case .diagonal:
-        Self.scanlines(context, size, shape: shape, color: Self.ink(style))
-      }
+    // Only the horizon's dots drift, and only while someone can see them.
+    let moving = style == .horizon && !reduceMotion && scenePhase == .active && onScreen
+    TimelineView(.animation(minimumInterval: HomeLightStyle.frameInterval, paused: !moving)) {
+      timeline in
+      let time = moving ? timeline.date.timeIntervalSinceReferenceDate : 0
+      Canvas { context, size in draw(context, size, time: time) }
     }
     .ignoresSafeArea()
     .allowsHitTesting(false)
     .accessibilityHidden(true)
+    .onAppear { onScreen = true }
+    .onDisappear { onScreen = false }
+  }
+
+  private func draw(_ context: GraphicsContext, _ size: CGSize, time: TimeInterval) {
+    context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
+    let shape = Self.shape(style)
+    // The smooth light under the pattern, so the dither reads as texture on a glow rather
+    // than as dots on black.
+    Self.glow(context, size, shape: shape, color: Self.ink(style), strength: Self.glow(style))
+    switch style {
+    case .cornerLight, .blueHour:
+      Self.grain(context, size, shape: shape, color: Self.ink(style))
+    case .horizon:
+      // Softer under the horizon, where the composer's text sits on it; its dots swell and
+      // shrink in slow waves, so the light seems to breathe.
+      Self.halftone(
+        context, size, shape: Self.drifting(shape, time: time),
+        color: Self.ink(style).opacity(0.6), from: size.height * (1 - Self.horizonReach))
+    case .eclipse:
+      Self.halftone(context, size, shape: shape, color: Self.ink(style))
+    case .spotlight:
+      Self.pixels(context, size, shape: shape, color: Self.ink(style))
+    case .diagonal:
+      Self.scanlines(context, size, shape: shape, color: Self.ink(style))
+    }
+  }
+
+  /// How far up the screen the horizon's light reaches, as a share of its height.
+  static let horizonReach: CGFloat = 0.46
+
+  /// The light, rippled by two slow waves crossing each other: at most a few percent either
+  /// way, so it reads as texture moving rather than the light changing.
+  static func drifting(_ shape: @escaping Shape, time: TimeInterval) -> Shape {
+    guard time != 0 else { return shape }
+    let t = time.truncatingRemainder(dividingBy: HomeLightStyle.driftPeriod)
+    return { p, s in
+      let wave = sin(p.x / HomeLightStyle.driftLength + t * HomeLightStyle.driftSpeed)
+        * cos(p.y / (HomeLightStyle.driftLength * 0.7) - t * HomeLightStyle.driftSpeed * 0.7)
+      return min(1, shape(p, s) * (1 + HomeLightStyle.driftDepth * wave))
+    }
   }
 
   /// How strongly the light falls on a point, from 0 to 1.
@@ -61,7 +93,7 @@ public struct NessaHomeLight: View {
       return { p, s in
         // A wide, flat glow along the bottom: mostly how far up the screen, barely how far
         // from the middle, so it reads as a horizon rather than a disc.
-        let linear = max(0, 1 - (s.height - p.y) / (s.height * 0.46))
+        let linear = max(0, 1 - (s.height - p.y) / (s.height * horizonReach))
         // Eased in, so the light has no edge where it starts.
         let rise = linear * linear * (3 - 2 * linear)
         let side = abs(p.x - s.width / 2) / (s.width / 2)
@@ -134,11 +166,11 @@ public struct NessaHomeLight: View {
   }
 
   private static func halftone(
-    _ context: GraphicsContext, _ size: CGSize, shape: Shape, color: Color
+    _ context: GraphicsContext, _ size: CGSize, shape: Shape, color: Color, from top: CGFloat = 0
   ) {
     var dots = Path()
     let cell = HomeLightStyle.halftoneCell
-    forEachCell(size, cell: cell) { _, _, point in
+    forEachCell(size, cell: cell, from: top) { _, _, point in
       let d = shape(CGPoint(x: point.x + cell / 2, y: point.y + cell / 2), size)
       // The dot's area, not its width, follows the light, as in print; the faintest dots are
       // left out rather than drawn as specks, so the light's edge feathers instead of stepping.
@@ -187,12 +219,14 @@ public struct NessaHomeLight: View {
     }
   }
 
+  /// Every cell of a grid over the canvas, from row `top` down: a light that never reaches
+  /// higher costs nothing above it.
   private static func forEachCell(
-    _ size: CGSize, cell: CGFloat, _ body: (Int, Int, CGPoint) -> Void
+    _ size: CGSize, cell: CGFloat, from top: CGFloat = 0, _ body: (Int, Int, CGPoint) -> Void
   ) {
     let columns = Int((size.width / cell).rounded(.up))
     let rows = Int((size.height / cell).rounded(.up))
-    for row in 0..<rows {
+    for row in max(0, Int(top / cell))..<max(rows, 0) {
       for column in 0..<columns {
         body(column, row, CGPoint(x: CGFloat(column) * cell, y: CGFloat(row) * cell))
       }
@@ -222,4 +256,16 @@ enum HomeLightStyle {
   /// The dark disc the eclipse ring leaves around the greeting, and how far the ring fades.
   static let eclipseRadius: CGFloat = 100
   static let eclipseSpread: CGFloat = 140
+  /// The horizon's drift: how far its dots swell either way, how long its waves are in
+  /// points, and how fast they move in radians a second. Slow on purpose: a wave takes about
+  /// twelve seconds to pass.
+  static let driftDepth: Double = 0.16
+  static let driftLength: CGFloat = 60
+  static let driftSpeed: Double = 0.5
+  /// The time the drift's phase wraps at, so its sums stay precise however long the app runs:
+  /// a whole number of turns of both waves (10 at 0.5 rad/s, 7 at 0.35), so the wrap is unseen.
+  static let driftPeriod: TimeInterval = 40 * .pi
+  /// The drift redraws at most this often: smooth for something this slow, and half the
+  /// work of every frame.
+  static let frameInterval: TimeInterval = 1.0 / 30
 }

@@ -3,10 +3,12 @@ import SwiftUI
 
 /// Every agent at a glance, as the desktop's Agents overview shows them: what needs the
 /// person first, then what is working, what finished, and the rest. A chip narrows the list
-/// to one group.
+/// to one group; every chat in one list is a tap away at the top.
 struct AgentsView: View {
   @ObservedObject var store: MessagesViewModel
   let onOpen: (String) -> Void
+  /// Every chat in one list, with search, selecting and archiving: the inbox.
+  let onAllChats: () -> Void
   @State private var shown: AgentsGroup?
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -14,9 +16,6 @@ struct AgentsView: View {
     let glance = store.agentsGlance
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
-        Text(glance.summary).font(MessagesStyle.greetingDetail)
-          .foregroundStyle(MessagesStyle.secondary)
-          .padding(.horizontal, MessagesStyle.horizontal)
         chips(glance)
         ForEach(AgentsGroup.allCases, id: \.self) { group in
           let ids = glance.ids(group)
@@ -35,6 +34,12 @@ struct AgentsView: View {
     .messagesScrollEdges()
     .messagesAmbientGround()
     .navigationTitle("Agents")
+    .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        Button(action: onAllChats) { NessaIcon(.chats) }
+          .accessibilityLabel("All chats")
+      }
+    }
   }
 
   private func chips(_ glance: AgentsGlance) -> some View {

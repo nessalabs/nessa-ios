@@ -37,14 +37,4 @@ public struct AgentsGlance: Equatable, Sendable {
 
   public func ids(_ group: AgentsGroup) -> [String] { groups[group] ?? [] }
   public func count(_ group: AgentsGroup) -> Int { ids(group).count }
-
-  /// "1 needs you · 3 working", naming only the groups that hold something now; "All quiet"
-  /// when nothing waits or works.
-  public var summary: String {
-    var parts: [String] = []
-    if count(.needsYou) > 0 { parts.append("\(count(.needsYou)) need\(count(.needsYou) == 1 ? "s" : "") you") }
-    if count(.working) > 0 { parts.append("\(count(.working)) working") }
-    if count(.finished) > 0 { parts.append("\(count(.finished)) finished") }
-    return parts.isEmpty ? "All quiet" : parts.joined(separator: " · ")
-  }
 }

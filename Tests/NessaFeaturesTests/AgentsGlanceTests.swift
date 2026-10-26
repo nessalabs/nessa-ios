@@ -19,12 +19,10 @@ import Testing
     #expect(glance.ids(.working) == ["busier", "busy"])
     #expect(glance.ids(.finished) == ["done", "old"])
     #expect(glance.ids(.earlier).isEmpty)
-    #expect(glance.summary == "1 needs you · 2 working · 2 finished")
   }
 
-  @Test func nothingWaitingOrWorkingIsAllQuiet() {
+  @Test func aChatNothingWaitsOnOrWorksInIsEarlier() {
     let glance = AgentsGlance(conversations: [chat("a", at: 1)], waiting: [], unread: [])
     #expect(glance.ids(.earlier) == ["a"])
-    #expect(glance.summary == "All quiet")
   }
 }

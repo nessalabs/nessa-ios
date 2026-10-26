@@ -44,11 +44,9 @@ public struct NessaMessagesView: View {
     // system's swipe back.
     NessaSideDrawer(isOpen: $sidebar, edgeDragEnabled: path.isEmpty && !linkedChats) {
       NessaSidebar(
-        store: store, current: path.last?.conversationID,
+        store: store,
         onAgents: { show([.agents]) },
-        onAllChats: { show([.allChats]) },
         onChannel: { show([.channel($0)]) },
-        onOpen: { show([.chat(id: $0, focusComposer: false)]) },
         onNewChat: compose,
         onSettings: {
           closeSidebar()
@@ -131,7 +129,9 @@ public struct NessaMessagesView: View {
             firstMessage: firstMessages[id],
             onFirstMessageTaken: { firstMessages[id] = nil })
         case .agents:
-          AgentsView(store: store) { id in path.append(.chat(id: id, focusComposer: false)) }
+          AgentsView(
+            store: store, onOpen: { id in path.append(.chat(id: id, focusComposer: false)) },
+            onAllChats: { path.append(.allChats) })
         case .channel(let channel):
           ChannelChatsView(store: store, channel: channel) { id in
             path.append(.chat(id: id, focusComposer: false))

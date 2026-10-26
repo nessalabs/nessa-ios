@@ -1,16 +1,12 @@
 import NessaDesignSystem
 import SwiftUI
 
-/// The sidebar under the home screen: every chat, pinned ones first, then the most recent,
-/// with New chat always in reach at its foot.
+/// The sidebar under the home screen: Agents, where every chat is, then a card for each
+/// channel, with New chat always in reach at its foot.
 struct NessaSidebar: View {
   @ObservedObject var store: MessagesViewModel
-  /// The chat on screen, marked in the list.
-  let current: String?
   let onAgents: () -> Void
-  let onAllChats: () -> Void
   let onChannel: (NessaChannel) -> Void
-  let onOpen: (String) -> Void
   let onNewChat: () -> Void
   let onSettings: () -> Void
 
@@ -21,20 +17,19 @@ struct NessaSidebar: View {
           .padding(.horizontal, NessaSpacing.md).padding(.bottom, NessaSpacing.sm)
           .accessibilityAddTraits(.isHeader)
         row("Agents", icon: .agents, trailing: agentsHint, action: onAgents)
-        row("Chats", icon: .chats, action: onAllChats)
         if !store.channels.isEmpty {
           section("Channels")
-          ForEach(store.channels) { channel in
-            row(channel.name, icon: .hash) { onChannel(channel) }
+          LazyVGrid(
+            columns: [GridItem(.flexible(), spacing: NessaSpacing.xs),
+              GridItem(.flexible(), spacing: NessaSpacing.xs)],
+            spacing: NessaSpacing.xs
+          ) {
+            ForEach(store.channels) { channel in
+              NessaChannelCard(
+                name: channel.name, unread: hasUnread(channel)) { onChannel(channel) }
+            }
           }
-        }
-        if !pinned.isEmpty {
-          section("Pinned")
-          ForEach(pinned, id: \.self) { chatRow($0) }
-        }
-        if !recents.isEmpty {
-          section("Recents")
-          ForEach(recents) { chatRow($0.id) }
+          .padding(.horizontal, NessaSpacing.xxs)
         }
       }
       .padding(.horizontal, NessaSpacing.xs)
@@ -42,8 +37,20 @@ struct NessaSidebar: View {
     }
     .scrollIndicators(.hidden)
     .messagesScrollEdges()
+    // Rows scrolled up fade out at the sidebar's top instead of running under the status bar.
+    .mask {
+      VStack(spacing: 0) {
+        LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+          .frame(height: NessaSpacing.md)
+        Color.black
+      }
+    }
     .safeAreaInset(edge: .bottom, spacing: 0) { foot }
     .background(MessagesStyle.background.ignoresSafeArea())
+  }
+
+  private func hasUnread(_ channel: NessaChannel) -> Bool {
+    store.conversations(inChannel: channel.id).contains { store.unreadChats.contains($0.id) }
   }
 
   private var foot: some View {
@@ -86,16 +93,6 @@ struct NessaSidebar: View {
     }
   }
 
-  private var pinned: [String] {
-    store.pinnedChats.filter { !store.isDeleting($0) && !store.archivedChats.contains($0) }
-  }
-
-  private var recents: [NessaConversation] {
-    store.visibleConversations.filter {
-      !store.isPinned($0.id) && !store.archivedChats.contains($0.id)
-    }
-  }
-
   private func section(_ title: String) -> some View {
     Text(title).font(MessagesStyle.sidebarSection).foregroundStyle(MessagesStyle.secondary)
       .padding(.horizontal, NessaSpacing.sm)
@@ -128,39 +125,5 @@ struct NessaSidebar: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.nessaPress)
-  }
-
-  private func chatRow(_ id: String) -> some View {
-    let unread = store.unreadChats.contains(id)
-    return Button { onOpen(id) } label: {
-      HStack(spacing: NessaSpacing.sm) {
-        Group {
-          if unread {
-            Circle().fill(NessaColor.accent).frame(
-              width: MessagesStyle.statusDot, height: MessagesStyle.statusDot)
-          } else {
-            NessaIcon(.chats, size: MessagesStyle.sidebarIcon - 2)
-              .foregroundStyle(MessagesStyle.secondary)
-          }
-        }
-        .frame(width: MessagesStyle.sidebarIcon)
-        Text(store.chatName(id)).lineLimit(1).truncationMode(.tail)
-          .fontWeight(unread ? .semibold : .regular)
-        Spacer(minLength: 0)
-      }
-      .font(MessagesStyle.sidebarRow).foregroundStyle(MessagesStyle.foreground)
-      .padding(.horizontal, NessaSpacing.sm)
-      .frame(height: MessagesStyle.sidebarRowHeight)
-      .background {
-        if id == current {
-          RoundedRectangle(cornerRadius: MessagesStyle.selectedRowRadius, style: .continuous)
-            .fill(MessagesStyle.selectedRowFill)
-        }
-      }
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.nessaPress)
-    .accessibilityLabel(unread ? "\(store.chatName(id)), unread" : store.chatName(id))
-    .accessibilityAddTraits(id == current ? .isSelected : [])
   }
 }
