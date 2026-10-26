@@ -36,6 +36,16 @@ public actor DesktopLinking {
   public let findSeconds: Double
   /// How often the desktop is asked whether the owner approved.
   public let statusSeconds: Double
+  /// How long this phone waits for the owner, timed on this phone's clock
+  /// alone. The code's own expiry is the desktop's to judge: it ends the
+  /// enrollment as expired, so no deadline set by its clock is compared here.
+  public let approvalSeconds: Double
+  /// Reads under way per desktop, and who waits for them to finish before
+  /// that desktop's directory is removed.
+  private var reads: [UUID: Int] = [:]
+  private var drained: [UUID: [CheckedContinuation<Void, Never>]] = [:]
+  /// Desktops forgotten on this phone: no new read opens their directory.
+  private var forgotten: Set<UUID> = []
 
   public init(
     finder: any GatewayFinding, store: any LinkedDesktopStoring,
@@ -46,7 +56,7 @@ public actor DesktopLinking {
     now: @escaping @Sendable () -> UInt64 = {
       UInt64(Date().timeIntervalSince1970 * 1_000)
     },
-    findSeconds: Double = 3, statusSeconds: Double = 2
+    findSeconds: Double = 3, statusSeconds: Double = 2, approvalSeconds: Double = 900
   ) {
     self.finder = finder
     self.store = store
@@ -56,6 +66,7 @@ public actor DesktopLinking {
     self.now = now
     self.findSeconds = findSeconds
     self.statusSeconds = statusSeconds
+    self.approvalSeconds = approvalSeconds
   }
 
   public func linked() async throws -> LinkedDesktop? { try await store.load() }
@@ -83,27 +94,39 @@ public actor DesktopLinking {
       await locations.discard(id: id)
       throw Self.failure(error)
     }
+    let desktop: LinkedDesktop
     do {
-      let desktop = try await enroll(
+      desktop = try await enroll(
         session, code: formatted, id: id, gateway: gateway, progress: progress)
-      try? await session.close()
-      do {
-        try await store.save(desktop)
-      } catch {
-        throw DesktopLinkFailure.storage
-      }
-      return desktop
     } catch {
-      try? await session.close()
-      await locations.discard(id: id)
+      await abandon(session, id: id)
       throw Self.failure(error)
     }
+    let closed = (try? await session.close()) != nil
+    do {
+      // A pairing cancelled on this phone keeps nothing, even once approved.
+      try Task.checkCancellation()
+      let previous = try? await store.load()
+      try await store.save(desktop)
+      if let previous, previous.id != desktop.id { await retire(previous.id) }
+      return desktop
+    } catch {
+      if closed { await locations.discard(id: id) }
+      throw error is CancellationError ? Self.failure(error) : DesktopLinkFailure.storage
+    }
+  }
+
+  /// Close a session that pairing gives up on, and remove its directory once
+  /// nothing native is left writing to it.
+  private func abandon(_ session: any RetainedSession, id: UUID) async {
+    if (try? await session.close()) != nil { await locations.discard(id: id) }
   }
 
   private func enroll(
     _ session: any RetainedSession, code: String, id: UUID, gateway: FoundGateway,
     progress: @Sendable (DesktopLinkPhase) async -> Void
   ) async throws -> LinkedDesktop {
+    let deadline = now() + UInt64(approvalSeconds * 1_000)
     var receipt = try await session.enroll(code: code)
     var announced = false
     while true {
@@ -118,9 +141,7 @@ public actor DesktopLinking {
         announced = true
         await progress(.approving(gateway))
       }
-      if receipt.publicIntent.expiryMs <= now(), Self.awaitsApproval(receipt.phase) {
-        throw DesktopLinkFailure.expired
-      }
+      if now() >= deadline { throw DesktopLinkFailure.expired }
       try await pause(statusSeconds)
       let status = try await session.status()
       if let failure = status.failure, status.receipt == nil {
@@ -135,7 +156,27 @@ public actor DesktopLinking {
   public func unlink() async throws {
     guard let desktop = try await store.load() else { return }
     try await store.remove()
-    await locations.discard(id: desktop.id)
+    await retire(desktop.id)
+  }
+
+  /// Stop new reads of `id`, wait for the ones under way, then remove its
+  /// directory, so no native worker is left writing into a removed one.
+  private func retire(_ id: UUID) async {
+    forgotten.insert(id)
+    if reads[id, default: 0] > 0 {
+      await withCheckedContinuation { drained[id, default: []].append($0) }
+    }
+    await locations.discard(id: id)
+  }
+
+  private func endRead(_ id: UUID) {
+    let left = reads[id, default: 1] - 1
+    guard left == 0 else {
+      reads[id] = left
+      return
+    }
+    reads[id] = nil
+    for waiter in drained.removeValue(forKey: id) ?? [] { waiter.resume() }
   }
 
   /// The chats `desktop` shares with this phone, read fresh from it.
@@ -187,6 +228,9 @@ public actor DesktopLinking {
     _ desktop: LinkedDesktop,
     _ body: (any RetainedSession) async throws -> Value
   ) async throws -> Value {
+    guard !forgotten.contains(desktop.id) else { throw DesktopLinkFailure.other("forgotten") }
+    reads[desktop.id, default: 0] += 1
+    defer { endRead(desktop.id) }
     let session: any RetainedSession
     do {
       let location = try await locations.prepare(id: desktop.id, address: desktop.address)
@@ -206,10 +250,6 @@ public actor DesktopLinking {
 
   // MARK: What the native answers mean here
 
-  private static func awaitsApproval(_ phase: RetainedEnrollmentPhase) -> Bool {
-    phase == .pending || phase == .claimed
-  }
-
   /// The enrollment ended, or its attempt failed, in a way waiting will not mend.
   static func ended(_ receipt: RetainedEnrollmentReceipt) -> DesktopLinkFailure? {
     if receipt.phase == .terminal {
@@ -225,8 +265,8 @@ public actor DesktopLinking {
     {
       switch receipt.attemptFailure {
       case .invalidProof: return .wrongCode
-      case .connectionClosed, .handshakeDeadline: return .unreachable
-      case .verifierUnavailable, .none: return .wrongCode
+      case .connectionClosed, .handshakeDeadline, .verifierUnavailable: return .unreachable
+      case .none: return .other("attempt ended")
       }
     }
     return nil

@@ -2,9 +2,10 @@
   import AVFoundation
   import Foundation
 
-  /// The back camera, read for the desktop's signal orb. Frames are copied
-  /// down to at most `longSide` pixels on the long side (the reader averages
-  /// down to 640 anyway) and read off the main thread, a few times a second.
+  /// The back camera, read for the desktop's signal orb. Frames are averaged
+  /// down to at most `longSide` pixels on the long side, so sparse grains read
+  /// as their region's level as they do in the kit's reader, and read off the
+  /// main thread, a few times a second.
   /// A code is reported once two readings agree (`OrbScanner`).
   public final class CameraOrbReader: NSObject, @unchecked Sendable {
     public enum Availability: Equatable, Sendable { case ready, denied, unavailable }
@@ -83,7 +84,8 @@
       configured = true
     }
 
-    /// A BGRA buffer copied down by a whole factor. The reader measures
+    /// A BGRA buffer averaged down by a whole factor, each output pixel the
+    /// mean of its factor-by-factor block. The reader measures
     /// colour as max minus min of the three channels, so their order does
     /// not matter.
     static func frame(from buffer: CVPixelBuffer, longSide: Int) -> OrbFrame? {
@@ -99,15 +101,24 @@
       guard outWidth > 0, outHeight > 0 else { return nil }
       let source = base.assumingMemoryBound(to: UInt8.self)
       var pixels = [UInt8](repeating: 0, count: outWidth * outHeight * 4)
+      let area = factor * factor
       pixels.withUnsafeMutableBufferPointer { out in
         for y in 0..<outHeight {
-          let row = y * factor * stride
           for x in 0..<outWidth {
-            let from = row + x * factor * 4
+            var b = 0, g = 0, r = 0
+            for dy in 0..<factor {
+              let row = (y * factor + dy) * stride + x * factor * 4
+              for dx in 0..<factor {
+                let from = row + dx * 4
+                b += Int(source[from])
+                g += Int(source[from + 1])
+                r += Int(source[from + 2])
+              }
+            }
             let to = (y * outWidth + x) * 4
-            out[to] = source[from]
-            out[to + 1] = source[from + 1]
-            out[to + 2] = source[from + 2]
+            out[to] = UInt8((b + area / 2) / area)
+            out[to + 1] = UInt8((g + area / 2) / area)
+            out[to + 2] = UInt8((r + area / 2) / area)
             out[to + 3] = 255
           }
         }

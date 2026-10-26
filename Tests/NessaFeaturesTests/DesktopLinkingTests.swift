@@ -97,12 +97,14 @@ private actor Heard {
   func add(_ phase: DesktopLinkPhase) { phases.append(phase) }
 }
 
-private func linking(_ native: Native, store: Store = Store(), locations: Locations = Locations())
-  -> DesktopLinking
-{
+private func linking(
+  _ native: Native, store: Store = Store(), locations: Locations = Locations(),
+  approvalSeconds: Double = 900
+) -> DesktopLinking {
   DesktopLinking(
     finder: Finder(found: [mac]), store: store, locations: locations,
-    sessions: Factory(session: native), pause: { _ in }, now: { 1_000 })
+    sessions: Factory(session: native), pause: { _ in }, now: { 1_000 },
+    approvalSeconds: approvalSeconds)
 }
 
 @Test func pairingWaitsForApprovalThenKeepsTheDesktop() async throws {
@@ -153,11 +155,69 @@ private func linking(_ native: Native, store: Store = Store(), locations: Locati
   #expect(await untouched.enrolled.isEmpty)
 }
 
-@Test func aCodeThatRunsOutBeforeApprovalExpires() async throws {
-  let native = Native(first: receipt(.claimed, expiry: 500))
+@Test func theDesktopSaysWhenTheCodeExpired() async throws {
+  let native = Native(
+    first: receipt(.claimed), then: [statusOf(receipt(.terminal, cause: .expired))])
   await #expect(throws: DesktopLinkFailure.expired) {
     try await linking(native).link(code: "ABCD-2345", with: mac)
   }
+}
+
+@Test func aPhoneClockAheadOfTheDesktopDoesNotEndPairing() async throws {
+  // The code's expiry (500) is already past by this phone's clock (1 000).
+  let native = Native(
+    first: receipt(.claimed, expiry: 500),
+    then: [statusOf(receipt(.active, receiver: "r1", expiry: 500))])
+  let desktop = try await linking(native).link(code: "ABCD-2345", with: mac)
+  #expect(desktop.receiver == "r1")
+}
+
+@Test func waitingTooLongForTheOwnerStops() async throws {
+  let native = Native(first: receipt(.approved))
+  let locations = Locations()
+  await #expect(throws: DesktopLinkFailure.expired) {
+    try await linking(native, locations: locations, approvalSeconds: 0)
+      .link(code: "ABCD-2345", with: mac)
+  }
+  #expect(await native.closes == 1)
+  #expect(await locations.discarded.count == 1)
+}
+
+@Test func anUnavailableVerifierIsNotAWrongCode() async throws {
+  let native = Native(first: receipt(.unclaimed, attempt: .failed, failure: .verifierUnavailable))
+  await #expect(throws: DesktopLinkFailure.unreachable) {
+    try await linking(native).link(code: "ABCD-2345", with: mac)
+  }
+}
+
+@Test func pairingAgainForgetsThePreviousDesktop() async throws {
+  let old = LinkedDesktop(
+    id: UUID(), name: "Old", gateway: "gw-0", address: mac.address, receiver: "r0",
+    linkedAtMs: 1)
+  let store = Store()
+  await store.save(old)
+  let locations = Locations()
+  let native = Native(first: receipt(.active, receiver: "r1"))
+  let desktop = try await linking(native, store: store, locations: locations)
+    .link(code: "ABCD-2345", with: mac)
+  #expect(await store.desktop == desktop)
+  #expect(await locations.discarded == [old.id])
+}
+
+@Test func aForgottenDesktopIsNotReadAgain() async throws {
+  let desktop = LinkedDesktop(
+    id: UUID(), name: "Studio", gateway: "gw-1", address: mac.address, receiver: "r1",
+    linkedAtMs: 1)
+  let store = Store()
+  await store.save(desktop)
+  let locations = Locations()
+  let native = Native(first: receipt(.claimed))
+  let linker = linking(native, store: store, locations: locations)
+  try await linker.unlink()
+  #expect(await store.desktop == nil)
+  #expect(await locations.discarded == [desktop.id])
+  await #expect(throws: DesktopLinkFailure.self) { try await linker.chats(of: desktop) }
+  #expect(await locations.prepared.isEmpty)
 }
 
 @Test func sharedChatsAreReadNewestFirstWithoutDeletedOrArchived() async throws {

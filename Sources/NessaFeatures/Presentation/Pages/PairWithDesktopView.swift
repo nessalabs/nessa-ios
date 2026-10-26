@@ -60,7 +60,9 @@ struct PairWithDesktopView: View {
     }
     .onChange(of: phaseKey) { _, key in
       #if os(iOS)
-        if key == "idle" || key == "failed" {
+        // Not on a failure: the Mac still shows the same orb, which would be
+        // read and sent again at once. Scanning resumes from "Scan again".
+        if key == "idle" {
           if camera == .ready { start() }
         } else {
           reader.stop()
@@ -110,6 +112,9 @@ struct PairWithDesktopView: View {
       if case .failed(let failure) = store.phase {
         Text(DesktopLinkViewModel.sentence(failure)).font(MessagesStyle.caption)
           .foregroundStyle(MessagesStyle.danger).multilineTextAlignment(.center)
+        Button("Scan again") { store.reset() }
+          .font(MessagesStyle.body).foregroundStyle(MessagesStyle.secondary)
+          .buttonStyle(.nessaPress)
       }
       VStack(spacing: 0) {
         TextField("Or type the code", text: $typed)
@@ -210,10 +215,13 @@ struct PairWithDesktopView: View {
 
   private func startCamera() async {
     #if os(iOS)
-      switch await CameraOrbReader.availability() {
+      let availability = await CameraOrbReader.availability()
+      // Closed while the camera prompt was up: nothing is left to stop it.
+      guard !Task.isCancelled else { return }
+      switch availability {
       case .ready:
         camera = .ready
-        start()
+        if phaseKey == "idle" { start() }
       default:
         camera = .denied
       }

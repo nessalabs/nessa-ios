@@ -64,9 +64,11 @@ import Foundation
     task = Task { [weak self] in
       do {
         let desktop = try await linking.link(code: code, with: gateway, progress: progress)
-        guard let self, !Task.isCancelled else { return }
-        self.pendingCode = nil
+        guard let self else { return }
+        // Kept even when cancelled: the desktop saved it, so this phone shows it.
         self.linked = desktop
+        guard !Task.isCancelled else { return }
+        self.pendingCode = nil
         self.phase = .linked(desktop)
       } catch {
         guard let self, !Task.isCancelled else { return }
@@ -90,10 +92,17 @@ import Foundation
   }
 
   public func unlink() async {
-    try? await linking?.unlink()
-    linked = nil
-    chats = []
-    phase = .idle
+    guard let linking else { return }
+    do {
+      try await linking.unlink()
+      linked = nil
+      chats = []
+      chatsError = nil
+      phase = .idle
+    } catch {
+      linked = try? await linking.linked()
+      chatsError = Self.sentence(.storage)
+    }
   }
 
   public func refreshChats() async {
@@ -101,9 +110,13 @@ import Foundation
     chatsLoading = true
     defer { chatsLoading = false }
     do {
-      chats = try await linking.chats(of: linked)
+      let read = try await linking.chats(of: linked)
+      // Forgotten or replaced while reading: what was read is not this desktop's.
+      guard self.linked?.id == linked.id else { return }
+      chats = read
       chatsError = nil
     } catch {
+      guard self.linked?.id == linked.id else { return }
       chatsError = Self.sentence(DesktopLinking.failure(error))
     }
   }
