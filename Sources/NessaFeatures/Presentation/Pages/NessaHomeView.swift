@@ -23,16 +23,21 @@ struct NessaHomeView: View {
   @State private var attachments: [DraftAttachment] = []
   @State private var starting = false
   @State private var now = Date()
+  /// Which light the ground is drawn in, while the look is still being chosen.
+  @AppStorage("nessaHomeLight") private var light = NessaHomeLightStyle.cornerLight.rawValue
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
     VStack(spacing: MessagesStyle.greetingGap) {
       Spacer(minLength: 0)
-      NessaMark(size: MessagesStyle.homeMark)
       Text(HomeGreeting.text(at: now))
         .font(MessagesStyle.greeting).foregroundStyle(MessagesStyle.foreground)
         .multilineTextAlignment(.center)
         .accessibilityAddTraits(.isHeader)
+        #if DEBUG
+          // Development builds step through the lights, to compare them on a real screen.
+          .onLongPressGesture { nextLight() }
+        #endif
       if needsPairing {
         // Nothing to talk to yet: pairing with the Mac is the way in.
         VStack(spacing: NessaSpacing.sm) {
@@ -40,16 +45,13 @@ struct NessaHomeView: View {
             .font(MessagesStyle.greetingDetail).foregroundStyle(MessagesStyle.secondary)
           Button("Pair with your Mac", action: onPair).buttonStyle(.nessaPrimary)
         }
-      } else if let detail {
-        Text(detail).font(MessagesStyle.greetingDetail).foregroundStyle(MessagesStyle.secondary)
-          .contentTransition(.opacity)
       }
       Spacer(minLength: 0)
     }
     .padding(.horizontal, MessagesStyle.horizontal)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .contentShape(Rectangle())
-    .messagesAmbientGround()
+    .background { NessaHomeLight(style: NessaHomeLightStyle(rawValue: light) ?? .cornerLight) }
     .safeAreaInset(edge: .top, spacing: 0) { topBar }
     .messagesBar(edge: .bottom) {
       VStack(spacing: NessaSpacing.xs) {
@@ -86,7 +88,7 @@ struct NessaHomeView: View {
   private var topBar: some View {
     HStack {
       Button(action: onMenu) {
-        Image(systemName: "line.3.horizontal").font(MessagesStyle.icon)
+        NessaIcon(.menu)
           .frame(width: MessagesStyle.homeButton, height: MessagesStyle.homeButton)
           .messagesGlass()
       }
@@ -94,7 +96,7 @@ struct NessaHomeView: View {
       .accessibilityLabel("Open sidebar")
       Spacer()
       Button(action: onCompose) {
-        Image(systemName: "square.and.pencil").font(MessagesStyle.icon)
+        NessaIcon(.compose)
           .frame(width: MessagesStyle.homeButton, height: MessagesStyle.homeButton)
           .messagesGlass()
       }
@@ -122,15 +124,16 @@ struct NessaHomeView: View {
     !store.connected && (store.reconnecting || desktop.linked != nil)
   }
 
-  private var detail: String? {
-    if !store.connected { return nil }
-    return desktop.linked.map { "\($0.name) connected" } ?? "Connected"
-  }
-
   /// The same conditions the gateway puts on making a chat.
   private var canStart: Bool {
     store.connected && store.conversationAuthorityReady && !store.busy && !starting
       && store.pendingLoadError == nil && store.pendingCreations.isEmpty
+  }
+
+  private func nextLight() {
+    let all = NessaHomeLightStyle.allCases
+    let index = all.firstIndex { $0.rawValue == light } ?? 0
+    light = all[(index + 1) % all.count].rawValue
   }
 
   private func start() {

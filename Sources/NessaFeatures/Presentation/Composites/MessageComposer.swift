@@ -74,7 +74,7 @@ struct MessageComposer: View {
           Button("Add Files", systemImage: "doc") { filesPresented = true }
         } label: {
           // As tall as the message field beside it, so the two share a centre line.
-          Image(systemName: "plus").font(MessagesStyle.icon)
+          NessaIcon(.plus)
             .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
             .messagesGlass()
         }.buttonStyle(.nessaPress)
@@ -95,14 +95,19 @@ struct MessageComposer: View {
               Button {
                 dictation.toggle()
               } label: {
-                Image(systemName: dictation.active ? "stop.circle.fill" : "waveform")
-                  .font(MessagesStyle.icon)
+                Group {
+                  if dictation.active {
+                    Image(systemName: "stop.circle.fill").font(MessagesStyle.icon)
+                  } else {
+                    NessaIcon(.wave)
+                  }
+                }
                   .foregroundStyle(
                     dictation.active ? MessagesStyle.danger : MessagesStyle.secondary
                   )
                   .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
                   .contentShape(Rectangle())
-                  .contentTransition(.symbolEffect(.replace))
+                  .transition(.opacity)
               }
               .buttonStyle(.nessaPress)
               .disabled(sending || dictation.state == .finishing)

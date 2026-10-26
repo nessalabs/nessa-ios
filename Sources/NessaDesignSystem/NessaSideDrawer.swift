@@ -80,6 +80,9 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
       .contentShape(Rectangle())
       .simultaneousGesture(dragGesture(width: width), including: .all)
     }
+    // Edge to edge, so the pushed content is one whole card down to the screen's corners;
+    // the views inside still read the safe area and keep clear of it themselves.
+    .ignoresSafeArea(.container)
   }
 
   private func progress(width: CGFloat) -> CGFloat {

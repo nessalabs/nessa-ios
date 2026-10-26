@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 
 /// Native implementation of Nessa's product v1 req/res protocol. Commands are never replayed.
-public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ConversationFollowing,
+public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDirectory, ConversationFollowing,
   ConnectionLeasing, PreparedCommandTransport, CommandRecoveryProviding,
   AuthenticatedGatewaySessionProviding, GatewayPairingManaging
 {
@@ -300,6 +300,20 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
       archived ? "conversation.archive" : "conversation.unarchive",
       params: Archive(
         conversationId: conversationID, requestId: UUID().uuidString.lowercased()))
+  }
+  public func channels() async throws -> [NessaChannel] {
+    try requireConnection()
+    struct After: Encodable { let after: String? }
+    var channels: [NessaChannel] = []
+    var after: String?
+    // Pages follow the cursor until the gateway says the list is complete; a cursor that
+    // does not move would loop, so it ends the read.
+    while true {
+      let page: NessaChannelPage = try await request("channel.list", params: After(after: after))
+      channels += page.channels
+      guard !page.complete, let cursor = page.cursor, cursor != after else { return channels }
+      after = cursor
+    }
   }
   public func agents() async throws -> [AgentProfile] {
     try requireConnection()

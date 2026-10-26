@@ -35,6 +35,8 @@ public final class MessagesViewModel: ObservableObject {
   @Published public var error: String?
   @Published public var listComplete = true
   @Published public var agentProfiles: [AgentProfile] = []
+  /// The person's channels, the default one first. Empty from a gateway that lists none.
+  @Published public private(set) var channels: [NessaChannel] = []
   @Published public var pinnedChats: [String] = []
   @Published public var unreadChats: [String] = []
   @Published public var mutedChats: [String] = []
@@ -1388,6 +1390,10 @@ public final class MessagesViewModel: ObservableObject {
       let agents = try await service.agents()
       guard generation == expected, !Task.isCancelled else { throw CancellationError() }
       agentProfiles = agents
+      // Channels only arrange the chats; a gateway that cannot list them still connects.
+      let listed = (try? await service.channels()) ?? []
+      guard generation == expected, !Task.isCancelled else { throw CancellationError() }
+      channels = listed
       try await refreshList()
       guard generation == expected, foreground, !Task.isCancelled else { throw CancellationError() }
       if let receipt, acceptedLease != receipt { throw PhoneProfileCoordinationRefusal.retired }

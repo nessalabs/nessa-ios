@@ -18,7 +18,7 @@ struct NessaSidebar: View {
         Text("Nessa").font(MessagesStyle.sidebarTitle).foregroundStyle(MessagesStyle.foreground)
           .padding(.horizontal, NessaSpacing.md).padding(.bottom, NessaSpacing.sm)
           .accessibilityAddTraits(.isHeader)
-        row("Chats", systemImage: "bubble.left.and.bubble.right", action: onAllChats)
+        row("Chats", icon: .chats, action: onAllChats)
         if !pinned.isEmpty {
           section("Pinned")
           ForEach(pinned, id: \.self) { chatRow($0) }
@@ -46,7 +46,11 @@ struct NessaSidebar: View {
       .accessibilityLabel("Connection settings")
       Spacer()
       Button(action: onNewChat) {
-        Label("New chat", systemImage: "plus").font(MessagesStyle.sidebarRow.weight(.medium))
+        HStack(spacing: NessaSpacing.xs) {
+          NessaIcon(.plus, size: 18, weight: 1.8)
+          Text("New chat")
+        }
+          .font(MessagesStyle.sidebarRow.weight(.medium))
           .padding(.horizontal, NessaSpacing.lg)
           .frame(height: MessagesStyle.homeButton)
           .foregroundStyle(MessagesStyle.background)
@@ -78,12 +82,12 @@ struct NessaSidebar: View {
       .accessibilityAddTraits(.isHeader)
   }
 
-  private func row(_ title: String, systemImage: String, action: @escaping () -> Void)
+  private func row(_ title: String, icon: NessaIconName, action: @escaping () -> Void)
     -> some View
   {
     Button(action: action) {
       HStack(spacing: NessaSpacing.sm) {
-        Image(systemName: systemImage).frame(width: MessagesStyle.sidebarIcon)
+        NessaIcon(icon).frame(width: MessagesStyle.sidebarIcon)
         Text(title).lineLimit(1)
         Spacer(minLength: 0)
       }
@@ -104,7 +108,8 @@ struct NessaSidebar: View {
             Circle().fill(NessaColor.accent).frame(
               width: MessagesStyle.statusDot, height: MessagesStyle.statusDot)
           } else {
-            Image(systemName: "bubble.left").foregroundStyle(MessagesStyle.secondary)
+            NessaIcon(.chats, size: MessagesStyle.sidebarIcon - 2)
+              .foregroundStyle(MessagesStyle.secondary)
           }
         }
         .frame(width: MessagesStyle.sidebarIcon)

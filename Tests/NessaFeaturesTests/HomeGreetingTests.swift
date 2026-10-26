@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import NessaFeatures
@@ -18,4 +19,14 @@ import Testing
     #expect(HomeGreeting.text(hour: 9, name: "  ") == "Good morning")
     #expect(HomeGreeting.text(hour: 9, name: nil) == "Good morning")
   }
+}
+
+@Test @MainActor func connectingReadsTheChannelsAndEachChatsChannel() async throws {
+  let model = MessagesViewModel(
+    service: MessagingService(repository: MockRepository()), credentials: InMemoryCredentialStore(),
+    preferences: InMemoryChatPreferences())
+  await model.connect(address: "mock://one", credential: "", instance: "phone")
+  #expect(model.channels.map(\.channelId) == MockRepository.fixtureChannels.map(\.channelId))
+  #expect(model.channels.first?.isDefault == true)
+  #expect(model.conversations.contains { $0.channelId == "ch_aaaaaaaaaa" })
 }
