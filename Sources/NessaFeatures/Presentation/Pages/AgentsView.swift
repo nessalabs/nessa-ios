@@ -21,17 +21,20 @@ struct AgentsView: View {
   var body: some View {
     let glance = store.agentsGlance
     // A row on its way out no longer counts, so a chip never reads one chat it can't show.
-    let count = { (group: AgentsGroup) in glance.ids(group).filter { !leaving.contains($0) }.count }
+    let counts = Dictionary(
+      uniqueKeysWithValues: AgentsGroup.allCases.map { group in
+        (group, glance.ids(group).filter { !leaving.contains($0) }.count)
+      })
     // A chosen group that has emptied (its last review answered) shows everything again,
     // rather than an empty screen with no chip chosen; the choice itself is cleared below,
     // so a new review does not narrow the list back by itself.
-    let showing = shown.flatMap { count($0) > 0 ? $0 : nil }
+    let showing = shown.flatMap { counts[$0, default: 0] > 0 ? $0 : nil }
     // A List, not a stack, for its swipe actions. It carries no implicit animation of its
     // own: an `.animation` on a List mixes into the collection view's row updates, so every
     // change it should animate goes through `withAnimation`.
     List {
       Group {
-        chips(count, showing: showing)
+        chips(counts, showing: showing)
         if store.pendingLoadError != nil { PendingDeliveryUnavailable(store: store) }
         ForEach(store.pendingCreations, id: \.requestID) { command in
           PendingCommandActions(command: command, store: store, onCreated: onOpen)
@@ -164,12 +167,12 @@ struct AgentsView: View {
     .padding(.horizontal, MessagesStyle.agentsCardGutter)
   }
 
-  private func chips(_ count: (AgentsGroup) -> Int, showing: AgentsGroup?) -> some View {
+  private func chips(_ counts: [AgentsGroup: Int], showing: AgentsGroup?) -> some View {
     ScrollView(.horizontal) {
       HStack(spacing: NessaSpacing.xs) {
         chip("All", selected: showing == nil) { shown = nil }
         ForEach(AgentsGroup.allCases, id: \.self) { group in
-          let count = count(group)
+          let count = counts[group, default: 0]
           if count > 0 {
             chip("\(group.title) \(count)", selected: showing == group) {
               shown = showing == group ? nil : group
