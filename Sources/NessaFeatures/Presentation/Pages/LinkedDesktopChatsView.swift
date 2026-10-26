@@ -34,18 +34,14 @@ struct LinkedDesktopChatsView: View {
   }
 }
 
-/// The paired Mac's shared chats as inbox rows, read again from the Mac when
-/// the pairing changes or the inbox asks.
+/// The paired Mac's shared chats as inbox rows. The inbox reads them again
+/// when the pairing changes or on pull to refresh.
 struct SharedChatsSection: View {
   @ObservedObject var store: DesktopLinkViewModel
   let onOpen: (String) -> Void
   var body: some View {
+    // The Mac's chats sit in the inbox like any others, with no heading of their own.
     Group {
-      if let mac = store.linked {
-        Text("Shared from \(mac.name)").font(MessagesStyle.caption)
-          .foregroundStyle(MessagesStyle.secondary).padding(.top, NessaSpacing.md)
-          .task(id: mac.id) { await store.refreshChats() }
-      }
       if let error = store.chatsError {
         Text(error).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
       } else if store.chats.isEmpty, !store.chatsLoading {

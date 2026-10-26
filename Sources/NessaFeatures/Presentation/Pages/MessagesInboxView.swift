@@ -249,6 +249,10 @@ struct MessagesInboxView: View {
         editing = false
         asking = nil
       }
+      // On the list, not on the rows: a Group's modifiers would run once per row.
+      .task(id: desktop.linked?.id) {
+        if desktop.linked != nil { await desktop.refreshChats() }
+      }
       .refreshable {
         if desktop.linked != nil { await desktop.refreshChats() }
         guard store.connected || desktop.linked == nil else { return }
