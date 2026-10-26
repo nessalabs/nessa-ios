@@ -106,7 +106,8 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
           data: Data("A few ideas to explore together.\nDevelopment fixture.".utf8))
       ]
       threads[id] = NessaConversationView(
-        conversationId: id, messages: messages, permissions: [], truncated: false,
+        conversationId: id, messages: messages,
+        permissions: index == 1 ? [Self.fixturePermission(id)] : [], truncated: false,
         interactionViewError: nil, runtime: NessaRuntime(agent: "nessa"))
       summaries.append(
         NessaConversation(
@@ -253,8 +254,25 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
   public func answer(
     _ permission: NessaPermission, option: NessaPermission.Option, conversationID: String
   ) throws {
-    _ = try read(conversationID)
-    throw NessaGatewayError.rejected("No permission is pending in this mock conversation.")
+    let current = try read(conversationID)
+    guard current.permissions.contains(where: { $0.id == permission.id }) else {
+      throw NessaGatewayError.rejected("No permission is pending in this mock conversation.")
+    }
+    threads[conversationID] = NessaConversationView(
+      conversationId: conversationID, messages: current.messages,
+      permissions: current.permissions.filter { $0.id != permission.id }, truncated: false,
+      interactionViewError: nil, runtime: current.runtime)
+  }
+  /// The one review the development fixture waits on, so the Agents view's card can be seen
+  /// and answered.
+  static func fixturePermission(_ id: String) -> NessaPermission {
+    NessaPermission(
+      executionId: "\(id)-7", permissionId: "fixture", title: "Nessa wants to run a command",
+      toolName: "shell", argumentsJson: "pnpm test:scale -- --only gateway",
+      options: [
+        NessaPermission.Option(id: "allow_once", label: "Allow once", effect: "allow"),
+        NessaPermission.Option(id: "reject", label: "Deny", effect: "deny"),
+      ])
   }
   private func requireConnection() throws { if !connected { throw NessaGatewayError.disconnected } }
 }

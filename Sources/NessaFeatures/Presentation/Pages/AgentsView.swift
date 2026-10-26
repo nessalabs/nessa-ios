@@ -23,9 +23,15 @@ struct AgentsView: View {
             Text(group.title).font(MessagesStyle.sidebarSection)
               .foregroundStyle(MessagesStyle.secondary)
               .padding(.horizontal, MessagesStyle.horizontal)
-              .padding(.top, NessaSpacing.lg).padding(.bottom, NessaSpacing.xxs)
+              .padding(.top, AgentsStyle.sectionGap).padding(.bottom, NessaSpacing.xs)
               .accessibilityAddTraits(.isHeader)
-            ForEach(ids, id: \.self) { row($0, group: group) }
+            ForEach(ids, id: \.self) { id in
+              if group == .needsYou, let permission = store.views[id]?.permissions.first {
+                approval(id, permission: permission)
+              } else {
+                row(id, group: group)
+              }
+            }
           }
         }
       }
@@ -33,13 +39,29 @@ struct AgentsView: View {
     }
     .messagesScrollEdges()
     .messagesAmbientGround()
+    // The title sits in the bar beside the back button, not as a large title under it, so
+    // the list starts higher.
     .navigationTitle("Agents")
+    .nessaInlineNavigationTitle()
     .toolbar {
+      AgentsTitle()
+      ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
       ToolbarItem(placement: .primaryAction) {
         Button(action: onAllChats) { NessaIcon(.chats) }
           .accessibilityLabel("All chats")
       }
     }
+  }
+
+  private func approval(_ id: String, permission: NessaPermission) -> some View {
+    let channel = store.conversations.first { $0.id == id }?.channelId
+    let channelName = store.channels.first { $0.id == channel && !$0.isDefault }?.name
+    return AgentsApprovalCard(
+      chatName: store.chatName(id), channelName: channelName, permission: permission,
+      onOpen: { onOpen(id) },
+      onAnswer: { option in Task { await store.answer(permission, option: option, in: id) } }
+    )
+    .padding(.horizontal, AgentsStyle.cardGutter)
   }
 
   private func chips(_ glance: AgentsGlance) -> some View {
@@ -58,7 +80,7 @@ struct AgentsView: View {
       .padding(.horizontal, MessagesStyle.horizontal)
     }
     .scrollIndicators(.hidden)
-    .padding(.top, NessaSpacing.md)
+    .padding(.top, NessaSpacing.sm)
   }
 
   private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
@@ -66,7 +88,7 @@ struct AgentsView: View {
       withAnimation(reduceMotion ? nil : NessaMotion.standard()) { action() }
     } label: {
       Text(title).font(MessagesStyle.preview.weight(selected ? .semibold : .regular))
-        .padding(.horizontal, NessaSpacing.sm)
+        .padding(.horizontal, AgentsStyle.chipInset)
         .frame(height: AgentsStyle.chipHeight)
         .foregroundStyle(selected ? MessagesStyle.background : MessagesStyle.foreground)
         .background(
@@ -81,7 +103,7 @@ struct AgentsView: View {
   private func row(_ id: String, group: AgentsGroup) -> some View {
     let conversation = store.conversations.first { $0.id == id }
     return Button { onOpen(id) } label: {
-      HStack(spacing: NessaSpacing.sm) {
+      HStack(spacing: AgentsStyle.rowGap) {
         NessaIcon(.chats, size: MessagesStyle.sidebarIcon - 2)
           .foregroundStyle(group == .earlier ? MessagesStyle.secondary : MessagesStyle.foreground)
         VStack(alignment: .leading, spacing: 2) {
@@ -100,7 +122,7 @@ struct AgentsView: View {
       }
       .foregroundStyle(MessagesStyle.foreground)
       .padding(.horizontal, MessagesStyle.horizontal)
-      .padding(.vertical, NessaSpacing.sm)
+      .padding(.vertical, AgentsStyle.rowInset)
       .contentShape(Rectangle())
     }
     .buttonStyle(.nessaPress)
@@ -116,6 +138,28 @@ struct AgentsView: View {
   }
 }
 
+/// "Agents" in the bar's leading corner, bold and bare: on iOS 26 a bar item gets a glass
+/// capsule of its own, which a title should not wear.
+private struct AgentsTitle: ToolbarContent {
+  var body: some ToolbarContent {
+    if #available(iOS 26.0, macOS 26.0, *) {
+      ToolbarItem(placement: .navigation) { title }.sharedBackgroundVisibility(.hidden)
+    } else {
+      ToolbarItem(placement: .navigation) { title }
+    }
+  }
+  private var title: some View {
+    Text("Agents").font(AgentsStyle.title).accessibilityAddTraits(.isHeader)
+  }
+}
+
 private enum AgentsStyle {
-  static let chipHeight: CGFloat = 32
+  static let title = Font.system(size: 28, weight: .bold)
+  static let chipHeight: CGFloat = 34
+  static let chipInset: CGFloat = 14
+  /// Room above each group's label, and around each row and the cards.
+  static let sectionGap: CGFloat = 30
+  static let rowGap: CGFloat = 14
+  static let rowInset: CGFloat = 13
+  static let cardGutter: CGFloat = 16
 }

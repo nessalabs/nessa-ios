@@ -1,7 +1,7 @@
 import NessaDesignSystem
 import SwiftUI
 
-/// The sidebar under the home screen: Agents, where every chat is, then a card for each
+/// The sidebar under the home screen: Agents, where every chat is, then a row for each
 /// channel, with New chat always in reach at its foot.
 struct NessaSidebar: View {
   @ObservedObject var store: MessagesViewModel
@@ -19,17 +19,11 @@ struct NessaSidebar: View {
         row("Agents", icon: .agents, trailing: agentsHint, action: onAgents)
         if !store.channels.isEmpty {
           section("Channels")
-          LazyVGrid(
-            columns: [GridItem(.flexible(), spacing: NessaSpacing.xs),
-              GridItem(.flexible(), spacing: NessaSpacing.xs)],
-            spacing: NessaSpacing.xs
-          ) {
-            ForEach(store.channels) { channel in
-              NessaChannelCard(
-                name: channel.name, unread: hasUnread(channel)) { onChannel(channel) }
+          ForEach(store.channels) { channel in
+            NessaChannelRow(name: channel.name, unread: hasUnread(channel)) {
+              onChannel(channel)
             }
           }
-          .padding(.horizontal, NessaSpacing.xxs)
         }
       }
       .padding(.horizontal, NessaSpacing.xs)

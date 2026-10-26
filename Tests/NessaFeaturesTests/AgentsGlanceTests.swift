@@ -26,3 +26,18 @@ import Testing
     #expect(glance.ids(.earlier) == ["a"])
   }
 }
+
+@Test @MainActor func answeringAWaitingReviewTakesTheChatOutOfNeedsYou() async throws {
+  let model = MessagesViewModel(
+    service: MessagingService(repository: MockRepository()), credentials: InMemoryCredentialStore(),
+    preferences: InMemoryChatPreferences())
+  await model.connect(address: "mock://one", credential: "", instance: "phone")
+  let id = "00000000-0000-4000-8000-000000000002"
+  await model.refresh(id)
+  #expect(model.agentsGlance.ids(.needsYou) == [id])
+  let permission = try #require(model.views[id]?.permissions.first)
+  let allow = try #require(permission.options.first { $0.effect == "allow" })
+  await model.answer(permission, option: allow, in: id)
+  #expect(model.agentsGlance.ids(.needsYou).isEmpty)
+  #expect(model.views[id]?.permissions.isEmpty == true)
+}
