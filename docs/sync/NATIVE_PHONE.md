@@ -601,11 +601,11 @@ do not add old-schema fallbacks.
 - iOS: `nessalabs/nessa-ios`, branch `codex/811-owner-phone`, based on main
   `d5427ec34fce65078fc6ed5433a3148505ebfbe5`. It preserves the result-capture,
   protected product exchange, subscription/error mapping and regression tests.
-- The unconnected actual native child adapter is preserved in
-  `verification/sync/OwnerPhoneDraft/NativeGatewayProductExchange.swift`.
-  It is not part of the Package.swift production target. It was typechecked
-  as an additional NessaFeatures source against the generated current SDK.
-  The adjacent JSON records retain source hashes, scopes and check outcomes.
+- The native product child adapter now lives in the production target at
+  `Sources/NessaFeatures/Infrastructure/Native/NativeGatewayProductExchange.swift`:
+  a phone paired with a Mac opens its product connection through it. The JSON
+  records in `verification/sync/OwnerPhoneDraft/` keep the source hashes,
+  scopes and check outcomes of the draft it started from.
 
 ### Completed checks and their limits
 

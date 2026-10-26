@@ -14,6 +14,8 @@ import Foundation
   public let phoneChat: PhoneProductChat?
   /// Pairing with a desktop by its code; live builds only.
   public let desktopLinking: DesktopLinking?
+  /// The paired desktop's product session over its native link.
+  let linkedProducts: (any LinkedProductOpening)?
   private let snapshots: PhoneSnapshotSession
   private let recovery: ConnectionRecovery
   private let speechFactory: @MainActor () -> any SpeechTranscribing
@@ -91,11 +93,16 @@ import Foundation
     if mode == .live, let retainedSessions {
       let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Nessa/LinkedDesktops", isDirectory: true)
-      desktopLinking = DesktopLinking(
+      let locations = LinkedDesktopLocations(root: root)
+      let linking = DesktopLinking(
         finder: BonjourGatewayFinder(), store: LinkedDesktopFileStore(root: root),
-        locations: LinkedDesktopLocations(root: root), sessions: retainedSessions)
+        locations: locations, sessions: retainedSessions)
+      desktopLinking = linking
+      linkedProducts = LinkedDesktopProducts(
+        linking: linking, native: NativeLinkedProducts(locations: locations))
     } else {
       desktopLinking = nil
+      linkedProducts = nil
     }
     self.launchConnection = launchConnection
     self.speechFactory =

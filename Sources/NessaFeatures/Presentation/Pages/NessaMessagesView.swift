@@ -11,8 +11,6 @@ public struct NessaMessagesView: View {
   @State private var settings = false
   @State private var pairing = false
   @State private var linkedChats = false
-  /// A shared chat opened from the inbox.
-  @State private var sharedChat: LinkedChatRoute?
   private struct Route: Hashable {
     let conversationID: String
     let focusComposer: Bool
@@ -28,7 +26,6 @@ public struct NessaMessagesView: View {
     NavigationStack(path: $path) {
       MessagesInboxView(
         store: store, desktop: linkStore,
-        onOpenShared: { sharedChat = LinkedChatRoute(conversationID: $0) },
         onPair: {
           linkStore.reset()
           pairing = true
@@ -57,9 +54,6 @@ public struct NessaMessagesView: View {
         NessaThreadView(
           store: store, conversationID: route.conversationID,
           dictation: dependencies.makeDictationViewModel(), autoFocusComposer: route.focusComposer)
-      }
-      .navigationDestination(item: $sharedChat) { route in
-        LinkedDesktopThreadView(store: linkStore, conversationID: route.conversationID)
       }
       .navigationDestination(isPresented: $linkedChats) {
         LinkedDesktopChatsView(store: linkStore)
@@ -110,11 +104,24 @@ public struct NessaMessagesView: View {
         if store.connected { address = connection.address }
         return
       }
+      // A paired Mac is the way in; the change below connects to it.
+      await linkStore.load()
+      if linkStore.linked != nil, dependencies.linkedProducts != nil { return }
       await store.connect(
         address: address, credential: "", instance: instance,
         restoringSavedProfile: true, automatically: true)
     }
-    .task { await linkStore.load() }
+    // The paired Mac, once read at launch or newly paired, carries the whole
+    // session over its native link.
+    .onChange(of: linkStore.linked?.id) { _, id in
+      guard let id, id != store.linkedDesktopID, let desktop = linkStore.linked,
+        let products = dependencies.linkedProducts
+      else { return }
+      Task {
+        await store.forgetLinked()
+        await store.connectLinked(desktop, instance: instance, products: products)
+      }
+    }
     .task(id: store.connectionRevision) {
       if store.connected { await store.watchInbox() }
     }

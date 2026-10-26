@@ -207,6 +207,31 @@ public actor DesktopLinking {
     for waiter in drained.removeValue(forKey: id) ?? [] { waiter.resume() }
   }
 
+  /// Open the product session to `desktop` through `products`. It counts as
+  /// a read until it closes, so forgetting the desktop waits for it before
+  /// that desktop's directory is removed.
+  func openProduct(
+    _ desktop: LinkedDesktop, instance: String, through products: any LinkedProductOpening
+  ) async throws -> any GatewayProductExchange {
+    guard !forgotten.contains(desktop.id) else { throw DesktopLinkFailure.other("forgotten") }
+    reads[desktop.id, default: 0] += 1
+    let exchange: any GatewayProductExchange
+    do {
+      exchange = try await products.open(desktop, instance: instance)
+    } catch {
+      endRead(desktop.id)
+      throw error
+    }
+    return HeldProductExchange(exchange) { [weak self] released in
+      await self?.productClosed(desktop.id, released: released)
+    }
+  }
+
+  private func productClosed(_ id: UUID, released: Bool) {
+    if !released { unclean.insert(id) }
+    endRead(id)
+  }
+
   /// The chats `desktop` shares with this phone, read fresh from it.
   public func chats(of desktop: LinkedDesktop) async throws -> [NessaConversation] {
     try await reading(desktop) { session in
@@ -340,5 +365,33 @@ public actor DesktopLinking {
     }
     if error is CancellationError { return .other("cancelled") }
     return .other(String(describing: error))
+  }
+}
+
+/// A product exchange that tells its desktop when it first closed, and
+/// whether its native session let go then.
+private final class HeldProductExchange: GatewayProductExchange, @unchecked Sendable {
+  private let inner: any GatewayProductExchange
+  private let closed: @Sendable (Bool) async -> Void
+  private let lock = NSLock()
+  private var reported = false
+  init(_ inner: any GatewayProductExchange, closed: @escaping @Sendable (Bool) async -> Void) {
+    self.inner = inner
+    self.closed = closed
+  }
+  func ready() async throws -> Data { try await inner.ready() }
+  func request(method: String, parameters: Data) async throws -> Data {
+    try await inner.request(method: method, parameters: parameters)
+  }
+  func events() async throws -> [Data] { try await inner.events() }
+  func requestClose() { inner.requestClose() }
+  func close() async -> GatewayProductCloseObservation {
+    let observation = await inner.close()
+    let first = lock.withLock {
+      defer { reported = true }
+      return !reported
+    }
+    if first { await closed(observation.released) }
+    return observation
   }
 }

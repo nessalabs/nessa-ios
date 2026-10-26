@@ -388,3 +388,57 @@ private func linking(
   #expect(DesktopLinkViewModel.sentence(.noDesktop).contains("Native linking"))
   #expect(!DesktopLinkViewModel.sentence(.other("wire")).contains("wire"))
 }
+
+/// A product exchange that only records how it was closed.
+private final class Exchange: GatewayProductExchange, @unchecked Sendable {
+  let released: Bool
+  private let lock = NSLock()
+  private var closes = 0
+  init(released: Bool = true) { self.released = released }
+  var closed: Int { lock.withLock { closes } }
+  func ready() async throws -> Data { Data() }
+  func request(method: String, parameters: Data) async throws -> Data { Data() }
+  func events() async throws -> [Data] { [] }
+  func requestClose() {}
+  func close() async -> GatewayProductCloseObservation {
+    lock.withLock { closes += 1 }
+    return .init(released: released, failure: nil)
+  }
+}
+
+private struct Products: LinkedProductOpening {
+  let exchange: Exchange
+  func open(_ desktop: LinkedDesktop, instance: String) async throws
+    -> any GatewayProductExchange
+  { exchange }
+}
+
+/// The product session to the Mac holds its directory like a read: forgetting
+/// the Mac waits until the session closed, and one that did not let go keeps
+/// the directory. A forgotten Mac opens no new session.
+@Test func forgettingWaitsForTheProductSession() async throws {
+  for released in [true, false] {
+    let desktop = LinkedDesktop(
+      id: UUID(), name: "Studio", gateway: "gw-1", address: mac.address, receiver: "r1",
+      linkedAtMs: 1)
+    let store = Store()
+    await store.save(desktop)
+    let locations = Locations()
+    let linker = linking(Native(first: receipt(.claimed)), store: store, locations: locations)
+    let inner = Exchange(released: released)
+    let product = try await linker.openProduct(
+      desktop, instance: "phone", through: Products(exchange: inner))
+    let forgetting = Task { try await linker.unlink() }
+    while await store.desktop != nil { await Task.yield() }
+    for _ in 0..<100 { await Task.yield() }
+    #expect(await locations.discarded.isEmpty)
+    _ = await product.close()
+    _ = await product.close()
+    try await forgetting.value
+    #expect(inner.closed == 2)
+    #expect(await locations.discarded == (released ? [desktop.id] : []))
+    await #expect(throws: DesktopLinkFailure.other("forgotten")) {
+      try await linker.openProduct(desktop, instance: "phone", through: Products(exchange: inner))
+    }
+  }
+}

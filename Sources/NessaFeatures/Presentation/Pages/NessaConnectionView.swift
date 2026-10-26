@@ -154,7 +154,13 @@ struct NessaConnectionView: View {
         }
         .buttonStyle(.nessaPress)
         divider
-        Button { Task { await desktop.unlink() } } label: {
+        Button {
+          Task {
+            // The session lets go of the Mac first, then the Mac is forgotten.
+            await store.forgetLinked()
+            await desktop.unlink()
+          }
+        } label: {
           Text("Forget this Mac").foregroundStyle(MessagesStyle.danger)
             .modifier(ConnectionRow())
         }

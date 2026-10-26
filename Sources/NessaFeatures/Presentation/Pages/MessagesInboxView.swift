@@ -3,10 +3,9 @@ import SwiftUI
 
 struct MessagesInboxView: View {
   @ObservedObject var store: MessagesViewModel
-  /// The Mac this phone is paired with, whose shared chats the inbox lists
-  /// while no gateway connection is open.
+  /// The Mac this phone is paired with. Its chats come through the session;
+  /// the inbox only asks whether there is one, to offer pairing when not.
   @ObservedObject var desktop: DesktopLinkViewModel
-  let onOpenShared: (String) -> Void
   let onPair: () -> Void
   let onSettings: () -> Void
   let onOpen: (String) -> Void
@@ -46,9 +45,6 @@ struct MessagesInboxView: View {
             onArchive: { ask([$0], .archive) }, onDelete: { ask([$0], .delete) },
             enabled: !deleting, leaving: leaving)
         }
-        if !store.connected, desktop.linked != nil {
-          SharedChatsSection(store: desktop, onOpen: onOpenShared)
-        }
         if !store.connected, store.reconnecting {
           Text("Reconnecting…").font(MessagesStyle.body)
             .foregroundStyle(MessagesStyle.secondary).padding(NessaSpacing.xl)
@@ -62,7 +58,10 @@ struct MessagesInboxView: View {
           }
           .frame(maxWidth: .infinity).padding(NessaSpacing.xl)
         } else if !store.connected {
-          EmptyView()
+          // Paired with a Mac: its chats arrive once the link is up.
+          Text(store.busy ? "Connecting to your Mac…" : "Can't reach your Mac. Pull to try again.")
+            .font(MessagesStyle.body).foregroundStyle(MessagesStyle.secondary)
+            .frame(maxWidth: .infinity).padding(NessaSpacing.xl)
         } else if store.visibleConversations.isEmpty {
           InboxEmptyState(onCompose: onCompose)
             .disabled(
@@ -249,12 +248,11 @@ struct MessagesInboxView: View {
         editing = false
         asking = nil
       }
-      // On the list, not on the rows: a Group's modifiers would run once per row.
-      .task(id: desktop.linked?.id) {
-        if desktop.linked != nil { await desktop.refreshChats() }
-      }
       .refreshable {
-        if desktop.linked != nil { await desktop.refreshChats() }
+        if !store.connected, store.linkedDesktopID != nil {
+          await store.reconnectLinked()
+          return
+        }
         guard store.connected || desktop.linked == nil else { return }
         do { try await store.refreshList() } catch { store.error = error.localizedDescription }
       }
