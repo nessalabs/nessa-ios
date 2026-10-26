@@ -19,6 +19,11 @@ public struct MessagingService: Sendable, GatewayConversationSharingProviding,
   public func channels() async throws -> [NessaChannel] {
     try await (repository as? any ChannelDirectory)?.channels() ?? []
   }
+  /// The reviews waiting on the person, as the connection announces them; nil where the
+  /// repository announces none.
+  public func waitingReviews() async -> AsyncStream<WaitingReviews>? {
+    await (repository as? any ReviewNoticeSource)?.waitingReviews()
+  }
   public func authenticatedSession(for lease: GatewayConnectionLease) async throws
     -> AuthenticatedGatewaySession
   {

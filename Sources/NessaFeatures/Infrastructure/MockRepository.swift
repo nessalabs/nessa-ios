@@ -2,8 +2,45 @@ import Foundation
 
 /// In-memory development adapter. It never opens a socket or stores credentials.
 public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirectory,
-  ConversationFollowing
+  ConversationFollowing, ReviewNoticeSource
 {
+  private var reviewListeners: [UUID: AsyncStream<WaitingReviews>.Continuation] = [:]
+  /// Announces every review the fixture's chats hold, as the gateway does: the whole set,
+  /// oldest chat first, at once on listening and again whenever a chat changes.
+  public func waitingReviews() -> AsyncStream<WaitingReviews> {
+    let (stream, continuation) = AsyncStream<WaitingReviews>.makeStream(
+      bufferingPolicy: .bufferingNewest(1))
+    guard connected else {
+      continuation.finish()
+      return stream
+    }
+    let token = UUID()
+    continuation.onTermination = { [weak self] _ in
+      Task { await self?.removeReviewListener(token) }
+    }
+    reviewListeners[token] = continuation
+    continuation.yield(announcement)
+    return stream
+  }
+  private func removeReviewListener(_ token: UUID) { reviewListeners.removeValue(forKey: token) }
+  private var announcement: WaitingReviews {
+    WaitingReviews(
+      reviews: threads.values.sorted { updated($0.conversationId) < updated($1.conversationId) }
+        .flatMap { view in
+        view.permissions.map {
+          WaitingReviews.Review(
+            conversationId: view.conversationId, executionId: $0.executionId,
+            permissionId: $0.permissionId, tool: $0.toolName,
+            title: summaries.first { $0.id == view.conversationId }?.title)
+        }
+      })
+  }
+  private func updated(_ id: String) -> Double {
+    summaries.first { $0.id == id }?.updatedAtMs ?? 0
+  }
+  private func announceReviews() {
+    for listener in reviewListeners.values { listener.yield(announcement) }
+  }
   private var feeds:
     [UUID: (String?, AsyncThrowingStream<ConversationUpdate, Error>.Continuation)] = [:]
   private var revisions: [String: Int] = [:]
@@ -45,6 +82,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
     for token in Array(feeds.keys) where feeds[token]?.0 == nil || feeds[token]?.0 == id {
       publish(to: token)
     }
+    announceReviews()
   }
   private var connected = false
   private var generation = 0
@@ -122,10 +160,18 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
     self.threads = threads
   }
   public func connect(address: String, credential: String, instance: String) {
+    // A new connection ends what the last one announced.
+    endReviews()
     generation += 1
     connected = true
   }
+  private func endReviews() {
+    let listeners = reviewListeners.values
+    reviewListeners.removeAll()
+    for listener in listeners { listener.finish() }
+  }
   public func disconnect() {
+    endReviews()
     let continuations = feeds.values.map { $0.1 }
     feeds.removeAll()
     for continuation in continuations {
@@ -262,6 +308,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
       conversationId: conversationID, messages: current.messages,
       permissions: current.permissions.filter { $0.id != permission.id }, truncated: false,
       interactionViewError: nil, runtime: current.runtime)
+    changed(conversationID)
   }
   /// The one review the development fixture waits on, so the Agents view's card can be seen
   /// and answered.

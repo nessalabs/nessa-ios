@@ -2,7 +2,8 @@ import CryptoKit
 import Foundation
 
 /// Native implementation of Nessa's product v1 req/res protocol. Commands are never replayed.
-public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDirectory, ConversationFollowing,
+public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDirectory,
+  ReviewNoticeSource, ConversationFollowing,
   ConnectionLeasing, PreparedCommandTransport, CommandRecoveryProviding,
   AuthenticatedGatewaySessionProviding, GatewayPairingManaging
 {
@@ -28,6 +29,13 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
   }
   private var pending: [String: PendingRequest] = [:]
   private var timeouts: [String: Task<Void, Never>] = [:]
+  /// The last waiting-reviews announcement on this connection, and who is listening for the
+  /// next. Both end with the connection.
+  private var latestReviews: WaitingReviews?
+  private var reviewListeners: [UUID: AsyncStream<WaitingReviews>.Continuation] = [:]
+  /// Set once this connection sent a review notice this build cannot read; its feed stays
+  /// ended until the next connection.
+  private var reviewsUnreadable = false
   private var subscriptions = GatewaySubscriptions()
   private struct RegistrationWaiter {
     let inbox: Bool?
@@ -300,6 +308,48 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
       archived ? "conversation.archive" : "conversation.unarchive",
       params: Archive(
         conversationId: conversationID, requestId: UUID().uuidString.lowercased()))
+  }
+  public func waitingReviews() -> AsyncStream<WaitingReviews> {
+    let (stream, continuation) = AsyncStream<WaitingReviews>.makeStream(
+      bufferingPolicy: .bufferingNewest(1))
+    // Without a connection, or with a feed this build cannot read, nothing is announced;
+    // the stream ends at once.
+    guard authenticated, !reviewsUnreadable else {
+      continuation.finish()
+      return stream
+    }
+    let id = UUID()
+    reviewListeners[id] = continuation
+    continuation.onTermination = { [weak self] _ in Task { await self?.stopListening(id) } }
+    if let latestReviews { continuation.yield(latestReviews) }
+    return stream
+  }
+  private func stopListening(_ id: UUID) { reviewListeners.removeValue(forKey: id) }
+  /// Takes a `permission.reviewWaiting` announcement, checked against the gateway's
+  /// PermissionReviewWaiting, as the new latest. False for any other event.
+  ///
+  /// A notice off that shape (a newer gateway, say) ends only the review feed: the
+  /// connection and its chats are still sound, and each chat still shows its reviews once
+  /// read.
+  private func receiveReviews(_ name: String, payload: Data) -> Bool {
+    guard name == "permission.reviewWaiting" else { return false }
+    guard !reviewsUnreadable else { return true }
+    guard (try? validateGatewayWire(payload, named: "PermissionReviewWaiting")) != nil,
+      let reviews = try? JSONDecoder().decode(WaitingReviews.self, from: payload)
+    else {
+      reviewsUnreadable = true
+      endReviews()
+      return true
+    }
+    latestReviews = reviews
+    for listener in reviewListeners.values { listener.yield(reviews) }
+    return true
+  }
+  private func endReviews() {
+    latestReviews = nil
+    let listeners = reviewListeners.values
+    reviewListeners.removeAll()
+    for listener in listeners { listener.finish() }
   }
   public func channels() async throws -> [NessaChannel] {
     try requireConnection()
@@ -727,6 +777,8 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     socket?.cancel(with: .goingAway, reason: nil)
     socket = nil
     subscriptions.finishAll(error)
+    endReviews()
+    reviewsUnreadable = false
     failPending(error)
     challenge = nil
   }
@@ -885,6 +937,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
           let name = frame["event"] as? String, let payload = frame["payload"]
         else { throw NessaGatewayError.invalidFrame }
         let bytes = try JSONSerialization.data(withJSONObject: payload, options: .fragmentsAllowed)
+        if receiveReviews(name, payload: bytes) { continue }
         if let stopped = subscriptions.receive(name, payload: bytes) {
           _ = beginCleanup(stopped, generation: generation)
         }
@@ -979,6 +1032,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
         let payload = frame["payload"]
       {
         let bytes = try JSONSerialization.data(withJSONObject: payload)
+        if receiveReviews(name, payload: bytes) { return }
         if let stopped = subscriptions.receive(name, payload: bytes) {
           let generation = connectionGeneration
           _ = beginCleanup(stopped, generation: generation)

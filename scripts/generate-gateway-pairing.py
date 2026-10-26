@@ -74,7 +74,7 @@ def generate(checkout):
     selected = {k:v for k,v in defs.items() if k.startswith('Pairing') or k in ('ProductSessionReady','ProductGrant','ProductResource')}
     roots = ['ConversationDeleteParams', 'ConversationReadParams', 'ConversationShareParams', 'ConversationSharesParams', 'ConversationSharesResult',
              'ConversationListParams', 'ConversationListResult', 'ConversationMutationResult',
-             'ChannelListParams', 'ChannelListResult']
+             'ChannelListParams', 'ChannelListResult', 'PermissionReviewWaiting']
     def references(value):
         if isinstance(value, dict):
             if '$ref' in value:
