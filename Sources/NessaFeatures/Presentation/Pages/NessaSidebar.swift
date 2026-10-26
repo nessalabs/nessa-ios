@@ -2,7 +2,7 @@ import NessaDesignSystem
 import SwiftUI
 
 /// The sidebar under the home screen: Agents, where every chat is, then a row for each
-/// channel, with New chat always in reach at its foot.
+/// channel, with the person's settings and New chat always in reach at its foot.
 struct NessaSidebar: View {
   @ObservedObject var store: MessagesViewModel
   let onAgents: () -> Void
@@ -13,9 +13,6 @@ struct NessaSidebar: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
-        Text("Nessa").font(MessagesStyle.sidebarTitle).foregroundStyle(MessagesStyle.foreground)
-          .padding(.horizontal, NessaSpacing.md).padding(.bottom, NessaSpacing.sm)
-          .accessibilityAddTraits(.isHeader)
         row("Agents", icon: .agents, trailing: agentsHint, action: onAgents)
         if !store.channels.isEmpty {
           section("Channels")
@@ -33,7 +30,7 @@ struct NessaSidebar: View {
     }
     .scrollIndicators(.hidden)
     .messagesScrollEdges()
-    // Rows scrolled up fade out at the sidebar's top instead of running under the status bar.
+    // Rows scrolled up fade out under the title instead of running into it.
     .mask {
       VStack(spacing: 0) {
         LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
@@ -41,8 +38,20 @@ struct NessaSidebar: View {
         Color.black
       }
     }
+    // The title stays put above the list, outside the fade and the scroll edge's blur, which
+    // only ever touch rows passing under it.
+    .safeAreaInset(edge: .top, spacing: 0) { title }
     .safeAreaInset(edge: .bottom, spacing: 0) { foot }
     .background(MessagesStyle.background.ignoresSafeArea())
+  }
+
+  private var title: some View {
+    Text("Nessa").font(MessagesStyle.sidebarTitle).foregroundStyle(MessagesStyle.foreground)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.horizontal, NessaSpacing.md + NessaSpacing.xs)
+      .padding(.top, MessagesStyle.sidebarTitleTop).padding(.bottom, NessaSpacing.sm)
+      .background(MessagesStyle.background)
+      .accessibilityAddTraits(.isHeader)
   }
 
   private func hasUnread(_ channel: NessaChannel) -> Bool {
@@ -52,10 +61,10 @@ struct NessaSidebar: View {
   private var foot: some View {
     HStack {
       Button(action: onSettings) {
-        NessaAvatarDisc(seed: store.currentGatewayAddress ?? "nessa", size: MessagesStyle.homeButton)
+        NessaProfileDisc(size: MessagesStyle.homeButton)
       }
       .buttonStyle(.nessaPress)
-      .accessibilityLabel("Connection settings")
+      .accessibilityLabel("Settings")
       Spacer()
       Button(action: onNewChat) {
         HStack(spacing: NessaSpacing.xs) {

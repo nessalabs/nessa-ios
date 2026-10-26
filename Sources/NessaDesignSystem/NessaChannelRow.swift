@@ -55,29 +55,12 @@ public struct NessaChannelTile: View {
     let sources = ChannelTileStyle.sources
     let source = sources[((position % sources.count) + sources.count) % sources.count]
     Canvas { context, size in
-      context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
       let centre = CGPoint(x: source.x * size.width, y: source.y * size.height)
       let reach = size.width * ChannelTileStyle.reach
-      let cell = ChannelTileStyle.cell
-      var dots = Path()
-      var y: CGFloat = 0
-      while y < size.height {
-        var x: CGFloat = 0
-        while x < size.width {
-          let d = max(0, 1 - hypot(x + cell / 2 - centre.x, y + cell / 2 - centre.y) / reach)
-          // As on the home screen: the dot's area follows the light, and specks are left out.
-          let diameter = cell * 0.95 * d.squareRoot()
-          if diameter > ChannelTileStyle.smallestDot {
-            dots.addEllipse(
-              in: CGRect(
-                x: x + (cell - diameter) / 2, y: y + (cell - diameter) / 2, width: diameter,
-                height: diameter))
-          }
-          x += cell
-        }
-        y += cell
-      }
-      context.fill(dots, with: .color(MessagesStyle.channelLight))
+      NessaHalftone.fill(
+        context, size, cell: ChannelTileStyle.cell, smallestDot: ChannelTileStyle.smallestDot,
+        color: MessagesStyle.channelLight
+      ) { p in max(0, 1 - hypot(p.x - centre.x, p.y - centre.y) / reach) }
     }
     .overlay {
       Text(Self.initial(name)).font(MessagesStyle.channelInitial)
@@ -86,7 +69,7 @@ public struct NessaChannelTile: View {
     }
     .frame(width: MessagesStyle.channelTile, height: MessagesStyle.channelTile)
     .clipShape(tile)
-    .overlay(tile.strokeBorder(.white.opacity(0.1), lineWidth: 0.5))
+    .overlay(tile.strokeBorder(MessagesStyle.litRim, lineWidth: 0.5))
     .accessibilityHidden(true)
   }
 

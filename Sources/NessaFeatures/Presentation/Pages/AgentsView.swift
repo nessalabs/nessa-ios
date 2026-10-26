@@ -49,7 +49,7 @@ struct AgentsView: View {
     .navigationTitle("Agents")
     .nessaInlineNavigationTitle()
     .toolbar {
-      AgentsTitle()
+      BarTitle("Agents")
       ToolbarItem(placement: .primaryAction) {
         Button(action: onAllChats) { NessaIcon(.chats) }
           .accessibilityLabel("All chats")
@@ -138,27 +138,5 @@ struct AgentsView: View {
     case .working: return "\(store.agentName(for: conversation?.id ?? "")) is working…"
     case .finished, .earlier: return conversation?.preview ?? "New conversation"
     }
-  }
-}
-
-/// "Agents" in the bar's leading corner, beside the back button, bold and bare: on iOS 26 a
-/// bar item gets a glass capsule of its own, which a title should not wear. It takes the
-/// principal place's job, so that place holds nothing.
-private struct AgentsTitle: ToolbarContent {
-  var body: some ToolbarContent {
-    #if os(iOS)
-      if #available(iOS 26.0, *) {
-        ToolbarItem(placement: .topBarLeading) { title }.sharedBackgroundVisibility(.hidden)
-      } else {
-        ToolbarItem(placement: .topBarLeading) { title }
-      }
-      ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
-    #else
-      ToolbarItem(placement: .navigation) { title }
-    #endif
-  }
-  private var title: some View {
-    // At its own width: a bar item is otherwise measured narrow and the title cut to "A…".
-    Text("Agents").font(MessagesStyle.barTitle).fixedSize().accessibilityAddTraits(.isHeader)
   }
 }

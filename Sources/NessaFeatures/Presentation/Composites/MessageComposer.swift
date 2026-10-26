@@ -32,6 +32,10 @@ struct MessageComposer: View {
   var autoFocus = false
   /// Lights the composer's rim while the agent is answering.
   var working = false
+  /// Sending takes the person somewhere else (home's composer opens the chat it starts), so
+  /// the keyboard goes down with the send. Left up, SwiftUI hands focus back to this field
+  /// when the person returns, and the keyboard rises over a screen with nothing to type in.
+  var endsEditingOnSend = false
   let onSend: () -> Void
   @FocusState private var focused: Bool
   @Environment(\.scenePhase) private var scenePhase
@@ -45,6 +49,10 @@ struct MessageComposer: View {
       return .dictate
     }
     return .send
+  }
+  private func send() {
+    if endsEditingOnSend { focused = false }
+    onSend()
   }
   private var sendAvailable: Bool { !sending && !preparing && connected && submissionAllowed }
   var body: some View {
@@ -117,7 +125,7 @@ struct MessageComposer: View {
               .accessibilityLabel(dictation.active ? "Stop dictation" : "Dictate message")
               .transition(.scale(scale: MessagesStyle.swapScale).combined(with: .opacity))
             case .send:
-              Button(action: onSend) {
+              Button(action: send) {
                 Image(systemName: "arrow.up").font(MessagesStyle.title)
                   .frame(width: MessagesStyle.sendButton, height: MessagesStyle.sendButton)
                   .background(
@@ -166,6 +174,9 @@ struct MessageComposer: View {
     .onDisappear {
       cancelPreparation()
       dictation.cancel()
+      // A composer gone back from keeps no keyboard up over the screen under it. (One whose
+      // screen is only covered gets its focus back on return: see `endsEditingOnSend`.)
+      focused = false
     }
     .onChange(of: dictation.transcriptRevision) { _, _ in
       if !dictation.transcript.isEmpty { draft = dictation.transcript }

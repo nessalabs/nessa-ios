@@ -269,6 +269,13 @@ public enum MessagesStyle {
   public static let homeButton: CGFloat = 44
   /// The sidebar's title and its section labels.
   public static let sidebarTitle = Font.system(size: 28, weight: .regular, design: .serif)
+  /// The rim around a mark lit in halftone (a channel tile, the profile disc).
+  public static let litRim = Color.white.opacity(0.1)
+  /// The title's margin below the safe area.
+  public static let sidebarTitleTop: CGFloat = NessaSpacing.lg
+  /// The settings page's rows and the gap above each group of them.
+  public static let settingsRowHeight: CGFloat = 52
+  public static let settingsGroupGap: CGFloat = NessaSpacing.lg
   public static let sidebarSection = Font.system(size: 14)
   public static let sidebarRow = Font.system(size: 17)
   public static let sidebarRowHeight: CGFloat = 44

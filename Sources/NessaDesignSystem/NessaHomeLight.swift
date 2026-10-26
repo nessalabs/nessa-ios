@@ -23,30 +23,40 @@ public struct NessaHomeLight: View {
   @Environment(\.scenePhase) private var scenePhase
   /// Whether the ground is on screen: a pushed screen covers it but keeps it alive.
   @State private var onScreen = false
+  /// Whether the light has risen: it comes up once when the app opens, not on every return.
+  @State private var risen = false
   public init(style: NessaHomeLightStyle = .horizon) { self.style = style }
 
   public var body: some View {
     // Only the horizon's dots drift, and only while someone can see them.
     let moving = style == .horizon && !reduceMotion && scenePhase == .active && onScreen
     ZStack {
-      // The ground and its blurred glow never move, so they are drawn once rather than on
-      // every frame of the drift.
-      Canvas { context, size in ground(context, size) }
-      TimelineView(.animation(minimumInterval: HomeLightStyle.frameInterval, paused: !moving)) {
-        timeline in
-        let time = moving ? timeline.date.timeIntervalSinceReferenceDate : 0
-        Canvas { context, size in pattern(context, size, time: time) }
+      Color.black
+      ZStack {
+        // The glow never moves, so it is drawn once rather than on every frame of the drift.
+        Canvas { context, size in ground(context, size) }
+        TimelineView(.animation(minimumInterval: HomeLightStyle.frameInterval, paused: !moving)) {
+          timeline in
+          let time = moving ? timeline.date.timeIntervalSinceReferenceDate : 0
+          Canvas { context, size in pattern(context, size, time: time) }
+        }
       }
+      // Moved and faded as a whole, so the rise costs no redraw.
+      .offset(y: risen ? 0 : HomeLightStyle.riseDistance)
+      .opacity(risen ? 1 : 0)
     }
     .ignoresSafeArea()
     .allowsHitTesting(false)
     .accessibilityHidden(true)
-    .onAppear { onScreen = true }
+    .onAppear {
+      onScreen = true
+      guard !risen else { return }
+      withAnimation(reduceMotion ? nil : HomeLightStyle.rise) { risen = true }
+    }
     .onDisappear { onScreen = false }
   }
 
   private func ground(_ context: GraphicsContext, _ size: CGSize) {
-    context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
     // The smooth light under the pattern, so the dither reads as texture on a glow rather
     // than as dots on black.
     Self.glow(
@@ -74,7 +84,7 @@ public struct NessaHomeLight: View {
   }
 
   /// How far up the screen the horizon's light reaches, as a share of its height.
-  static let horizonReach: CGFloat = 0.46
+  static let horizonReach: CGFloat = 0.56
 
   /// The light, rippled by two slow waves crossing each other: at most a few percent either
   /// way, so it reads as texture moving rather than the light changing.
@@ -268,7 +278,7 @@ enum HomeLightStyle {
   /// The horizon's drift: how far its dots swell either way, how long its waves are in
   /// points, and how fast they move in radians a second. Slow on purpose: a wave takes about
   /// twelve seconds to pass.
-  static let driftDepth: Double = 0.16
+  static let driftDepth: Double = 0.24
   static let driftLength: CGFloat = 60
   static let driftSpeed: Double = 0.5
   /// The time the drift's phase wraps at, so its sums stay precise however long the app runs:
@@ -277,4 +287,8 @@ enum HomeLightStyle {
   /// The drift redraws at most this often: smooth for something this slow, at under half the
   /// work of every display frame.
   static let frameInterval: TimeInterval = 1.0 / 24
+  /// The light coming up from below when the app opens: seen once a launch, so it may take
+  /// its time, as the motion guide allows a rare moment. Reduce Motion shows it at once.
+  static let rise = Animation.easeOut(duration: 1.1)
+  static let riseDistance: CGFloat = 120
 }
