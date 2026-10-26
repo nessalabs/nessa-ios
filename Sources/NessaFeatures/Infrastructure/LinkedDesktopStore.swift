@@ -27,6 +27,16 @@ public actor LinkedDesktopFileStore: LinkedDesktopStoring {
       try files.write(JSONEncoder().encode(Record(desktop: desktop)), key: Self.key)
     }
   }
+  public func remember(tunnel: String, for id: UUID) throws {
+    try files.withLock(Self.key) {
+      guard let data = try files.read(Self.key),
+        let kept = try JSONDecoder().decode(Record.self, from: data).desktop,
+        kept.id == id, kept.tunnel != tunnel
+      else { return }
+      try files.write(
+        JSONEncoder().encode(Record(desktop: kept.reaching(tunnel))), key: Self.key)
+    }
+  }
   public func remove(_ id: UUID) throws {
     try files.withLock(Self.key) {
       guard let data = try files.read(Self.key),

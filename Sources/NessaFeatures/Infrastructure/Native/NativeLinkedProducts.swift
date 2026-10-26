@@ -12,7 +12,8 @@ struct NativeLinkedProducts: LinkedProductOpening {
     let location = try await locations.prepare(id: desktop.id, address: desktop.address)
     return try await NativeRetainedExecutor.run {
       let worker = try await NativeSessionWorker.open(
-        root: location.root, directory: location.directory, address: location.address)
+        root: location.root, directory: location.directory, address: location.address,
+        tunnel: desktop.tunnel)
       do {
         let product = try await worker.openProduct(instance: instance)
         return NativeGatewayProductExchange(parent: worker, product: product)

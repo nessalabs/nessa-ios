@@ -95,12 +95,16 @@ private actor Store: LinkedDesktopStoring {
   func load() -> LinkedDesktop? { desktop }
   func save(_ desktop: LinkedDesktop) { self.desktop = desktop }
   func remove(_ id: UUID) { if desktop?.id == id { desktop = nil } }
+  func remember(tunnel: String, for id: UUID) {
+    if let kept = desktop, kept.id == id { desktop = kept.reaching(tunnel) }
+  }
 }
 
 private struct BrokenStore: LinkedDesktopStoring {
   func load() throws -> LinkedDesktop? { nil }
   func save(_ desktop: LinkedDesktop) throws { throw DesktopLinkFailure.storage }
   func remove(_ id: UUID) {}
+  func remember(tunnel: String, for id: UUID) throws { throw DesktopLinkFailure.storage }
 }
 
 private actor Locations: LinkedDesktopLocating {
@@ -441,4 +445,87 @@ private struct Products: LinkedProductOpening {
       try await linker.openProduct(desktop, instance: "phone", through: Products(exchange: inner))
     }
   }
+}
+
+/// A product exchange whose desktop answers `server.reach` with `tunnel`.
+private final class Reaching: GatewayProductExchange, @unchecked Sendable {
+  let tunnel: String?
+  private let lock = NSLock()
+  private var asked: [String] = []
+  init(tunnel: String?) { self.tunnel = tunnel }
+  var methods: [String] { lock.withLock { asked } }
+  func ready() async throws -> Data { Data("{}".utf8) }
+  func request(method: String, parameters: Data) async throws -> Data {
+    lock.withLock { asked.append(method) }
+    let payload: [String: Any] = ["tunnel": tunnel ?? NSNull()]
+    return try JSONSerialization.data(withJSONObject: ["id": "1", "ok": true, "payload": payload])
+  }
+  func events() async throws -> [Data] { [] }
+  func requestClose() {}
+  func close() async -> GatewayProductCloseObservation { .init(released: true, failure: nil) }
+}
+
+/// Opens `exchange` and records the tunnel each opening was asked to dial.
+private actor Dialed {
+  var tunnels: [String?] = []
+  func add(_ tunnel: String?) { tunnels.append(tunnel) }
+}
+private struct DialingProducts: LinkedProductOpening {
+  let exchange: Reaching
+  let dialed: Dialed
+  func open(_ desktop: LinkedDesktop, instance: String) async throws
+    -> any GatewayProductExchange
+  {
+    await dialed.add(desktop.tunnel)
+    return exchange
+  }
+}
+
+/// Once a product session is ready the phone asks where else its Mac can be
+/// reached and keeps the answer with the Mac, so the next opening dials it
+/// even from a copy of the record made before. No tunnel in an answer, or an
+/// address that is not an `https` origin, keeps the last one.
+@Test func aReadyProductSessionLearnsTheMacsTunnelForTheNextDial() async throws {
+  let desktop = LinkedDesktop(
+    id: UUID(), name: "Studio", gateway: "gw-1", address: mac.address, receiver: "r1",
+    linkedAtMs: 1)
+  let store = Store()
+  await store.save(desktop)
+  let linker = linking(Native(first: receipt(.claimed)), store: store)
+  let dialed = Dialed()
+  let origin = "https://gateway.example.com"
+  let answers: [String?] = [origin, nil, "http://gateway.example.com", "https://a.example/path"]
+  for answer in answers {
+    let reaching = Reaching(tunnel: answer)
+    let product = try await linker.openProduct(
+      desktop, instance: "phone", through: DialingProducts(exchange: reaching, dialed: dialed))
+    _ = try await product.ready()
+    while reaching.methods.isEmpty { await Task.yield() }
+    for _ in 0..<100 { await Task.yield() }
+    #expect(reaching.methods == ["server.reach"])
+    #expect(await store.desktop?.tunnel == origin)
+    _ = await product.close()
+  }
+  #expect(await dialed.tunnels == [nil, origin, origin, origin])
+}
+
+/// Keeping a tunnel never brings back a Mac forgotten, or overwrites one
+/// paired, while the answer was on its way.
+@Test func aLateTunnelAnswerKeepsOnlyTheMacItWasFor() async throws {
+  let desktop = LinkedDesktop(
+    id: UUID(), name: "Studio", gateway: "gw-1", address: mac.address, receiver: "r1",
+    linkedAtMs: 1)
+  let other = LinkedDesktop(
+    id: UUID(), name: "Laptop", gateway: "gw-2", address: mac.address, receiver: "r2",
+    linkedAtMs: 2)
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let store = LinkedDesktopFileStore(root: root)
+  try await store.remember(tunnel: "https://gateway.example.com", for: desktop.id)
+  #expect(try await store.load() == nil)
+  try await store.save(other)
+  try await store.remember(tunnel: "https://gateway.example.com", for: desktop.id)
+  #expect(try await store.load() == other)
+  try await store.remember(tunnel: "https://gateway.example.com", for: other.id)
+  #expect(try await store.load() == other.reaching("https://gateway.example.com"))
 }

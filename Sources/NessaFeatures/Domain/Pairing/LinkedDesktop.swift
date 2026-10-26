@@ -30,9 +30,14 @@ public struct LinkedDesktop: Codable, Equatable, Sendable, Identifiable {
   /// The native receiver the enrollment issued; reads are scoped to it.
   public let receiver: String
   public let linkedAtMs: UInt64
+  /// The desktop's web tunnel (`https://host`) as it last named it
+  /// (`server.reach`), or nil. When `address` does not answer, as away from
+  /// the desktop's network, the phone dials this instead; the pinned key
+  /// still decides it is the same desktop.
+  public let tunnel: String?
   public init(
     id: UUID, name: String, gateway: String, address: String, receiver: String,
-    linkedAtMs: UInt64
+    linkedAtMs: UInt64, tunnel: String? = nil
   ) {
     self.id = id
     self.name = name
@@ -40,6 +45,25 @@ public struct LinkedDesktop: Codable, Equatable, Sendable, Identifiable {
     self.address = address
     self.receiver = receiver
     self.linkedAtMs = linkedAtMs
+    self.tunnel = tunnel
+  }
+  /// The longest tunnel origin kept, as the gateway bounds it.
+  public static let maximumTunnelBytes = 270
+  /// Whether `origin` is one a phone dials: `https://host[:port]`, nothing
+  /// after it, within `maximumTunnelBytes`.
+  public static func isTunnelOrigin(_ origin: String) -> Bool {
+    guard origin.utf8.count <= maximumTunnelBytes, origin.allSatisfy(\.isASCII),
+      let parts = URLComponents(string: origin), parts.scheme == "https",
+      let host = parts.host, !host.isEmpty
+    else { return false }
+    return parts.path.isEmpty && parts.query == nil && parts.fragment == nil
+      && parts.user == nil && parts.password == nil
+  }
+  /// This desktop, reached through `tunnel` when its address does not answer.
+  public func reaching(_ tunnel: String?) -> LinkedDesktop {
+    LinkedDesktop(
+      id: id, name: name, gateway: gateway, address: address, receiver: receiver,
+      linkedAtMs: linkedAtMs, tunnel: tunnel)
   }
   /// Where this desktop's native state lives under the trusted root.
   public var nativeDirectoryComponents: [String] {

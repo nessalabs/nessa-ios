@@ -14,6 +14,9 @@ public protocol LinkedDesktopStoring: Sendable {
   /// Forget the kept desktop if it is still `id`; a desktop paired since
   /// stays.
   func remove(_ id: UUID) async throws
+  /// Keep `tunnel` with the kept desktop if it is still `id`, in one step:
+  /// a desktop forgotten or paired since is left as it is.
+  func remember(tunnel: String, for id: UUID) async throws
 }
 
 /// Prepares the private directory a desktop's native state lives in.
@@ -215,16 +218,39 @@ public actor DesktopLinking {
   ) async throws -> any GatewayProductExchange {
     guard !forgotten.contains(desktop.id) else { throw DesktopLinkFailure.other("forgotten") }
     reads[desktop.id, default: 0] += 1
+    // The kept record is the one place the tunnel is learned into: a caller's
+    // copy of the desktop can be older than the last `server.reach`.
+    let kept = try? await store.load()
+    let dialed = kept?.id == desktop.id ? desktop.reaching(kept?.tunnel) : desktop
     let exchange: any GatewayProductExchange
     do {
-      exchange = try await products.open(desktop, instance: instance)
+      exchange = try await products.open(dialed, instance: instance)
     } catch {
       endRead(desktop.id)
       throw error
     }
-    return HeldProductExchange(exchange) { [weak self] released in
-      await self?.productClosed(desktop.id, released: released)
-    }
+    return HeldProductExchange(
+      exchange,
+      ready: { [weak self] exchange in await self?.learnReach(desktop.id, from: exchange) },
+      closed: { [weak self] released in
+        await self?.productClosed(desktop.id, released: released)
+      })
+  }
+
+  /// Ask the desktop where else it can be reached and keep the answer with its
+  /// record, so the next dial away from its network can use it. No tunnel in
+  /// the answer keeps the last one: the desktop says none while its tunnel is
+  /// still starting, and a stale address only costs a dial that fails, since
+  /// the pinned key decides which desktop answers. A desktop that does not
+  /// answer, one forgotten or paired over since, or an address that is not
+  /// an `https` origin changes nothing.
+  private func learnReach(_ id: UUID, from exchange: any GatewayProductExchange) async {
+    guard let answer = try? await exchange.request(method: "server.reach", parameters: Data("{}".utf8)),
+      let frame = try? JSONDecoder().decode(ReachFrame.self, from: answer), frame.ok,
+      let tunnel = frame.payload?.tunnel, LinkedDesktop.isTunnelOrigin(tunnel),
+      !forgotten.contains(id)
+    else { return }
+    try? await store.remember(tunnel: tunnel, for: id)
   }
 
   private func productClosed(_ id: UUID, released: Bool) {
@@ -368,18 +394,41 @@ public actor DesktopLinking {
   }
 }
 
-/// A product exchange that tells its desktop when it first closed, and
-/// whether its native session let go then.
+/// `server.reach`'s answer frame: where else the desktop can be reached.
+private struct ReachFrame: Decodable {
+  struct Reach: Decodable { let tunnel: String? }
+  let ok: Bool
+  let payload: Reach?
+}
+
+/// A product exchange that tells its desktop when it was first ready and when
+/// it first closed, and whether its native session let go then.
 private final class HeldProductExchange: GatewayProductExchange, @unchecked Sendable {
   private let inner: any GatewayProductExchange
+  private let readied: @Sendable (any GatewayProductExchange) async -> Void
   private let closed: @Sendable (Bool) async -> Void
   private let lock = NSLock()
+  private var announced = false
   private var reported = false
-  init(_ inner: any GatewayProductExchange, closed: @escaping @Sendable (Bool) async -> Void) {
+  init(
+    _ inner: any GatewayProductExchange,
+    ready: @escaping @Sendable (any GatewayProductExchange) async -> Void,
+    closed: @escaping @Sendable (Bool) async -> Void
+  ) {
     self.inner = inner
+    self.readied = ready
     self.closed = closed
   }
-  func ready() async throws -> Data { try await inner.ready() }
+  func ready() async throws -> Data {
+    let ready = try await inner.ready()
+    let first = lock.withLock {
+      defer { announced = true }
+      return !announced
+    }
+    // Off the caller's path: the session is usable before the answer comes.
+    if first { Task { [inner, readied] in await readied(inner) } }
+    return ready
+  }
   func request(method: String, parameters: Data) async throws -> Data {
     try await inner.request(method: method, parameters: parameters)
   }
