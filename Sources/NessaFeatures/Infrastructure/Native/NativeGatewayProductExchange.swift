@@ -12,7 +12,18 @@ final class NativeGatewayProductExchange: GatewayProductExchange {
   func ready() async throws -> Data {
     try await product.ready { Data(try $0.json().utf8) }
   }
+  /// The worker takes one submission at a time and turns a second away as `busy`, with
+  /// nothing sent; the gateway client sends from several tasks at once (the inbox, a chat, the
+  /// review reads). A submission is only the hand-over, so a refused one waits a moment and
+  /// goes again rather than failing the person's request.
   func request(method: String, parameters: Data) async throws -> Data {
+    while true {
+      do { return try await submit(method: method, parameters: parameters) }
+      catch NativeWorkerError.busy { try await Task.sleep(for: Self.busyRetry) }
+    }
+  }
+  private static let busyRetry = Duration.milliseconds(2)
+  private func submit(method: String, parameters: Data) async throws -> Data {
     try await product.request(method: method, paramsJson: String(decoding: parameters, as: UTF8.self)) {
       completion in
       switch completion.kind() {
