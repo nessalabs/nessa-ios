@@ -45,6 +45,7 @@ struct NessaHomeView: View {
     .padding(.horizontal, MessagesStyle.horizontal)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .contentShape(Rectangle())
+    .nessaTapDismissesKeyboard()
     .background { NessaHomeLight() }
     .safeAreaInset(edge: .top, spacing: 0) { topBar }
     .messagesBar(edge: .bottom) {
