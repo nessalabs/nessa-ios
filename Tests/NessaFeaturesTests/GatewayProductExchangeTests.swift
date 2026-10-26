@@ -373,7 +373,3 @@ private func reviewsWaiting(_ conversations: [String]) -> Data {
   _ = try await client.list()
   await client.disconnect()
 }
-  await exchange.emit(reviewsWaiting(["not-a-conversation-id"]))
-  #expect(await listener.next() == nil)
-  try await eventually { await exchange.closeCount() > 0 }
-}
