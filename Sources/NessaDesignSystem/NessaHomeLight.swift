@@ -28,10 +28,15 @@ public struct NessaHomeLight: View {
   public var body: some View {
     // Only the horizon's dots drift, and only while someone can see them.
     let moving = style == .horizon && !reduceMotion && scenePhase == .active && onScreen
-    TimelineView(.animation(minimumInterval: HomeLightStyle.frameInterval, paused: !moving)) {
-      timeline in
-      let time = moving ? timeline.date.timeIntervalSinceReferenceDate : 0
-      Canvas { context, size in draw(context, size, time: time) }
+    ZStack {
+      // The ground and its blurred glow never move, so they are drawn once rather than on
+      // every frame of the drift.
+      Canvas { context, size in ground(context, size) }
+      TimelineView(.animation(minimumInterval: HomeLightStyle.frameInterval, paused: !moving)) {
+        timeline in
+        let time = moving ? timeline.date.timeIntervalSinceReferenceDate : 0
+        Canvas { context, size in pattern(context, size, time: time) }
+      }
     }
     .ignoresSafeArea()
     .allowsHitTesting(false)
@@ -40,12 +45,16 @@ public struct NessaHomeLight: View {
     .onDisappear { onScreen = false }
   }
 
-  private func draw(_ context: GraphicsContext, _ size: CGSize, time: TimeInterval) {
+  private func ground(_ context: GraphicsContext, _ size: CGSize) {
     context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
-    let shape = Self.shape(style)
     // The smooth light under the pattern, so the dither reads as texture on a glow rather
     // than as dots on black.
-    Self.glow(context, size, shape: shape, color: Self.ink(style), strength: Self.glow(style))
+    Self.glow(
+      context, size, shape: Self.shape(style), color: Self.ink(style), strength: Self.glow(style))
+  }
+
+  private func pattern(_ context: GraphicsContext, _ size: CGSize, time: TimeInterval) {
+    let shape = Self.shape(style)
     switch style {
     case .cornerLight, .blueHour:
       Self.grain(context, size, shape: shape, color: Self.ink(style))
@@ -265,7 +274,7 @@ enum HomeLightStyle {
   /// The time the drift's phase wraps at, so its sums stay precise however long the app runs:
   /// a whole number of turns of both waves (10 at 0.5 rad/s, 7 at 0.35), so the wrap is unseen.
   static let driftPeriod: TimeInterval = 40 * .pi
-  /// The drift redraws at most this often: smooth for something this slow, and half the
-  /// work of every frame.
-  static let frameInterval: TimeInterval = 1.0 / 30
+  /// The drift redraws at most this often: smooth for something this slow, at under half the
+  /// work of every display frame.
+  static let frameInterval: TimeInterval = 1.0 / 24
 }

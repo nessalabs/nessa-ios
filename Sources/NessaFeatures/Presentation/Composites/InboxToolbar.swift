@@ -6,28 +6,17 @@ import SwiftUI
 /// each other.
 struct InboxToolbar: ToolbarContent {
   let editing: Bool
-  /// Seeds the reader's own disc, so it stays the same face for one gateway.
-  let accountSeed: String
   let onEdit: () -> Void
-  let onSettings: () -> Void
   let showingArchived: Bool
   let onToggleArchived: () -> Void
   /// While chats are being deleted, the bar's controls wait.
   let disabled: Bool
   var body: some ToolbarContent {
-    // The reader's own disc holds the account's actions; selecting chats lives there too,
-    // and while selecting, Done takes its place.
-    ToolbarItem(placement: .cancellationAction) {
-      if editing {
-        Button("Done", action: onEdit).font(MessagesStyle.body)
-          .disabled(disabled)
-      } else {
-        Menu {
-          Button("Select chats", systemImage: "checkmark.circle", action: onEdit)
-          Button("Connection settings", systemImage: "network", action: onSettings)
-        } label: {
-          NessaAvatarDisc(seed: accountSeed, size: MessagesStyle.accountAvatar)
-        }.accessibilityLabel("Account").disabled(disabled)
+    // The inbox is pushed, so its leading corner is the back button; while selecting, Done
+    // takes it. The account lives at the sidebar's foot.
+    if editing {
+      ToolbarItem(placement: .cancellationAction) {
+        Button("Done", action: onEdit).font(MessagesStyle.body).disabled(disabled)
       }
     }
     ToolbarItem(placement: .principal) {
@@ -38,6 +27,7 @@ struct InboxToolbar: ToolbarContent {
     }
     ToolbarItem(placement: .primaryAction) {
       Menu {
+        Button("Select chats", systemImage: "checkmark.circle", action: onEdit)
         Button(
           showingArchived ? "Show messages" : "Archived chats", systemImage: "archivebox",
           action: onToggleArchived)

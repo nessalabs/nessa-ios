@@ -192,14 +192,13 @@ struct MessagesInboxView: View {
       .toolbar {
         InboxToolbar(
           editing: editing,
-          accountSeed: store.currentGatewayAddress ?? "nessa",
           onEdit: {
             // The marks slide in from the edge as the rows make room, on one spring.
             withAnimation(reduceMotion ? nil : NessaMotion.enter) {
               editing.toggle()
               selected = []
             }
-          }, onSettings: onSettings, showingArchived: showingArchived,
+          }, showingArchived: showingArchived,
           onToggleArchived: {
             showingArchived.toggle()
             selected = []
