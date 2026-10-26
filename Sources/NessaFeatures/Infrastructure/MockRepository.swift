@@ -215,6 +215,9 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
     return view
   }
   public func create(agent: String?, model: String? = nil) throws -> String {
+    try create(agent: agent, model: model, channel: nil)
+  }
+  public func create(agent: String?, model: String?, channel: String?) throws -> String {
     try requireConnection()
     let id = UUID().uuidString.lowercased()
     threads[id] = NessaConversationView(
@@ -223,7 +226,8 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
     summaries.insert(
       NessaConversation(
         conversationId: id, title: "Nessa", preview: "New conversation",
-        updatedAtMs: Date().timeIntervalSince1970 * 1000, running: false), at: 0)
+        updatedAtMs: Date().timeIntervalSince1970 * 1000, running: false, channelId: channel),
+      at: 0)
     changed(id)
     return id
   }

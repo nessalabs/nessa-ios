@@ -7,11 +7,17 @@ public enum PreparedConversationCommand: Codable, Sendable, Equatable {
     public let conversationID: String
     public let agent: String?
     public let model: String?
-    public init(requestID: String, conversationID: String, agent: String?, model: String?) {
+    /// The channel the chat starts in; nil is the default channel.
+    public let channelID: String?
+    public init(
+      requestID: String, conversationID: String, agent: String?, model: String?,
+      channelID: String? = nil
+    ) {
       self.requestID = requestID
       self.conversationID = conversationID
       self.agent = agent
       self.model = model
+      self.channelID = channelID
     }
   }
   public struct Submission: Codable, Sendable, Equatable {

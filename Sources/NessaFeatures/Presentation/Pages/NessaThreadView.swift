@@ -147,7 +147,11 @@ struct NessaThreadView: View {
         }
       }.scrollPosition($position, anchor: .bottom)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
-        .messagesScrollEdges().scrollDismissesKeyboard(.interactively)
+        // The keyboard goes as soon as the reader drags the thread or taps it. Interactive
+        // dismissal waited for a drag to reach the keyboard itself, which the composer between
+        // them kept a drag in the thread from ever doing.
+        .messagesScrollEdges().scrollDismissesKeyboard(.immediately)
+        .nessaTapDismissesKeyboard()
         // The pin has one owner, `readerScrolled`, and only the reader moves it. The thread's
         // own follow scrolls never do, even when content keeps growing under them and they
         // come to rest short of the bottom.

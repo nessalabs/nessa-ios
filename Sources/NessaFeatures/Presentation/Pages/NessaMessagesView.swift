@@ -136,9 +136,13 @@ public struct NessaMessagesView: View {
           AgentsView(
             store: store, onOpen: { id in path.append(.chat(id: id, focusComposer: false)) })
         case .channel(let channel):
-          ChannelChatsView(store: store, channel: channel) { id in
-            path.append(.chat(id: id, focusComposer: false))
-          }
+          ChannelChatsView(
+            store: store, channel: channel, dictation: dependencies.makeDictationViewModel(),
+            onOpen: { id in path.append(.chat(id: id, focusComposer: false)) },
+            onStart: { id, first in
+              firstMessages[id] = first
+              path.append(.chat(id: id, focusComposer: false))
+            })
         case .settings:
           NessaSettingsView(
             store: store, desktop: linkStore, onConnection: { path.append(.connection) },

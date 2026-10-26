@@ -11,6 +11,8 @@ public protocol MessagingRepository: Sendable {
   func setArchived(_ archived: Bool, conversationID: String) async throws
   func read(_ id: String) async throws -> NessaConversationView
   func create(agent: String?, model: String?) async throws -> String
+  /// A chat in `channel`; nil is the default channel.
+  func create(agent: String?, model: String?, channel: String?) async throws -> String
   @discardableResult
   func send(_ text: String, attachments: [DraftAttachment], conversationID: String) async throws
     -> String
@@ -28,6 +30,10 @@ public protocol NessaCredentialStoring: Sendable {
 
 extension MessagingRepository {
   public var attachmentPolicy: AttachmentPolicy { .development }
+  /// A repository that knows no channels makes every chat in the default one.
+  public func create(agent: String?, model: String?, channel: String?) async throws -> String {
+    try await create(agent: agent, model: model)
+  }
   public func imageData(for attachment: NessaImageAttachment) async throws -> Data? { nil }
   @discardableResult
   public func send(_ text: String, conversationID: String) async throws -> String {
