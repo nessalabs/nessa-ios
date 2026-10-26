@@ -9,6 +9,10 @@ import Foundation
 
 enum GatewayWireContract {
   static let rules: [String: GatewayWireRule] = [
+    "ApprovalMode": .string(minimum: 0, maximum: nil, allowed: ["ask", "auto", "full"]),
+    "Channel": .object(["agent": .nullable(.constrainedText(minimum: 1, maximum: 32, bytes: 32, allowed: nil, pattern: nil)), "approvalMode": .reference("ApprovalMode"), "channelId": .constrainedText(minimum: 7, maximum: 13, bytes: nil, allowed: nil, pattern: "^(default|ch_[a-z2-7]{10})$"), "createdAtMs": .integer(minimum: 0, maximum: 9007199254740991), "folder": .constrainedText(minimum: 1, maximum: 4096, bytes: 4096, allowed: nil, pattern: nil), "folderMade": .boolean, "model": .nullable(.constrainedText(minimum: 1, maximum: 256, bytes: 256, allowed: nil, pattern: nil)), "name": .constrainedText(minimum: 1, maximum: 80, bytes: 320, allowed: nil, pattern: nil)], required: ["agent", "approvalMode", "channelId", "createdAtMs", "folder", "folderMade", "model", "name"]),
+    "ChannelListParams": .object(["after": .constrainedText(minimum: 13, maximum: 13, bytes: nil, allowed: nil, pattern: "^ch_[a-z2-7]{10}$")], required: []),
+    "ChannelListResult": .object(["channels": .array(minimum: 0, maximum: 1001, item: .reference("Channel")), "complete": .boolean, "cursor": .constrainedText(minimum: 13, maximum: 13, bytes: nil, allowed: nil, pattern: "^ch_[a-z2-7]{10}$")], required: ["channels", "complete"]),
     "ConversationCapability": .string(minimum: 0, maximum: nil, allowed: ["read", "comment", "drive"]),
     "ConversationDeleteParams": .object(["conversationId": .constrainedText(minimum: 36, maximum: 36, bytes: nil, allowed: nil, pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"), "requestId": .constrainedText(minimum: 1, maximum: 256, bytes: 256, allowed: nil, pattern: nil)], required: ["conversationId", "requestId"]),
     "ConversationListParams": .object(["archived": .boolean], required: []),

@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 
 /// Native implementation of Nessa's product v1 req/res protocol. Commands are never replayed.
-public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ConversationFollowing,
+public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDirectory, ConversationFollowing,
   ConnectionLeasing, PreparedCommandTransport, CommandRecoveryProviding,
   AuthenticatedGatewaySessionProviding, GatewayPairingManaging
 {
@@ -300,6 +300,28 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, Conversati
       archived ? "conversation.archive" : "conversation.unarchive",
       params: Archive(
         conversationId: conversationID, requestId: UUID().uuidString.lowercased()))
+  }
+  public func channels() async throws -> [NessaChannel] {
+    try requireConnection()
+    struct After: Encodable { let after: String? }
+    var channels: [NessaChannel] = []
+    var after: String?
+    var seen: Set<String> = []
+    // Pages follow the cursor until the gateway says the list is complete. An unfinished
+    // list must name where to go on, and a cursor seen before would go round for ever: both
+    // are a broken answer, not a short list.
+    while true {
+      let params = After(after: after)
+      try validateGatewayWire(JSONEncoder().encode(params), named: "ChannelListParams")
+      let dto: GatewayChannelPageDTO = try await request("channel.list", params: params)
+      let page = dto.page
+      channels += page.channels
+      if page.complete { return channels }
+      guard let cursor = page.cursor, seen.insert(cursor).inserted else {
+        throw NessaGatewayError.invalidFrame
+      }
+      after = cursor
+    }
   }
   public func agents() async throws -> [AgentProfile] {
     try requireConnection()

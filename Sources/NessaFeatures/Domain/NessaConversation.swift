@@ -7,6 +7,9 @@ public struct NessaConversation: Codable, Identifiable, Sendable, Equatable {
   public let preview: String?
   public let updatedAtMs: Double
   public let running: Bool
+  /// The channel the conversation belongs to; none for one in the default channel or from a
+  /// gateway that lists no channels.
+  public var channelId: String? = nil
 }
 
 public struct NessaConversationList: Codable, Sendable, Equatable {

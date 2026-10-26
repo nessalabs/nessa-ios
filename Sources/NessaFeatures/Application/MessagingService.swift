@@ -15,6 +15,10 @@ public struct MessagingService: Sendable, GatewayConversationSharingProviding,
   }
   public var attachmentPolicy: AttachmentPolicy { repository.attachmentPolicy }
   public func agents() async throws -> [AgentProfile] { try await directory?.agents() ?? [] }
+  /// The person's channels; none where the repository keeps no channels.
+  public func channels() async throws -> [NessaChannel] {
+    try await (repository as? any ChannelDirectory)?.channels() ?? []
+  }
   public func authenticatedSession(for lease: GatewayConnectionLease) async throws
     -> AuthenticatedGatewaySession
   {

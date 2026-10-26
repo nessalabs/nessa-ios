@@ -1,7 +1,9 @@
 import Foundation
 
 /// In-memory development adapter. It never opens a socket or stores credentials.
-public actor MockRepository: MessagingRepository, AgentDirectory, ConversationFollowing {
+public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirectory,
+  ConversationFollowing
+{
   private var feeds:
     [UUID: (String?, AsyncThrowingStream<ConversationUpdate, Error>.Continuation)] = [:]
   private var revisions: [String: Int] = [:]
@@ -55,6 +57,12 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ConversationFo
   private var threads: [String: NessaConversationView]
   private var archived: Set<String> = []
   private let profiles: [AgentProfile]
+  /// The development channels: the default one and two the fixture made.
+  public static let fixtureChannels = [
+    NessaChannel(channelId: NessaChannel.defaultID, name: "Default", folder: "/Users/you/Nessa"),
+    NessaChannel(channelId: "ch_aaaaaaaaaa", name: "home", folder: "/Users/you/Home"),
+    NessaChannel(channelId: "ch_bbbbbbbbbb", name: "travel", folder: "/Users/you/Travel"),
+  ]
   public init(
     agents: [AgentProfile] = [
       AgentProfile(
@@ -98,14 +106,17 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ConversationFo
           data: Data("A few ideas to explore together.\nDevelopment fixture.".utf8))
       ]
       threads[id] = NessaConversationView(
-        conversationId: id, messages: messages, permissions: [], truncated: false,
+        conversationId: id, messages: messages,
+        permissions: index == 1 ? [Self.fixturePermission(id)] : [], truncated: false,
         interactionViewError: nil, runtime: NessaRuntime(agent: "nessa"))
       summaries.append(
         NessaConversation(
           conversationId: id, title: title,
           preview: "Let’s make a little room for what matters today.",
           updatedAtMs: Date().timeIntervalSince1970 * 1000 - Double(index) * 3_600_000,
-          running: false))
+          running: false,
+          // Every third chat in each made channel; the rest in the default one.
+          channelId: index % 3 == 0 ? nil : Self.fixtureChannels[index % 3].channelId))
     }
     self.summaries = summaries
     self.threads = threads
@@ -126,6 +137,10 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ConversationFo
   public func agents() throws -> [AgentProfile] {
     try requireConnection()
     return profiles
+  }
+  public func channels() throws -> [NessaChannel] {
+    try requireConnection()
+    return Self.fixtureChannels
   }
   public func list() throws -> NessaConversationList {
     try requireConnection()
@@ -185,12 +200,14 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ConversationFo
       permissions: current.permissions, truncated: false, interactionViewError: nil,
       runtime: current.runtime)
     let title = summaries.first { $0.id == conversationID }?.title
+    let channel = summaries.first { $0.id == conversationID }?.channelId
     summaries.removeAll { $0.id == conversationID }
     summaries.insert(
       NessaConversation(
         conversationId: conversationID, title: title,
         preview: text.isEmpty ? "Photo" : text,
-        updatedAtMs: Date().timeIntervalSince1970 * 1000, running: true), at: 0)
+        updatedAtMs: Date().timeIntervalSince1970 * 1000, running: true, channelId: channel),
+      at: 0)
     changed(conversationID)
     let expectedGeneration = generation
     let executionID = turn.id
@@ -222,7 +239,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ConversationFo
         return NessaConversation(
           conversationId: summary.id, title: summary.title,
           preview: "I’m here. Tell me a little more about that.", updatedAtMs: summary.updatedAtMs,
-          running: messages.contains { $0.status == "running" })
+          running: messages.contains { $0.status == "running" }, channelId: summary.channelId)
       }
       changed(conversationID)
     }
@@ -237,8 +254,25 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ConversationFo
   public func answer(
     _ permission: NessaPermission, option: NessaPermission.Option, conversationID: String
   ) throws {
-    _ = try read(conversationID)
-    throw NessaGatewayError.rejected("No permission is pending in this mock conversation.")
+    let current = try read(conversationID)
+    guard current.permissions.contains(where: { $0.id == permission.id }) else {
+      throw NessaGatewayError.rejected("No permission is pending in this mock conversation.")
+    }
+    threads[conversationID] = NessaConversationView(
+      conversationId: conversationID, messages: current.messages,
+      permissions: current.permissions.filter { $0.id != permission.id }, truncated: false,
+      interactionViewError: nil, runtime: current.runtime)
+  }
+  /// The one review the development fixture waits on, so the Agents view's card can be seen
+  /// and answered.
+  static func fixturePermission(_ id: String) -> NessaPermission {
+    NessaPermission(
+      executionId: "\(id)-7", permissionId: "fixture", title: "Nessa wants to run a command",
+      toolName: "shell", argumentsJson: "pnpm test:scale -- --only gateway",
+      options: [
+        NessaPermission.Option(id: "allow_once", label: "Allow once", effect: "allow"),
+        NessaPermission.Option(id: "reject", label: "Deny", effect: "deny"),
+      ])
   }
   private func requireConnection() throws { if !connected { throw NessaGatewayError.disconnected } }
 }

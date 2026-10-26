@@ -6,13 +6,20 @@ struct NessaThreadView: View {
   let conversationID: String
   @StateObject private var dictation: DictationViewModel
   let autoFocusComposer: Bool
+  /// A message typed on the home screen that started this chat; sent from here, through the
+  /// thread's own composer, so it is retried and confirmed like any other.
+  let firstMessage: HomeFirstMessage?
+  let onFirstMessageTaken: () -> Void
   init(
     store: MessagesViewModel, conversationID: String, dictation: DictationViewModel,
-    autoFocusComposer: Bool = false
+    autoFocusComposer: Bool = false, firstMessage: HomeFirstMessage? = nil,
+    onFirstMessageTaken: @escaping () -> Void = {}
   ) {
     self.store = store
     self.conversationID = conversationID
     self.autoFocusComposer = autoFocusComposer
+    self.firstMessage = firstMessage
+    self.onFirstMessageTaken = onFirstMessageTaken
     _dictation = StateObject(wrappedValue: dictation)
   }
   @StateObject private var messageContext = MessageContextController()
@@ -115,7 +122,7 @@ struct NessaThreadView: View {
             .transition(MessagesStyle.bubbleInsertion(outgoing: true))
           }
           ForEach(current?.permissions ?? []) { permission in
-            PermissionReview(permission: permission) { option in
+            PermissionCard(permission: permission) { option in
               Task { await store.answer(permission, option: option, in: conversationID) }
             }.disabled(!store.connected)
           }
@@ -304,6 +311,14 @@ struct NessaThreadView: View {
       AgentDetailsView(name: name, conversationID: conversationID, store: store)
     }
     .task(id: store.connectionRevision) { await store.watchConversation(conversationID) }
+    .task {
+      // Taken once: the home screen forgets it, so coming back to this chat sends nothing.
+      guard let firstMessage else { return }
+      onFirstMessageTaken()
+      composer.text = firstMessage.text
+      composer.attachments = firstMessage.attachments
+      send()
+    }
     .onChange(of: store.acknowledgedCommands) { _, ids in
       composer.accept(ids, scope: store.deliveryScopeRevision)
     }

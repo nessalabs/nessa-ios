@@ -17,13 +17,16 @@ private actor ProductExchangeFixture: GatewayProductExchange {
   private var creation: CheckedContinuation<Data, Error>?
   private let readyBytes: Data
   private let listResponse: Data?
+  /// `channel.list` answers, one per call, in order.
+  private var channelPages: [Data]
   private var releaseConfirmed: Bool
   private let closeFailure: (any Error)?
   private var readyCalls = 0
-  init(ready: Data = productReady(), listResponse: Data? = nil,
+  init(ready: Data = productReady(), listResponse: Data? = nil, channelPages: [Data] = [],
     releaseConfirmed: Bool = true, closeFailure: (any Error)? = nil) {
     readyBytes = ready
     self.listResponse = listResponse
+    self.channelPages = channelPages
     self.releaseConfirmed = releaseConfirmed
     self.closeFailure = closeFailure
   }
@@ -38,6 +41,7 @@ private actor ProductExchangeFixture: GatewayProductExchange {
       if let listResponse { return listResponse }
       return Data(#"{"type":"res","id":"9007199254740993","ok":true,"payload":{"conversations":[],"complete":true}}"#.utf8)
     }
+    if method == "channel.list", !channelPages.isEmpty { return channelPages.removeFirst() }
     if method == "conversation.create" {
       return try await withCheckedThrowingContinuation { creation = $0 }
     }
@@ -270,5 +274,52 @@ func productReplacementUsesReleaseFactSeparatelyFromHistoricalFault(released: Bo
   _ = try await connect(client, replacement)
   #expect(await replacement.readyCount() == 1)
   #expect(try await client.list().complete)
+  await client.disconnect()
+}
+
+private func channelPage(_ channels: [String], complete: Bool, cursor: String?) -> Data {
+  let list = channels.map {
+    "{\"channelId\":\"\($0)\",\"name\":\"\($0)\",\"folder\":\"/tmp/\($0)\","
+      + "\"agent\":null,\"model\":null,\"approvalMode\":\"ask\",\"createdAtMs\":1,"
+      + "\"folderMade\":false}"
+  }.joined(separator: ",")
+  let next = cursor.map { ",\"cursor\":\"\($0)\"" } ?? ""
+  return Data(
+    "{\"type\":\"res\",\"id\":\"18446744073709551614\",\"ok\":true,\"payload\":{\"channels\":[\(list)],\"complete\":\(complete)\(next)}}"
+      .utf8)
+}
+
+@Test func channelPagesFollowTheCursorToTheEnd() async throws {
+  let exchange = ProductExchangeFixture(channelPages: [
+    channelPage(["ch_aaaaaaaaaa"], complete: false, cursor: "ch_aaaaaaaaaa"),
+    channelPage(["ch_bbbbbbbbbb"], complete: true, cursor: nil),
+  ])
+  let client = NessaGatewayClient()
+  _ = try await connect(client, exchange)
+  #expect(try await client.channels().map(\.channelId) == ["ch_aaaaaaaaaa", "ch_bbbbbbbbbb"])
+  #expect(await exchange.callCount("channel.list") == 2)
+  await client.disconnect()
+}
+
+@Test func anUnfinishedChannelListWithNowhereToGoIsRefused() async throws {
+  let exchange = ProductExchangeFixture(channelPages: [
+    channelPage(["ch_aaaaaaaaaa"], complete: false, cursor: nil)
+  ])
+  let client = NessaGatewayClient()
+  _ = try await connect(client, exchange)
+  await #expect(throws: NessaGatewayError.invalidFrame) { try await client.channels() }
+  await client.disconnect()
+}
+
+@Test func aChannelCursorSeenBeforeIsRefusedRatherThanFollowedForEver() async throws {
+  let exchange = ProductExchangeFixture(channelPages: [
+    channelPage([], complete: false, cursor: "ch_aaaaaaaaaa"),
+    channelPage([], complete: false, cursor: "ch_bbbbbbbbbb"),
+    channelPage([], complete: false, cursor: "ch_aaaaaaaaaa"),
+  ])
+  let client = NessaGatewayClient()
+  _ = try await connect(client, exchange)
+  await #expect(throws: NessaGatewayError.invalidFrame) { try await client.channels() }
+  #expect(await exchange.callCount("channel.list") == 3)
   await client.disconnect()
 }

@@ -74,8 +74,9 @@ struct MessageComposer: View {
           Button("Add Files", systemImage: "doc") { filesPresented = true }
         } label: {
           // As tall as the message field beside it, so the two share a centre line.
-          Image(systemName: "plus").font(MessagesStyle.icon)
+          NessaIcon(.plus)
             .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
+            .contentShape(Circle())
             .messagesGlass()
         }.buttonStyle(.nessaPress)
           .disabled(sending || dictation.active || preparing).accessibilityLabel("Message actions")
@@ -95,14 +96,21 @@ struct MessageComposer: View {
               Button {
                 dictation.toggle()
               } label: {
-                Image(systemName: dictation.active ? "stop.circle.fill" : "waveform")
-                  .font(MessagesStyle.icon)
+                // The two glyphs cross-fade as dictation starts and stops.
+                ZStack {
+                  if dictation.active {
+                    Image(systemName: "stop.circle.fill").font(MessagesStyle.icon)
+                      .transition(.opacity)
+                  } else {
+                    NessaIcon(.wave).transition(.opacity)
+                  }
+                }
+                  .animation(reduceMotion ? nil : NessaMotion.standard(), value: dictation.active)
                   .foregroundStyle(
                     dictation.active ? MessagesStyle.danger : MessagesStyle.secondary
                   )
                   .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
                   .contentShape(Rectangle())
-                  .contentTransition(.symbolEffect(.replace))
               }
               .buttonStyle(.nessaPress)
               .disabled(sending || dictation.state == .finishing)

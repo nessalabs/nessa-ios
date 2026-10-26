@@ -192,14 +192,13 @@ struct MessagesInboxView: View {
       .toolbar {
         InboxToolbar(
           editing: editing,
-          accountSeed: store.currentGatewayAddress ?? "nessa",
           onEdit: {
             // The marks slide in from the edge as the rows make room, on one spring.
             withAnimation(reduceMotion ? nil : NessaMotion.enter) {
               editing.toggle()
               selected = []
             }
-          }, onSettings: onSettings, showingArchived: showingArchived,
+          }, showingArchived: showingArchived,
           onToggleArchived: {
             showingArchived.toggle()
             selected = []
@@ -238,11 +237,7 @@ struct MessagesInboxView: View {
               }
               .frame(width: MessagesStyle.composerHeight, height: MessagesStyle.composerHeight)
               .messagesGlass()
-            }.buttonStyle(.nessaPress).disabled(
-              !store.connected || !store.conversationAuthorityReady || store.busy
-                || store.pendingLoadError != nil
-                || !store.pendingCreations.isEmpty
-            )
+            }.buttonStyle(.nessaPress).disabled(!store.canCreateChat)
             .accessibilityLabel(store.busy ? "Creating chat" : "New message")
           }
           }.padding(.horizontal, MessagesStyle.horizontal).padding(

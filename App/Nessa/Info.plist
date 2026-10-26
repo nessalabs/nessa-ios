@@ -40,6 +40,9 @@
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Transcribe your speech into message text.</string>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 </dict>
 </plist>
