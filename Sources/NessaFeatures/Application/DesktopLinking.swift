@@ -246,11 +246,18 @@ public actor DesktopLinking {
   /// an `https` origin changes nothing.
   private func learnReach(_ id: UUID, from exchange: any GatewayProductExchange) async {
     guard let answer = try? await exchange.request(method: "server.reach", parameters: Data("{}".utf8)),
-      let frame = try? JSONDecoder().decode(ReachFrame.self, from: answer), frame.ok,
-      let tunnel = frame.payload?.tunnel, LinkedDesktop.isTunnelOrigin(tunnel),
-      !forgotten.contains(id)
+      let tunnel = Self.tunnel(answering: answer), !forgotten.contains(id)
     else { return }
     try? await store.remember(tunnel: tunnel, for: id)
+  }
+
+  /// The tunnel a `server.reach` answer names, when it is one worth keeping:
+  /// an answer that succeeded and holds an `https` origin.
+  static func tunnel(answering answer: Data) -> String? {
+    guard let frame = try? JSONDecoder().decode(ReachFrame.self, from: answer), frame.ok,
+      let tunnel = frame.payload?.tunnel, LinkedDesktop.isTunnelOrigin(tunnel)
+    else { return nil }
+    return tunnel
   }
 
   private func productClosed(_ id: UUID, released: Bool) {

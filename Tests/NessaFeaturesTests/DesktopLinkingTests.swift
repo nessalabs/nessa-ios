@@ -483,8 +483,7 @@ private struct DialingProducts: LinkedProductOpening {
 
 /// Once a product session is ready the phone asks where else its Mac can be
 /// reached and keeps the answer with the Mac, so the next opening dials it
-/// even from a copy of the record made before. No tunnel in an answer, or an
-/// address that is not an `https` origin, keeps the last one.
+/// even from a copy of the record made before.
 @Test func aReadyProductSessionLearnsTheMacsTunnelForTheNextDial() async throws {
   let desktop = LinkedDesktop(
     id: UUID(), name: "Studio", gateway: "gw-1", address: mac.address, receiver: "r1",
@@ -494,19 +493,38 @@ private struct DialingProducts: LinkedProductOpening {
   let linker = linking(Native(first: receipt(.claimed)), store: store)
   let dialed = Dialed()
   let origin = "https://gateway.example.com"
-  let answers: [String?] = [origin, nil, "http://gateway.example.com", "https://a.example/path"]
-  for answer in answers {
-    let reaching = Reaching(tunnel: answer)
+  for _ in 0..<2 {
+    let reaching = Reaching(tunnel: origin)
     let product = try await linker.openProduct(
       desktop, instance: "phone", through: DialingProducts(exchange: reaching, dialed: dialed))
     _ = try await product.ready()
-    while reaching.methods.isEmpty { await Task.yield() }
-    for _ in 0..<100 { await Task.yield() }
+    let deadline = ContinuousClock.now + .seconds(5)
+    while await store.desktop?.tunnel != origin, ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(1))
+    }
+    #expect(await store.desktop == desktop.reaching(origin))
     #expect(reaching.methods == ["server.reach"])
-    #expect(await store.desktop?.tunnel == origin)
     _ = await product.close()
   }
-  #expect(await dialed.tunnels == [nil, origin, origin, origin])
+  #expect(await dialed.tunnels == [nil, origin])
+}
+
+/// Only an answer that succeeded and names an `https` origin is kept. No
+/// tunnel in an answer keeps the last one: the Mac names none while its
+/// tunnel is starting.
+@Test func onlyAnHttpsOriginInAReachAnswerIsKept() throws {
+  func answer(ok: Bool = true, _ tunnel: String?) throws -> Data {
+    try JSONSerialization.data(withJSONObject: [
+      "id": "1", "ok": ok, "payload": ["tunnel": tunnel ?? NSNull()],
+    ])
+  }
+  let origin = "https://gateway.example.com"
+  #expect(DesktopLinking.tunnel(answering: try answer(origin)) == origin)
+  #expect(DesktopLinking.tunnel(answering: try answer(ok: false, origin)) == nil)
+  for kept in [nil, "http://gateway.example.com", "https://a.example/path", "https://"] {
+    #expect(DesktopLinking.tunnel(answering: try answer(kept)) == nil)
+  }
+  #expect(DesktopLinking.tunnel(answering: Data("not json".utf8)) == nil)
 }
 
 /// Keeping a tunnel never brings back a Mac forgotten, or overwrites one
