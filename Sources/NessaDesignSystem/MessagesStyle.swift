@@ -138,6 +138,9 @@ public enum MessagesStyle {
   /// A deleted or archived row fading out before the rows below close up: a
   /// micro-interaction.
   public static let rowFadeOut: Double = 0.12
+  /// How long a reconnect runs before its pill says the Mac can't be reached and offers
+  /// Try again.
+  public static let reconnectPatience: Double = 5
   /// How long the list takes to close up after a row leaves, before the row's fade can be
   /// cleared for wherever it went (the archive, say).
   public static let rowSettle: Double = 0.35

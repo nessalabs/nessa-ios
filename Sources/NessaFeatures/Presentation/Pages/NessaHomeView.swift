@@ -23,6 +23,8 @@ struct NessaHomeView: View {
   @State private var attachments: [DraftAttachment] = []
   @State private var starting = false
   @State private var now = Date()
+  /// Reconnecting has run long enough that the pill offers Try again.
+  @State private var reconnectSlow = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
@@ -51,7 +53,7 @@ struct NessaHomeView: View {
     .messagesBar(edge: .bottom) {
       VStack(spacing: NessaSpacing.xs) {
         if waitingForLink {
-          MessagesStatusPill("Reconnecting…", working: true)
+          reconnectPill
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
         if !needsPairing {
@@ -85,6 +87,14 @@ struct NessaHomeView: View {
     #if os(iOS)
       .toolbar(.hidden, for: .navigationBar)
     #endif
+    // Try again appears only once a reconnect has run past a few seconds; a quick one shows
+    // the pill working and then just goes.
+    .task(id: waitingForLink) {
+      reconnectSlow = false
+      guard waitingForLink else { return }
+      try? await Task.sleep(for: .seconds(MessagesStyle.reconnectPatience))
+      if !Task.isCancelled, waitingForLink { reconnectSlow = true }
+    }
     // The greeting follows the clock while the app stays open across an hour.
     .task {
       while !Task.isCancelled {
@@ -131,6 +141,15 @@ struct NessaHomeView: View {
   /// Not connected, not on the way back, and no Mac to connect to.
   private var needsPairing: Bool {
     !store.connected && !store.reconnecting && desktop.linked == nil
+  }
+
+  /// "Reconnecting…" while the link comes back; once it has run long, Try again.
+  private var reconnectPill: MessagesStatusPill {
+    guard reconnectSlow else { return MessagesStatusPill("Reconnecting…", working: true) }
+    let store = store
+    let retry: () -> Void = { Task { await store.reconnectLinked() } }
+    return MessagesStatusPill(
+      "Can't reach your Mac", working: false, action: (title: "Try again", perform: retry))
   }
 
   private var waitingForLink: Bool {

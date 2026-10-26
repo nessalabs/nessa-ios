@@ -24,6 +24,22 @@ public struct ConnectionRecovery: Sendable {
     }
   }
   public static func retryable(_ error: Error) -> Bool {
+    // The paired Mac's link: whatever is not the Mac's or this phone's settled answer (turned
+    // away, a spent code, storage this phone can't keep) is the link not getting through, which
+    // trying again mends once the phone is back on the Mac's network.
+    if let error = error as? RetainedSessionError {
+      switch error {
+      case .busy, .closed: return true
+      case .session:
+        switch DesktopLinking.failure(error) {
+        case .denied, .wrongCode, .expired, .cancelled, .storage: return false
+        case .noDesktop, .unreachable, .other: return true
+        }
+      // A call the native refused as malformed, or one that was cancelled, goes the same way
+      // however often it is tried.
+      case .invalidArgument, .ownerPreparation, .view, .cancelled, .bridge: return false
+      }
+    }
     if let error = (error as? GatewayProductRejection)?.behavior ?? error as? NessaGatewayError {
       switch error {
       case .disconnected, .timeout: return true

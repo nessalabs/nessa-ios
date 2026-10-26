@@ -348,3 +348,25 @@ private func intent(
   #expect(PhoneProductChat.visible(list, hiding: []).first?.title == nil)
   #expect(PhoneProductChat.visible(list, hiding: []).first?.preview == nil)
 }
+
+@Test func aMacOutOfReachIsRetriedAndToldInPlainWords() {
+  let away = RetainedSessionError.session(
+    .init(
+      cache: .unreachable, enrollment: nil, kind: .cache, privateState: nil,
+      runtimeDiagnostic: nil))
+  let runtime = RetainedSessionError.session(
+    .init(cache: nil, enrollment: nil, kind: .runtime, privateState: nil, runtimeDiagnostic: "x"))
+  #expect(ConnectionRecovery.retryable(away))
+  #expect(ConnectionRecovery.retryable(runtime))
+  #expect(ConnectionRecovery.retryable(RetainedSessionError.busy))
+  #expect(!ConnectionRecovery.retryable(RetainedSessionError.invalidArgument))
+  #expect(away.localizedDescription == "Can't reach your Mac right now.")
+  #expect(!runtime.localizedDescription.contains("RetainedSessionError"))
+}
+
+@Test func aMacThatTurnedThePhoneAwayIsNotRetried() {
+  let refused = RetainedSessionError.session(
+    .init(cache: .refused, enrollment: nil, kind: .cache, privateState: nil, runtimeDiagnostic: nil))
+  #expect(!ConnectionRecovery.retryable(refused))
+  #expect(refused.localizedDescription.contains("Pair it again"))
+}
