@@ -110,7 +110,10 @@ private actor VMSetupGateway: MessagingRepository, ConnectionLeasing,
     return "turn"
   }
   func delete(_ conversationID: String) {}
-  func listArchived() -> NessaConversationList { .init(conversations: [], complete: true) }
+  func listArchived() throws -> NessaConversationList {
+    try JSONDecoder().decode(
+      NessaConversationList.self, from: Data("{\"conversations\":[],\"complete\":true}".utf8))
+  }
   func setArchived(_ archived: Bool, conversationID: String) {}
   func answer(_ permission: NessaPermission, option: NessaPermission.Option, conversationID: String)
   {}

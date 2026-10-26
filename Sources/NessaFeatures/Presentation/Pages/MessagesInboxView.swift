@@ -224,12 +224,7 @@ struct MessagesInboxView: View {
         } else {
           VStack(spacing: NessaSpacing.xs) {
           if waitingForLink {
-            MessagesStatusPill(
-              reconnectSlow ? "Can't reach your Mac" : "Reconnecting…", working: !reconnectSlow,
-              action: reconnectSlow
-                ? (title: "Try again", perform: { Task { await store.reconnectLinked() } }) : nil
-            )
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            reconnectPill.transition(.move(edge: .bottom).combined(with: .opacity))
           }
           HStack(spacing: MessagesStyle.toolbarGap) {
             NessaSearchField(text: $search)
@@ -280,6 +275,14 @@ struct MessagesInboxView: View {
         }
         do { try await store.refreshList() } catch { store.error = error.localizedDescription }
       }
+  }
+  /// "Reconnecting…" while the link comes back; once it has run long, Try again.
+  private var reconnectPill: MessagesStatusPill {
+    guard reconnectSlow else { return MessagesStatusPill("Reconnecting…", working: true) }
+    let store = store
+    let retry: () -> Void = { Task { await store.reconnectLinked() } }
+    return MessagesStatusPill(
+      "Can't reach your Mac", working: false, action: (title: "Try again", perform: retry))
   }
   /// Paired with a Mac, or bringing a saved connection back, and not connected yet.
   private var waitingForLink: Bool {
