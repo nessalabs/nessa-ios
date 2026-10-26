@@ -69,13 +69,8 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
         content
           .frame(width: full.width, height: full.height)
           .overlay {
-            // The dim takes the tap that closes the drawer, so nothing behind it is pressed.
             Color.black.opacity(NessaDrawerStyle.contentDim * progress)
-              .allowsHitTesting(isOpen)
-              .onTapGesture { close() }
-              .accessibilityLabel("Close sidebar")
-              .accessibilityAddTraits(.isButton)
-              .accessibilityHidden(!isOpen)
+              .allowsHitTesting(false)
           }
           .clipShape(
             RoundedRectangle(
@@ -84,6 +79,19 @@ public struct NessaSideDrawer<Sidebar: View, Content: View>: View {
           )
           .accessibilityHidden(isOpen)
           .offset(x: width * progress)
+        if isOpen {
+          // Over the pushed content while open, as its own layer: a tap anywhere on what is
+          // still in view closes the drawer, and nothing inside the content is pressed.
+          Rectangle().fill(.clear)
+            .contentShape(Rectangle())
+            .frame(width: full.width - width * progress, height: full.height)
+            .offset(x: width * progress)
+            .onTapGesture { close() }
+            .accessibilityElement()
+            .accessibilityLabel("Close sidebar")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { close() }
+        }
       }
       .frame(width: full.width, height: full.height, alignment: .topLeading)
       .contentShape(Rectangle())

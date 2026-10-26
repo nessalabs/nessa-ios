@@ -38,7 +38,7 @@ struct NessaSidebar: View {
         }
       }
       .padding(.horizontal, NessaSpacing.xs)
-      .padding(.bottom, MessagesStyle.homeButton + NessaSpacing.xl)
+      .padding(.bottom, NessaSpacing.md)
     }
     .scrollIndicators(.hidden)
     .messagesScrollEdges()
@@ -72,6 +72,18 @@ struct NessaSidebar: View {
     }
     .padding(.horizontal, NessaSpacing.md)
     .padding(.bottom, NessaSpacing.xs)
+    // The list fades out under the foot instead of running behind its buttons.
+    .background {
+      LinearGradient(
+        stops: [
+          .init(color: MessagesStyle.background, location: 0),
+          .init(color: MessagesStyle.background, location: 0.6),
+          .init(color: MessagesStyle.background.opacity(0), location: 1),
+        ], startPoint: .bottom, endPoint: .top
+      )
+      .padding(.top, -MessagesStyle.footerRise)
+      .ignoresSafeArea(edges: .bottom)
+    }
   }
 
   private var pinned: [String] {
