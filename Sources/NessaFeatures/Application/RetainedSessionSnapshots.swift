@@ -514,6 +514,20 @@ public enum RetainedSessionError: Error, Equatable, Sendable {
   case busy, closed, cancelled, bridge
 }
 
+/// What the person reads when the paired Mac's link fails: plain words, never the native
+/// failure's type and number, which are for diagnostics.
+extension RetainedSessionError: LocalizedError {
+  public var errorDescription: String? {
+    switch DesktopLinking.failure(self) {
+    case .denied: "Your Mac turned this phone away. Pair it again from Settings."
+    case .wrongCode, .expired, .cancelled:
+      "This phone's pairing has ended. Pair it again from Settings."
+    case .storage: "This phone couldn't keep what it needs to talk to your Mac."
+    case .noDesktop, .unreachable, .other: "Can't reach your Mac right now."
+    }
+  }
+}
+
 // Opaque native identifiers preserve UTF-8; Swift String equality is canonically equivalent.
 private enum RetainedTextEquality {
   static func equal(_ lhs: String, _ rhs: String) -> Bool { lhs.utf8.elementsEqual(rhs.utf8) }
