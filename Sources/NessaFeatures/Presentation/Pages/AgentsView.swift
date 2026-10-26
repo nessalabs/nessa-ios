@@ -45,7 +45,6 @@ struct AgentsView: View {
     .nessaInlineNavigationTitle()
     .toolbar {
       AgentsTitle()
-      ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
       ToolbarItem(placement: .primaryAction) {
         Button(action: onAllChats) { NessaIcon(.chats) }
           .accessibilityLabel("All chats")
@@ -56,11 +55,10 @@ struct AgentsView: View {
   private func approval(_ id: String, permission: NessaPermission) -> some View {
     let channel = store.conversations.first { $0.id == id }?.channelId
     let channelName = store.channels.first { $0.id == channel && !$0.isDefault }?.name
-    return AgentsApprovalCard(
-      chatName: store.chatName(id), channelName: channelName, permission: permission,
-      onOpen: { onOpen(id) },
-      onAnswer: { option in Task { await store.answer(permission, option: option, in: id) } }
-    )
+    return PermissionCard(
+      permission: permission,
+      source: .init(chatName: store.chatName(id), channelName: channelName, onOpen: { onOpen(id) })
+    ) { option in Task { await store.answer(permission, option: option, in: id) } }
     .padding(.horizontal, AgentsStyle.cardGutter)
   }
 
@@ -138,15 +136,21 @@ struct AgentsView: View {
   }
 }
 
-/// "Agents" in the bar's leading corner, bold and bare: on iOS 26 a bar item gets a glass
-/// capsule of its own, which a title should not wear.
+/// "Agents" in the bar's leading corner, beside the back button, bold and bare: on iOS 26 a
+/// bar item gets a glass capsule of its own, which a title should not wear. It takes the
+/// principal place's job, so that place holds nothing.
 private struct AgentsTitle: ToolbarContent {
   var body: some ToolbarContent {
-    if #available(iOS 26.0, macOS 26.0, *) {
-      ToolbarItem(placement: .navigation) { title }.sharedBackgroundVisibility(.hidden)
-    } else {
+    #if os(iOS)
+      if #available(iOS 26.0, *) {
+        ToolbarItem(placement: .topBarLeading) { title }.sharedBackgroundVisibility(.hidden)
+      } else {
+        ToolbarItem(placement: .topBarLeading) { title }
+      }
+      ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
+    #else
       ToolbarItem(placement: .navigation) { title }
-    }
+    #endif
   }
   private var title: some View {
     Text("Agents").font(AgentsStyle.title).accessibilityAddTraits(.isHeader)
@@ -154,7 +158,7 @@ private struct AgentsTitle: ToolbarContent {
 }
 
 private enum AgentsStyle {
-  static let title = Font.system(size: 28, weight: .bold)
+  static let title = Font.system(size: 22, weight: .bold)
   static let chipHeight: CGFloat = 34
   static let chipInset: CGFloat = 14
   /// Room above each group's label, and around each row and the cards.

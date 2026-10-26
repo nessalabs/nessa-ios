@@ -19,8 +19,10 @@ struct NessaSidebar: View {
         row("Agents", icon: .agents, trailing: agentsHint, action: onAgents)
         if !store.channels.isEmpty {
           section("Channels")
-          ForEach(store.channels) { channel in
-            NessaChannelRow(name: channel.name, unread: hasUnread(channel)) {
+          ForEach(Array(store.channels.enumerated()), id: \.element.id) { position, channel in
+            NessaChannelRow(
+              name: channel.name, position: position, unread: hasUnread(channel)
+            ) {
               onChannel(channel)
             }
           }

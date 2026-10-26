@@ -45,7 +45,7 @@ struct ReplyThreadView: View {
             store.views[conversationID]?.permissions.filter { turnIDs.contains($0.executionId) }
               ?? []
           ) { permission in
-            PermissionReview(permission: permission) { option in
+            PermissionCard(permission: permission) { option in
               Task { await store.answer(permission, option: option, in: conversationID) }
             }
           }

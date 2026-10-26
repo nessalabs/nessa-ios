@@ -122,7 +122,7 @@ struct NessaThreadView: View {
             .transition(MessagesStyle.bubbleInsertion(outgoing: true))
           }
           ForEach(current?.permissions ?? []) { permission in
-            PermissionReview(permission: permission) { option in
+            PermissionCard(permission: permission) { option in
               Task { await store.answer(permission, option: option, in: conversationID) }
             }.disabled(!store.connected)
           }

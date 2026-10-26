@@ -1,43 +1,54 @@
 import NessaDesignSystem
 import SwiftUI
 
-/// A chat's waiting permission review, answered from the Agents view without opening the
-/// chat: whose it is, what it asks, the exact request, and its options as buttons.
-struct AgentsApprovalCard: View {
-  let chatName: String
-  /// The channel the chat is in, beside its name; nil in the default channel.
-  let channelName: String?
+/// A waiting permission review, answered in place: what it asks, the exact request, and its
+/// options as buttons. In a chat it stands alone; in the Agents view it also names the chat
+/// it waits in, and that name opens the chat.
+struct PermissionCard: View {
+  /// The chat it waits in, its channel (nil in the default one), and how to open it.
+  struct Source {
+    let chatName: String
+    let channelName: String?
+    let onOpen: () -> Void
+  }
   let permission: NessaPermission
-  let onOpen: () -> Void
+  var source: Source? = nil
   let onAnswer: (NessaPermission.Option) -> Void
 
   var body: some View {
-    let card = RoundedRectangle(cornerRadius: AgentsApprovalStyle.radius, style: .continuous)
-    VStack(alignment: .leading, spacing: AgentsApprovalStyle.gap) {
-      Button(action: onOpen) {
-        VStack(alignment: .leading, spacing: NessaSpacing.xxs) {
-          HStack(spacing: NessaSpacing.xs) {
-            Text(chatName).font(MessagesStyle.sidebarRow.weight(.semibold)).lineLimit(1)
-            Spacer(minLength: 0)
-            if let channelName {
-              Text(channelName).font(MessagesStyle.preview)
-                .foregroundStyle(MessagesStyle.secondary).lineLimit(1)
+    let card = RoundedRectangle(cornerRadius: PermissionCardStyle.radius, style: .continuous)
+    VStack(alignment: .leading, spacing: PermissionCardStyle.gap) {
+      if let source {
+        Button(action: source.onOpen) {
+          VStack(alignment: .leading, spacing: NessaSpacing.xxs) {
+            HStack(spacing: NessaSpacing.xs) {
+              Text(source.chatName).font(MessagesStyle.sidebarRow.weight(.semibold))
+                .lineLimit(1)
+              Spacer(minLength: 0)
+              if let channelName = source.channelName {
+                Text(channelName).font(MessagesStyle.preview)
+                  .foregroundStyle(MessagesStyle.secondary).lineLimit(1)
+              }
             }
+            Text(permission.title).font(MessagesStyle.preview)
+              .foregroundStyle(MessagesStyle.secondary).lineLimit(2)
           }
-          Text(permission.title).font(MessagesStyle.preview)
-            .foregroundStyle(MessagesStyle.secondary).lineLimit(2)
+          .contentShape(Rectangle())
         }
-        .contentShape(Rectangle())
+        .buttonStyle(.nessaPress)
+      } else {
+        Text(permission.title).font(MessagesStyle.sidebarRow.weight(.semibold)).lineLimit(2)
+          .accessibilityAddTraits(.isHeader)
       }
-      .buttonStyle(.nessaPress)
       // The exact request, never a summary of it: what is allowed is what is shown.
       Text(permission.argumentsJson).font(NessaType.mono).lineSpacing(3)
-        .lineLimit(AgentsApprovalStyle.requestLines).truncationMode(.tail)
+        .lineLimit(source == nil ? nil : PermissionCardStyle.requestLines).truncationMode(.tail)
+        .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, NessaSpacing.sm).padding(.vertical, NessaSpacing.sm)
         .background(
           .white.opacity(0.06),
-          in: RoundedRectangle(cornerRadius: AgentsApprovalStyle.requestRadius, style: .continuous))
+          in: RoundedRectangle(cornerRadius: PermissionCardStyle.requestRadius, style: .continuous))
       // Two answers sit side by side; more stack, each a whole row.
       let layout = permission.options.count > 2
         ? AnyLayout(VStackLayout(spacing: NessaSpacing.xs))
@@ -48,7 +59,7 @@ struct AgentsApprovalCard: View {
           Button { onAnswer(option) } label: {
             Text(option.label).font(MessagesStyle.body.weight(primary ? .semibold : .medium))
               .lineLimit(1).minimumScaleFactor(0.8)
-              .frame(maxWidth: .infinity).frame(height: AgentsApprovalStyle.buttonHeight)
+              .frame(maxWidth: .infinity).frame(height: PermissionCardStyle.buttonHeight)
               .foregroundStyle(primary ? MessagesStyle.background : MessagesStyle.foreground)
               .background(primary ? MessagesStyle.foreground : NessaColor.muted, in: Capsule())
           }
@@ -57,15 +68,15 @@ struct AgentsApprovalCard: View {
       }
       .padding(.top, NessaSpacing.xxs)
     }
-    .padding(.horizontal, AgentsApprovalStyle.inset)
-    .padding(.top, AgentsApprovalStyle.inset + NessaSpacing.xxs)
-    .padding(.bottom, AgentsApprovalStyle.inset)
+    .padding(.horizontal, PermissionCardStyle.inset)
+    .padding(.top, PermissionCardStyle.inset + NessaSpacing.xxs)
+    .padding(.bottom, PermissionCardStyle.inset)
     .background(MessagesStyle.incoming, in: card)
     .overlay(card.strokeBorder(NessaColor.hairline, lineWidth: 1))
   }
 }
 
-extension AgentsApprovalCard {
+extension PermissionCard {
   /// Refusals first, then what lets the agent go on, so going on is always on the same side.
   var ordered: [NessaPermission.Option] {
     permission.options.filter { $0.effect != "allow" }
@@ -75,7 +86,7 @@ extension AgentsApprovalCard {
   var brightest: NessaPermission.Option? { permission.options.first { $0.effect == "allow" } }
 }
 
-private enum AgentsApprovalStyle {
+private enum PermissionCardStyle {
   static let radius: CGFloat = 26
   static let inset: CGFloat = 18
   static let gap: CGFloat = 14

@@ -4,11 +4,16 @@ import SwiftUI
 /// one of its chats is unread.
 public struct NessaChannelRow: View {
   private let name: String
+  private let position: Int
   private let unread: Bool
   private let action: () -> Void
 
-  public init(name: String, unread: Bool = false, action: @escaping () -> Void) {
+  /// `position` is the row's place in the list, which picks its tile's light.
+  public init(
+    name: String, position: Int, unread: Bool = false, action: @escaping () -> Void
+  ) {
     self.name = name
+    self.position = position
     self.unread = unread
     self.action = action
   }
@@ -16,7 +21,7 @@ public struct NessaChannelRow: View {
   public var body: some View {
     Button(action: action) {
       HStack(spacing: NessaSpacing.sm) {
-        NessaChannelTile(name: name)
+        NessaChannelTile(name: name, position: position)
         Text(name).font(MessagesStyle.channelName).lineLimit(1).truncationMode(.tail)
         Spacer(minLength: 0)
         if unread {
@@ -34,16 +39,21 @@ public struct NessaChannelRow: View {
   }
 }
 
-/// A channel's tile: the home screen's light, in the same halftone, falling from a corner
-/// the channel's name picks, under the name's first letter. Each channel keeps its own
-/// light, so the tiles tell channels apart without a colour.
+/// A channel's tile: the home screen's light, in the same halftone, under the name's first
+/// letter. The light falls from a side the tile's place in the list picks, so neighbours are
+/// always lit differently and the tiles tell channels apart without a colour.
 public struct NessaChannelTile: View {
   private let name: String
-  public init(name: String) { self.name = name }
+  private let position: Int
+  public init(name: String, position: Int) {
+    self.name = name
+    self.position = position
+  }
 
   public var body: some View {
     let tile = RoundedRectangle(cornerRadius: MessagesStyle.channelTileRadius, style: .continuous)
-    let source = Self.lightSource(name)
+    let sources = ChannelTileStyle.sources
+    let source = sources[((position % sources.count) + sources.count) % sources.count]
     Canvas { context, size in
       context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
       let centre = CGPoint(x: source.x * size.width, y: source.y * size.height)
@@ -85,14 +95,6 @@ public struct NessaChannelTile: View {
     guard let first = name.first(where: { $0.isLetter || $0.isNumber }) else { return "·" }
     return String(first).uppercased()
   }
-
-  /// Where the light comes from, in the tile's unit square: one of a few places just off its
-  /// edges, chosen by a hash of the name that is the same on every launch.
-  static func lightSource(_ name: String) -> CGPoint {
-    var hash: UInt32 = 2_166_136_261
-    for byte in name.utf8 { hash = (hash ^ UInt32(byte)) &* 16_777_619 }
-    return ChannelTileStyle.sources[Int(hash % UInt32(ChannelTileStyle.sources.count))]
-  }
 }
 
 enum ChannelTileStyle {
@@ -100,8 +102,9 @@ enum ChannelTileStyle {
   static let smallestDot: CGFloat = 0.7
   /// How far the light carries, as a share of the tile's width.
   static let reach: CGFloat = 1.15
+  /// Where the light comes from, in the tile's unit square: four sides, just off its edges.
   static let sources: [CGPoint] = [
-    CGPoint(x: 0.5, y: 1.2), CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 1), CGPoint(x: 0.5, y: -0.2),
-    CGPoint(x: 1.1, y: 0.2), CGPoint(x: -0.1, y: 0.8),
+    CGPoint(x: 0.5, y: 1.25), CGPoint(x: -0.15, y: -0.15), CGPoint(x: 1.25, y: 0.5),
+    CGPoint(x: 0.5, y: -0.25),
   ]
 }
