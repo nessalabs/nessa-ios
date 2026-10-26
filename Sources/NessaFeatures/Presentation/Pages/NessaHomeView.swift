@@ -72,6 +72,19 @@ struct NessaHomeView: View {
       }
       .padding(.bottom, MessagesStyle.bottomInset)
       .animation(reduceMotion ? nil : NessaMotion.enter, value: waitingForLink)
+      // The light rises behind the composer, not through it: a dark ground under the bar
+      // keeps its text clear, and the glow shows above.
+      .background {
+        LinearGradient(
+          stops: [
+            .init(color: MessagesStyle.background, location: 0),
+            .init(color: MessagesStyle.background.opacity(0.85), location: 0.55),
+            .init(color: MessagesStyle.background.opacity(0), location: 1),
+          ], startPoint: .bottom, endPoint: .top
+        )
+        .padding(.top, -MessagesStyle.footerRise)
+        .ignoresSafeArea(edges: .bottom)
+      }
     }
     #if os(iOS)
       .toolbar(.hidden, for: .navigationBar)

@@ -61,7 +61,9 @@ public struct NessaHomeLight: View {
       return { p, s in
         // A wide, flat glow along the bottom: mostly how far up the screen, barely how far
         // from the middle, so it reads as a horizon rather than a disc.
-        let rise = max(0, 1 - (s.height - p.y) / (s.height * 0.46))
+        let linear = max(0, 1 - (s.height - p.y) / (s.height * 0.46))
+        // Eased in, so the light has no edge where it starts.
+        let rise = linear * linear * (3 - 2 * linear)
         let side = abs(p.x - s.width / 2) / (s.width / 2)
         return pow(rise, 1.6) * (1 - 0.25 * side * side)
       }
@@ -138,9 +140,10 @@ public struct NessaHomeLight: View {
     let cell = HomeLightStyle.halftoneCell
     forEachCell(size, cell: cell) { _, _, point in
       let d = shape(CGPoint(x: point.x + cell / 2, y: point.y + cell / 2), size)
-      guard d > 0.02 else { return }
-      // The dot's area, not its width, follows the light, as in print.
+      // The dot's area, not its width, follows the light, as in print; the faintest dots are
+      // left out rather than drawn as specks, so the light's edge feathers instead of stepping.
       let diameter = cell * 0.9 * d.squareRoot()
+      guard diameter > HomeLightStyle.smallestDot else { return }
       dots.addEllipse(
         in: CGRect(
           x: point.x + (cell - diameter) / 2, y: point.y + (cell - diameter) / 2,
@@ -211,6 +214,8 @@ enum HomeLightStyle {
   static let glowCell: CGFloat = 24
   static let grainCell: CGFloat = 3
   static let halftoneCell: CGFloat = 5
+  /// Dots smaller than this are not drawn.
+  static let smallestDot: CGFloat = 1.1
   static let pixelCell: CGFloat = 2
   static let scanlinePitch: CGFloat = 3
   static let scanlineSegment: CGFloat = 6
