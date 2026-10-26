@@ -278,6 +278,10 @@ struct NessaThreadView: View {
       old, new in
       hasLoadedHistory && old > 0 && new > old
     }
+    // A hold that opens a message's menu taps once as it opens, as the inbox's system menus do.
+    .sensoryFeedback(.impact(weight: .light), trigger: messageContext.selection?.id) { old, new in
+      old == nil && new != nil
+    }
     // The system's own navigation bar, so its back button and edge swipe are the real ones.
     // While a reply thread or a message's menu covers the screen, the bar's controls step
     // aside rather than the bar itself, so the layout under it never moves.
