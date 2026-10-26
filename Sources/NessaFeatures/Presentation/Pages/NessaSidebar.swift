@@ -2,7 +2,7 @@ import NessaDesignSystem
 import SwiftUI
 
 /// The sidebar under the home screen: Agents, where every chat is, then a row for each
-/// channel, with New chat always in reach at its foot.
+/// channel, with the person's settings and New chat always in reach at its foot.
 struct NessaSidebar: View {
   @ObservedObject var store: MessagesViewModel
   let onAgents: () -> Void
@@ -14,7 +14,8 @@ struct NessaSidebar: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
         Text("Nessa").font(MessagesStyle.sidebarTitle).foregroundStyle(MessagesStyle.foreground)
-          .padding(.horizontal, NessaSpacing.md).padding(.bottom, NessaSpacing.sm)
+          .padding(.horizontal, NessaSpacing.md)
+          .padding(.top, MessagesStyle.sidebarTitleTop).padding(.bottom, NessaSpacing.sm)
           .accessibilityAddTraits(.isHeader)
         row("Agents", icon: .agents, trailing: agentsHint, action: onAgents)
         if !store.channels.isEmpty {
@@ -52,10 +53,10 @@ struct NessaSidebar: View {
   private var foot: some View {
     HStack {
       Button(action: onSettings) {
-        NessaAvatarDisc(seed: store.currentGatewayAddress ?? "nessa", size: MessagesStyle.homeButton)
+        NessaProfileDisc(size: MessagesStyle.homeButton)
       }
       .buttonStyle(.nessaPress)
-      .accessibilityLabel("Connection settings")
+      .accessibilityLabel("Settings")
       Spacer()
       Button(action: onNewChat) {
         HStack(spacing: NessaSpacing.xs) {

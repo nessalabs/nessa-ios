@@ -166,6 +166,9 @@ struct MessageComposer: View {
     .onDisappear {
       cancelPreparation()
       dictation.cancel()
+      // A composer off screen (its screen pushed under another, or gone back from) keeps no
+      // keyboard up over the screen that took its place.
+      focused = false
     }
     .onChange(of: dictation.transcriptRevision) { _, _ in
       if !dictation.transcript.isEmpty { draft = dictation.transcript }

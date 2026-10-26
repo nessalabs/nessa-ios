@@ -1,8 +1,8 @@
 import NessaDesignSystem
 import SwiftUI
 
-/// The gateway sheet, laid out like the agent details sheet: a title row with the close button
-/// on its centre line, then one card and one full-width action, all on one spacing step.
+/// The connection page, under Settings: the gateway's card and its action, then the paired
+/// Mac, all on one spacing step.
 struct NessaConnectionView: View {
   @ObservedObject var store: MessagesViewModel
   @Binding var address: String
@@ -14,9 +14,6 @@ struct NessaConnectionView: View {
   let onShowChats: () -> Void
   @State private var draftAddress = ""
   @State private var credential = ""
-  /// The sheet's height fitted to what it holds, so no empty half sheet hangs under the action.
-  @State private var fittedHeight: CGFloat?
-  @Environment(\.dismiss) private var dismiss
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: NessaSpacing.lg) {
@@ -61,45 +58,17 @@ struct NessaConnectionView: View {
         if desktop.available { desktopCard }
       }
       .padding(.horizontal, MessagesStyle.horizontal)
-      // Measured on device, these keep the title-to-card, card-to-action and action-to-edge
-      // gaps on one step.
       .padding(.top, NessaSpacing.xs)
-      .padding(.bottom, NessaSpacing.xs)
+      .padding(.bottom, NessaSpacing.xl)
     }
     .scrollDismissesKeyboard(.interactively)
-    .onScrollGeometryChange(for: CGFloat.self) { geometry in
-      geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
-    } action: { _, height in
-      fittedHeight = height
-    }
     .messagesScrollEdges()
-    .messagesBar(edge: .top) { header.messagesHeaderGrain() }
     .foregroundStyle(MessagesStyle.foreground)
     .messagesAmbientGround()
+    .navigationTitle("Connection")
+    .nessaInlineNavigationTitle()
+    .toolbar { BarTitle("Connection") }
     .onAppear { draftAddress = store.currentGatewayAddress ?? address }
-    .presentationDetents(fittedHeight.map { [.height($0), .large] } ?? [.medium, .large])
-    .presentationDragIndicator(.visible)
-    .presentationBackground(MessagesStyle.background)
-    .presentationCornerRadius(AgentDetailsStyle.cardRadius * 2)
-  }
-
-  /// The title and the close button share one row and one centre line, as in agent details.
-  private var header: some View {
-    HStack(spacing: NessaSpacing.sm) {
-      Text("Connection").font(AgentDetailsStyle.title)
-        .accessibilityAddTraits(.isHeader)
-      Spacer(minLength: NessaSpacing.xs)
-      Button { dismiss() } label: {
-        Image(systemName: "xmark").font(MessagesStyle.icon)
-          .frame(width: MessagesStyle.controlHeight, height: MessagesStyle.controlHeight)
-          .messagesGlass()
-      }
-      .buttonStyle(.nessaPress)
-      .accessibilityLabel("Close connection")
-    }
-    .frame(minHeight: MessagesStyle.controlHeight)
-    .padding(.horizontal, MessagesStyle.horizontal)
-    .padding(.top, NessaSpacing.sm)
   }
 
   private var endpoint: String {

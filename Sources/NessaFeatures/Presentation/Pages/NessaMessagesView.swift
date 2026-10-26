@@ -9,7 +9,6 @@ public struct NessaMessagesView: View {
   private let dependencies: NessaDependencies
   @AppStorage("nessaGatewayAddress") private var address = "ws://127.0.0.1:7420/session"
   @AppStorage("nessaSurfaceInstance") private var instance = ""
-  @State private var settings = false
   @State private var pairing = false
   @State private var linkedChats = false
   /// The sidebar under the home screen is uncovered.
@@ -25,6 +24,9 @@ public struct NessaMessagesView: View {
     case channel(NessaChannel)
     /// Every agent at a glance.
     case agents
+    /// The person's settings, and the connection page under them.
+    case settings
+    case connection
     var conversationID: String? {
       if case .chat(let id, _) = self { return id }
       return nil
@@ -48,10 +50,7 @@ public struct NessaMessagesView: View {
         onAgents: { show([.agents]) },
         onChannel: { show([.channel($0)]) },
         onNewChat: compose,
-        onSettings: {
-          closeSidebar()
-          settings = true
-        })
+        onSettings: { show([.settings]) })
     } content: {
       stack
     }
@@ -139,11 +138,17 @@ public struct NessaMessagesView: View {
           ChannelChatsView(store: store, channel: channel) { id in
             path.append(.chat(id: id, focusComposer: false))
           }
+        case .settings:
+          NessaSettingsView(store: store, desktop: linkStore) { path.append(.connection) }
+        case .connection:
+          NessaConnectionView(
+            store: store, address: $address, instance: instance, desktop: linkStore,
+            onPair: pair, onShowChats: { linkedChats = true })
         case .allChats:
           MessagesInboxView(
             store: store, desktop: linkStore,
             onPair: pair,
-            onSettings: { settings = true },
+            onSettings: { path.append(.connection) },
             onOpen: { identifier in
               let id = store.existingConversationID(for: identifier) ?? identifier
               if path.last?.conversationID != id {
@@ -164,18 +169,6 @@ public struct NessaMessagesView: View {
           .navigationDestination(for: LinkedChatRoute.self) { route in
             LinkedDesktopThreadView(store: linkStore, conversationID: route.conversationID)
           }
-      }
-      .sheet(isPresented: $settings) {
-        NessaConnectionView(
-          store: store, address: $address, instance: instance, desktop: linkStore,
-          onPair: {
-            settings = false
-            pair()
-          },
-          onShowChats: {
-            settings = false
-            linkedChats = true
-          })
       }
       .sheet(isPresented: $pairing) {
         PairWithDesktopView(store: linkStore)

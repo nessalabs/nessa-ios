@@ -86,7 +86,7 @@ provider evidence, not the synthetic fixture. Uploads and permission approval
 were not retested against this live instance.
 
 The app remains in development mock mode. To test in the simulator, launch Debug
-with `NESSA_MODE=live`, use Connection settings with the endpoint above, and paste
+with `NESSA_MODE=live`, open Settings → Connection (the disc at the sidebar's foot) with the endpoint above, and paste
 the test panel credential from the private file (never include it in chat/logs):
 `/Users/nessa/Documents/Codex/2026-10-09/create-an-image-of-4/work/gateway-live-data/dev/instances/ios-check/auth/surfaces/nessa-panel.token`.
 The gateway's data and source live under this chat's `work/` directory and do not
