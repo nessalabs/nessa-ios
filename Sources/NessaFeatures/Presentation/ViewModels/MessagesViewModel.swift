@@ -46,6 +46,15 @@ public final class MessagesViewModel: ObservableObject {
   /// Their rows also stay in `conversations`, so opening and previewing work the same.
   @Published public private(set) var archivedConversations: [NessaConversation] = []
   public var archivedChats: [String] { archivedConversations.map(\.id) }
+  /// The chats grouped as the Agents view shows them. A chat waits on the person while its
+  /// open view holds a permission review.
+  public var agentsGlance: AgentsGlance {
+    let archived = Set(archivedChats)
+    let waiting = Set(views.filter { !$0.value.permissions.isEmpty }.keys)
+    return AgentsGlance(
+      conversations: visibleConversations.filter { !archived.contains($0.id) },
+      waiting: waiting, unread: Set(unreadChats))
+  }
   /// The chats in a channel, newest first; a chat that names no channel is in the default one.
   public func conversations(inChannel id: String) -> [NessaConversation] {
     let archived = Set(archivedChats)

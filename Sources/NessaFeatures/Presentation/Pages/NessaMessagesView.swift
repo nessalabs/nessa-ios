@@ -23,6 +23,8 @@ public struct NessaMessagesView: View {
     case allChats
     /// One channel's chats.
     case channel(NessaChannel)
+    /// Every agent at a glance.
+    case agents
     var conversationID: String? {
       if case .chat(let id, _) = self { return id }
       return nil
@@ -43,6 +45,7 @@ public struct NessaMessagesView: View {
     NessaSideDrawer(isOpen: $sidebar, edgeDragEnabled: path.isEmpty && !linkedChats) {
       NessaSidebar(
         store: store, current: path.last?.conversationID,
+        onAgents: { show([.agents]) },
         onAllChats: { show([.allChats]) },
         onChannel: { show([.channel($0)]) },
         onOpen: { show([.chat(id: $0, focusComposer: false)]) },
@@ -127,6 +130,8 @@ public struct NessaMessagesView: View {
             dictation: dependencies.makeDictationViewModel(), autoFocusComposer: focusComposer,
             firstMessage: firstMessages[id],
             onFirstMessageTaken: { firstMessages[id] = nil })
+        case .agents:
+          AgentsView(store: store) { id in path.append(.chat(id: id, focusComposer: false)) }
         case .channel(let channel):
           ChannelChatsView(store: store, channel: channel) { id in
             path.append(.chat(id: id, focusComposer: false))

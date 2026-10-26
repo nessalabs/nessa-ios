@@ -17,6 +17,8 @@ public enum NessaIconName: Sendable {
   case chats
   /// A channel.
   case hash
+  /// Four rounded squares: every agent at a glance.
+  case agents
   case pin
   case search
 }
@@ -121,6 +123,12 @@ struct NessaIconShape: Shape {
       line((16, 4.5), (14, 19.5))
       line((5, 9.5), (19.5, 9.5))
       line((4.5, 14.5), (19, 14.5))
+    case .agents:
+      for (x, y) in [(3.5, 3.5), (13.5, 3.5), (3.5, 13.5), (13.5, 13.5)] {
+        p.addRoundedRect(
+          in: CGRect(origin: pt(CGFloat(x), CGFloat(y)), size: CGSize(width: 7 * unit, height: 7 * unit)),
+          cornerSize: CGSize(width: 2 * unit, height: 2 * unit))
+      }
     case .pin:
       p.move(to: pt(9, 4))
       p.addLine(to: pt(15, 4))

@@ -7,6 +7,7 @@ struct NessaSidebar: View {
   @ObservedObject var store: MessagesViewModel
   /// The chat on screen, marked in the list.
   let current: String?
+  let onAgents: () -> Void
   let onAllChats: () -> Void
   let onChannel: (NessaChannel) -> Void
   let onOpen: (String) -> Void
@@ -19,6 +20,7 @@ struct NessaSidebar: View {
         Text("Nessa").font(MessagesStyle.sidebarTitle).foregroundStyle(MessagesStyle.foreground)
           .padding(.horizontal, NessaSpacing.md).padding(.bottom, NessaSpacing.sm)
           .accessibilityAddTraits(.isHeader)
+        row("Agents", icon: .agents, trailing: agentsHint, action: onAgents)
         row("Chats", icon: .chats, action: onAllChats)
         if !store.channels.isEmpty {
           section("Channels")
@@ -89,14 +91,24 @@ struct NessaSidebar: View {
       .accessibilityAddTraits(.isHeader)
   }
 
-  private func row(_ title: String, icon: NessaIconName, action: @escaping () -> Void)
-    -> some View
-  {
+  /// What the Agents row says beside its name: how many work right now, if any.
+  private var agentsHint: String? {
+    let working = store.agentsGlance.count(.working)
+    return working > 0 ? "\(working) working" : nil
+  }
+
+  private func row(
+    _ title: String, icon: NessaIconName, trailing: String? = nil,
+    action: @escaping () -> Void
+  ) -> some View {
     Button(action: action) {
       HStack(spacing: NessaSpacing.sm) {
         NessaIcon(icon).frame(width: MessagesStyle.sidebarIcon)
         Text(title).lineLimit(1)
         Spacer(minLength: 0)
+        if let trailing {
+          Text(trailing).font(MessagesStyle.preview).foregroundStyle(MessagesStyle.secondary)
+        }
       }
       .font(MessagesStyle.sidebarRow).foregroundStyle(MessagesStyle.foreground)
       .padding(.horizontal, NessaSpacing.sm)

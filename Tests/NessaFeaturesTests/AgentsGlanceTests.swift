@@ -1,0 +1,30 @@
+import Testing
+
+@testable import NessaFeatures
+
+@Suite struct AgentsGlanceTests {
+  private func chat(_ id: String, at time: Double, running: Bool = false) -> NessaConversation {
+    NessaConversation(
+      conversationId: id, title: id, preview: nil, updatedAtMs: time, running: running)
+  }
+
+  @Test func eachChatLandsInOneGroupNewestFirst() {
+    let glance = AgentsGlance(
+      conversations: [
+        chat("old", at: 1), chat("asks", at: 2, running: true), chat("busy", at: 3, running: true),
+        chat("done", at: 4), chat("busier", at: 5, running: true),
+      ],
+      waiting: ["asks"], unread: ["done", "old"])
+    #expect(glance.ids(.needsYou) == ["asks"])
+    #expect(glance.ids(.working) == ["busier", "busy"])
+    #expect(glance.ids(.finished) == ["done", "old"])
+    #expect(glance.ids(.earlier).isEmpty)
+    #expect(glance.summary == "1 needs you · 2 working · 2 finished")
+  }
+
+  @Test func nothingWaitingOrWorkingIsAllQuiet() {
+    let glance = AgentsGlance(conversations: [chat("a", at: 1)], waiting: [], unread: [])
+    #expect(glance.ids(.earlier) == ["a"])
+    #expect(glance.summary == "All quiet")
+  }
+}
