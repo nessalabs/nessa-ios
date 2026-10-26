@@ -74,7 +74,11 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
         continuation.yield(.view(cursor, view))
       }
     } else {
-      continuation.yield(.list(NessaConversationList(conversations: summaries, complete: true)))
+      // The inbox feed lists only unarchived chats, as the gateway's does.
+      continuation.yield(
+        .list(
+          NessaConversationList(
+            conversations: summaries.filter { !archived.contains($0.id) }, complete: true)))
     }
   }
   private func changed(_ id: String) {

@@ -24,6 +24,8 @@ public struct NessaMessagesView: View {
     /// The person's settings, and the connection page under them.
     case settings
     case connection
+    /// The chats archived from Agents.
+    case archived
     /// The chats the paired Mac shares, and one of them, read-only.
     case linkedChats
     case linkedChat(String)
@@ -138,7 +140,13 @@ public struct NessaMessagesView: View {
             path.append(.chat(id: id, focusComposer: false))
           }
         case .settings:
-          NessaSettingsView(store: store, desktop: linkStore) { path.append(.connection) }
+          NessaSettingsView(
+            store: store, desktop: linkStore, onConnection: { path.append(.connection) },
+            onArchived: { path.append(.archived) })
+        case .archived:
+          ArchivedChatsView(store: store) { id in
+            path.append(.chat(id: id, focusComposer: false))
+          }
         case .connection:
           NessaConnectionView(
             store: store, address: $address, instance: instance, desktop: linkStore,

@@ -20,16 +20,18 @@ struct AgentsView: View {
 
   var body: some View {
     let glance = store.agentsGlance
+    // A row on its way out no longer counts, so a chip never reads one chat it can't show.
+    let count = { (group: AgentsGroup) in glance.ids(group).filter { !leaving.contains($0) }.count }
     // A chosen group that has emptied (its last review answered) shows everything again,
     // rather than an empty screen with no chip chosen; the choice itself is cleared below,
     // so a new review does not narrow the list back by itself.
-    let showing = shown.flatMap { glance.count($0) > 0 ? $0 : nil }
+    let showing = shown.flatMap { count($0) > 0 ? $0 : nil }
     // A List, not a stack, for its swipe actions. It carries no implicit animation of its
     // own: an `.animation` on a List mixes into the collection view's row updates, so every
     // change it should animate goes through `withAnimation`.
     List {
       Group {
-        chips(glance, showing: showing)
+        chips(count, showing: showing)
         if store.pendingLoadError != nil { PendingDeliveryUnavailable(store: store) }
         ForEach(store.pendingCreations, id: \.requestID) { command in
           PendingCommandActions(command: command, store: store, onCreated: onOpen)
@@ -58,6 +60,11 @@ struct AgentsView: View {
             }
           }
         }
+        if !store.listComplete {
+          Text("Some conversations could not be listed.").font(MessagesStyle.caption)
+            .foregroundStyle(MessagesStyle.secondary)
+            .padding(.horizontal, MessagesStyle.horizontal).padding(.top, NessaSpacing.md)
+        }
       }
       .listRowInsets(EdgeInsets())
       .listRowSeparator(.hidden)
@@ -68,6 +75,11 @@ struct AgentsView: View {
     .environment(\.defaultMinListRowHeight, 0)
     .contentMargins(.bottom, NessaSpacing.xl, for: .scrollContent)
     .onChange(of: showing) { _, now in if now == nil { shown = nil } }
+    .refreshable {
+      // A paired Mac that dropped is tried again; a live connection reads its list afresh.
+      guard store.connected else { return await store.reconnectLinked() }
+      do { try await store.refreshList() } catch { store.error = error.localizedDescription }
+    }
     .onChange(of: store.connected) { _, _ in asking = nil }
     // An alert, centred with its own Cancel: a confirmation dialog on iOS 26 is a popover
     // anchored to the list, pointing at none of the rows that asked.
@@ -96,8 +108,10 @@ struct AgentsView: View {
     }
     .tint(MessagesStyle.danger)
     .disabled(!canDelete)
+    // Archived chats come back from Settings, under Archived chats.
     Button("Archive", systemImage: "archivebox") { ask(id, .archive) }
       .tint(MessagesStyle.archiveAction)
+      .disabled(!store.connected)
   }
 
   private var canDelete: Bool { store.connected && store.conversationAuthorityReady }
@@ -150,12 +164,12 @@ struct AgentsView: View {
     .padding(.horizontal, MessagesStyle.agentsCardGutter)
   }
 
-  private func chips(_ glance: AgentsGlance, showing: AgentsGroup?) -> some View {
+  private func chips(_ count: (AgentsGroup) -> Int, showing: AgentsGroup?) -> some View {
     ScrollView(.horizontal) {
       HStack(spacing: NessaSpacing.xs) {
         chip("All", selected: showing == nil) { shown = nil }
         ForEach(AgentsGroup.allCases, id: \.self) { group in
-          let count = glance.count(group)
+          let count = count(group)
           if count > 0 {
             chip("\(group.title) \(count)", selected: showing == group) {
               shown = showing == group ? nil : group
@@ -166,6 +180,8 @@ struct AgentsView: View {
       .padding(.horizontal, MessagesStyle.horizontal)
     }
     .scrollIndicators(.hidden)
+    // The list's bottom margin is for its own end, not this row's.
+    .contentMargins(.bottom, 0, for: .scrollContent)
     .padding(.top, NessaSpacing.sm)
   }
 

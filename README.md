@@ -86,7 +86,7 @@ compile but fails credential storage with errSecMissingEntitlement (-34018).
 
 ## Archive and delete chats
 
-In Agents, swipe a chat left for **Archive** and **Delete**. Each asks in an alert first; Delete permanently deletes that conversation through the gateway. Remote notification delivery is not implemented.
+In Agents, swipe a chat left for **Archive** and **Delete**. Each asks in an alert first; Delete permanently deletes that conversation through the gateway. Archived chats are listed under **Settings → Archived chats**, where a swipe unarchives one. Remote notification delivery is not implemented.
 
 ## Dependency injection and development
 
