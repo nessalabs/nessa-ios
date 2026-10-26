@@ -29,6 +29,10 @@ public struct NessaMessagesView: View {
       MessagesInboxView(
         store: store, desktop: linkStore,
         onOpenShared: { sharedChat = LinkedChatRoute(conversationID: $0) },
+        onPair: {
+          linkStore.reset()
+          pairing = true
+        },
         onSettings: { settings = true },
         onOpen: { identifier in
           let id = store.existingConversationID(for: identifier) ?? identifier

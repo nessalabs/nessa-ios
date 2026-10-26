@@ -7,6 +7,7 @@ struct MessagesInboxView: View {
   /// while no gateway connection is open.
   @ObservedObject var desktop: DesktopLinkViewModel
   let onOpenShared: (String) -> Void
+  let onPair: () -> Void
   let onSettings: () -> Void
   let onOpen: (String) -> Void
   let onCompose: () -> Void
@@ -48,9 +49,20 @@ struct MessagesInboxView: View {
         if !store.connected, desktop.linked != nil {
           SharedChatsSection(store: desktop, onOpen: onOpenShared)
         }
-        if !store.connected {
-          Button(store.reconnecting ? "Reconnecting…" : "Connect to Nessa", action: onSettings)
-            .font(MessagesStyle.body).padding(NessaSpacing.xl)
+        if !store.connected, store.reconnecting {
+          Text("Reconnecting…").font(MessagesStyle.body)
+            .foregroundStyle(MessagesStyle.secondary).padding(NessaSpacing.xl)
+        } else if !store.connected, desktop.linked == nil {
+          // Nothing to show yet: pairing with the Mac is the way in.
+          VStack(spacing: NessaSpacing.sm) {
+            Text("Pair with your Mac to see your chats here.")
+              .font(MessagesStyle.body).foregroundStyle(MessagesStyle.secondary)
+              .multilineTextAlignment(.center)
+            Button("Pair with your Mac", action: onPair).buttonStyle(.nessaPrimary)
+          }
+          .frame(maxWidth: .infinity).padding(NessaSpacing.xl)
+        } else if !store.connected {
+          EmptyView()
         } else if store.visibleConversations.isEmpty {
           InboxEmptyState(onCompose: onCompose)
             .disabled(
