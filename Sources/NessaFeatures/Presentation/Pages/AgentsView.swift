@@ -153,7 +153,8 @@ private struct AgentsTitle: ToolbarContent {
     #endif
   }
   private var title: some View {
-    Text("Agents").font(AgentsStyle.title).accessibilityAddTraits(.isHeader)
+    // At its own width: a bar item is otherwise measured narrow and the title cut to "A…".
+    Text("Agents").font(AgentsStyle.title).fixedSize().accessibilityAddTraits(.isHeader)
   }
 }
 
