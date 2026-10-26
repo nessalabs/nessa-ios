@@ -385,22 +385,6 @@ private func previewThread(_ text: String? = nil) -> NessaConversationView {
   await pending.value
   #expect(model.previewState(for: "thread") == .unavailable)
 }
-@Test @MainActor func frozenChatMenuCannotFollowAnAliasIntoAnotherConversation() async {
-  let repository = DelayedRepository()
-  let model = await previewModel(repository, alias: true)
-  let selection = ChatMenuSelection(identifier: "codex", store: model)
-  #expect(selection.conversationID == "thread")
-  #expect(selection.isCurrent(in: model))
-  // A current read can update the agent's preferred thread within the same profile.
-  let newView = NessaConversationView(
-    conversationId: "other", messages: [], permissions: [], truncated: false,
-    interactionViewError: nil, runtime: .init(agent: "codex"))
-  await repository.useImmediateRead(newView)
-  await model.refresh("other")
-  #expect(model.deliveryScopeRevision == selection.scope)
-  #expect(!selection.isCurrent(in: model))
-}
-
 @Test @MainActor func automaticConnectionLossReleasesObsoletePreviewOwnership() async {
   let repository = DelayedRepository()
   let model = await previewModel(repository)
@@ -423,26 +407,13 @@ private func previewThread(_ text: String? = nil) -> NessaConversationView {
   await replacement.value
   #expect(model.previewState(for: "thread") == .available(previewThread("New connection")))
 }
-@Test @MainActor func legacyPinnedDeleteUsesFrozenConversationAndClearsAliasPreferences()
-  async throws
-{
+@Test @MainActor func deletingAnAliasedChatClearsItsPreferences() async {
   let repository = DelayedRepository()
   let model = await previewModel(repository, alias: true)
   model.togglePin("codex")
   model.markUnread("codex")
   model.toggleAlerts("codex")
-  let selection = ChatMenuSelection(identifier: "codex", store: model)
-  var confirmed: String?
-  var asked: String?
-  let actions = chatMenuActions(
-    selection: selection, store: model, onArchive: { asked = $0 }, onDelete: { confirmed = $0 })
-  // Archive only asks: the inbox confirms in place before anything moves.
-  try #require(actions.first { $0.id == "archive" }).perform()
-  #expect(asked == "thread")
-  #expect(!model.archivedChats.contains("thread"))
-  try #require(actions.first { $0.id == "delete" }).perform()
-  #expect(confirmed == "thread")
-  await model.deleteConversations([try #require(confirmed)])
+  await model.deleteConversations(["thread"])
   #expect(!model.hasConversation("codex"))
   #expect(!model.isPinned("codex"))
   #expect(!model.unreadChats.contains("codex"))

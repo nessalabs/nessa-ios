@@ -67,35 +67,3 @@ public struct NessaPrimaryButtonStyle: ButtonStyle {
 extension ButtonStyle where Self == NessaPrimaryButtonStyle {
   public static var nessaPrimary: NessaPrimaryButtonStyle { NessaPrimaryButtonStyle() }
 }
-
-/// The glass search capsule.
-public struct NessaSearchField: View {
-  @Binding private var text: String
-  private let prompt: String
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  public init(_ prompt: String = "Search", text: Binding<String>) {
-    self.prompt = prompt
-    self._text = text
-  }
-  public var body: some View {
-    HStack(spacing: NessaSpacing.xs) {
-      Image(systemName: "magnifyingglass").font(MessagesStyle.icon)
-        .foregroundStyle(MessagesStyle.secondary)
-      TextField(prompt, text: $text).font(MessagesStyle.body)
-      if !text.isEmpty {
-        Button {
-          text = ""
-        } label: {
-          Image(systemName: "xmark.circle.fill").foregroundStyle(MessagesStyle.secondary)
-        }
-        .buttonStyle(.nessaPress)
-        .accessibilityLabel("Clear search")
-        .transition(.scale.combined(with: .opacity))
-      }
-    }
-    .padding(.horizontal, NessaSpacing.md)
-    .frame(height: MessagesStyle.composerHeight)
-    .messagesGlass()
-    .animation(reduceMotion ? nil : NessaMotion.morph, value: text.isEmpty)
-  }
-}

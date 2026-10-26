@@ -193,3 +193,22 @@ private actor ScriptedReviews: MessagingRepository, ReviewNoticeSource {
   #expect(model.waitingPermission(in: id) == newer)
   #expect(model.waitingPermission(in: "00000000-0000-4000-8000-000000000009") == nil)
 }
+
+@Test @MainActor func anArchivedChatStaysOutOfAgentsWhenTheListChangesAfter() async throws {
+  let model = MessagesViewModel(
+    service: MessagingService(repository: MockRepository()), credentials: InMemoryCredentialStore(),
+    preferences: InMemoryChatPreferences())
+  await model.connect(address: "mock://one", credential: "", instance: "phone")
+  let inbox = Task { await model.watchInbox() }
+  defer { inbox.cancel() }
+  let archived = "00000000-0000-4000-8000-000000000001"
+  let deleted = "00000000-0000-4000-8000-000000000003"
+  let all = { (glance: AgentsGlance) in AgentsGroup.allCases.flatMap { glance.ids($0) } }
+  try await eventually { all(model.agentsGlance).contains(archived) }
+  await model.setArchived(true, conversationID: archived)
+  #expect(!all(model.agentsGlance).contains(archived))
+  // Deleting another chat moves the inbox feed; the archived one must not ride back on it.
+  await model.deleteConversations([deleted])
+  try await eventually { !model.conversations.contains { $0.id == deleted } }
+  #expect(!all(model.agentsGlance).contains(archived))
+}

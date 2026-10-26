@@ -2,7 +2,6 @@ import SwiftUI
 
 /// Measurements in points, taken from the 440-point-wide Messages references.
 public enum MessagesStyle {
-  public static let pinAction = Color(hex: 0xFF9F0A)
   /// Archiving is quiet and undoable: a neutral grey, never a hue.
   public static let archiveAction = Color(hex: 0x636366)
   public static let tapbackPinkLight = Color(hex: 0xFFB3DB)
@@ -133,33 +132,17 @@ public enum MessagesStyle {
   public static let ditherHeight: CGFloat = 150
   /// The bottom bar's ground reaches this far above the bar.
   public static let footerRise: CGFloat = 40
-  public static let emptyAvatar: CGFloat = 56
   public static let rowSeparator = NessaColor.hairline
-  /// The multi-select mark: a grey ring at rest, a white disc with a dark tick when chosen.
-  public static let selectionMark: CGFloat = 22
-  public static let selectionRingWidth: CGFloat = 1.5
-  public static let selectionRingOpacity: Double = 0.28
-  public static let selectionTick = Font.system(size: 11, weight: .bold)
-  /// A chosen mark grows from this scale on `selectionPop`.
-  public static let selectionPopScale: CGFloat = 0.6
-  public static let selectionPop = Animation.spring(duration: 0.14, bounce: 0.2)
-  /// A selected row is lifted this faintly off the ground.
-  public static let selectedRowFill = NessaColor.foreground.opacity(0.05)
-  public static let selectedRowRadius: CGFloat = 14
   /// A control swapping in place grows from this scale.
   public static let swapScale: CGFloat = 0.5
   /// A deleted or archived row fading out before the rows below close up: a
   /// micro-interaction.
   public static let rowFadeOut: Double = 0.12
-  /// How long a reconnect runs before the inbox offers Try again.
-  public static let reconnectPatience: Double = 5
   /// How long the list takes to close up after a row leaves, before the row's fade can be
   /// cleared for wherever it went (the archive, say).
   public static let rowSettle: Double = 0.35
   public static let sendPressScale: CGFloat = 0.86
   public static let headerPressScale: CGFloat = 0.97
-  public static let emptyTitle = Font.system(size: 22, weight: .semibold)
-  public static let unreadDot: CGFloat = 10
   /// The connection's live dot, beside its status word.
   public static let statusDot: CGFloat = 8
   /// A hairline between the rows of one card.
@@ -188,7 +171,6 @@ public enum MessagesStyle {
   public static let title = Font.system(size: 17, weight: .semibold)
   public static let preview = Font.system(size: 15)
   public static let caption = Font.system(size: 12)
-  public static let pinLabel = Font.system(size: 12)
   public static let icon = Font.system(size: 21, weight: .regular)
   public static let pinControlSize: CGFloat = 32
   public static let pinControlIcon = Font.system(size: 15, weight: .semibold)
@@ -196,9 +178,6 @@ public enum MessagesStyle {
   public static let horizontal: CGFloat = 20
   public static let previewWidth: CGFloat = 340
   public static let previewHeight: CGFloat = 480
-  public static let pinnedAvatar: CGFloat = 82
-  /// A chat pinned or unpinned grows from, or shrinks to, this scale in the grid.
-  public static let pinEnterScale: CGFloat = 0.6
   public static let detailsAvatar: CGFloat = 64
   public static let sendButton: CGFloat = 30
   public static let bubbleGutter: CGFloat = 70
@@ -256,10 +235,7 @@ public enum MessagesStyle {
     return .asymmetric(insertion: insertion, removal: bubbleRemoval)
   }
   public static let groupSpacing: CGFloat = 28
-  public static let pinGap: CGFloat = 18
-  public static let pinRowGap: CGFloat = 18
   public static let bottomInset: CGFloat = 8
-  public static let toolbarGap: CGFloat = 12
   /// The home screen's greeting: the one serif line in the app, set like a title page.
   public static let greeting = Font.system(size: 30, weight: .regular, design: .serif)
   /// The line under the greeting saying where a message will go.

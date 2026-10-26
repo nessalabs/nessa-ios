@@ -7,11 +7,11 @@ The app, Swift packages, scheme, and source modules are Nessa-only.
 
 ## Current behavior
 
-Search and open conversations, start a conversation on the gateway's default
-agent, send text, receive live inbox and thread updates, and answer pending
+Open conversations from Agents or a channel, start a conversation on the gateway's
+default agent, send text, receive live list and thread updates, and answer pending
 permission reviews with the exact offered options.
 Credentials are stored in this device's Keychain. The interface matches the supplied dark Messages references with glass controls,
-circular pinned-chat avatars, blue outgoing bubbles, and gray incoming bubbles.
+blue outgoing bubbles, and gray incoming bubbles.
 Debug builds use the injected MockRepository by default; Release builds use the real gateway.
 The inherited screens, Nostr transport, and crypto dependencies have been removed.
 
@@ -84,15 +84,15 @@ Simulator builds need ad hoc signing for Keychain access; an unsigned build can
 compile but fails credential storage with errSecMissingEntitlement (-34018).
 
 
-## Pin chats and open details
+## Archive and delete chats
 
-Pin up to three existing chats. Tap **Edit** to pin or unpin a chat, or long-press a conversation and choose **Pin**. Pinned chats appear as circular avatars above the inbox; there is no agent catalog or agent picker. Long-press a pinned chat for a conversation preview, Unpin, Mark as Unread, Hide Alerts, and Delete. Delete confirms before permanently deleting that conversation through the gateway. Unread and mute preferences are saved on this device; remote notification delivery is not implemented.
+In Agents, swipe a chat left for **Archive** and **Delete**. Each asks in an alert first; Delete permanently deletes that conversation through the gateway. Archived chats are listed under **Settings → Archived chats**, where a swipe unarchives one. Remote notification delivery is not implemented.
 
 ## Dependency injection and development
 
 `App/Nessa/NessaApp.swift` is the app composition entry point. `Composition/NessaDependencies.swift` constructs either live adapters or in-memory development adapters. Pages receive a view model from that container; view models receive a `MessagingService`, credential and preferences ports, a snapshot session, and a recovery policy. They never construct infrastructure.
 
-Debug defaults to fake data: twelve chats with scrollable message histories. Send, create, pin, preview, and delete work in memory. Restarting resets development data. Set `NESSA_MODE=live` in the Xcode scheme environment to use your real backend during Debug. Release always selects live. Tests and previews can inject a custom repository with `NessaDependencies.development(repository:)`.
+Debug defaults to fake data: twelve chats with scrollable message histories. Send, create, archive, and delete work in memory. Restarting resets development data. Set `NESSA_MODE=live` in the Xcode scheme environment to use your real backend during Debug. Release always selects live. Tests and previews can inject a custom repository with `NessaDependencies.development(repository:)`.
 
 Source layout:
 
@@ -101,8 +101,8 @@ Source layout:
 - `Infrastructure/`: WebSocket repository, attachment HTTP transport, mock repository, Keychain and preferences adapters.
 - `Composition/`: dependency wiring and build-mode selection.
 - `Presentation/ViewModels/`: observable screen state and async action coordination.
-- `Presentation/Pages/`: inbox, thread, details, connection and navigation composition.
-- `Presentation/Composites/`: feature sections such as headers, pinned chats, preview, composer and attachment tray.
+- `Presentation/Pages/`: home, Agents, channel, thread, details, connection and navigation composition.
+- `Presentation/Composites/`: feature sections such as headers, permission cards, composer and attachment tray.
 - `Presentation/Components/`: leaf controls, bubbles, avatars and platform picker bridges.
 - `NessaDesignSystem/`: shared visual tokens, shapes, glass and scroll-dependent header blur.
 
@@ -114,7 +114,7 @@ New phone chats retain the gateway's default model when it supports images, othe
 
 ## Header behavior
 
-On iOS 26, header and composer controls use `safeAreaBar` with the system’s soft scroll-edge effect. The system supplies the gradual blur as content passes underneath; no custom material rectangle overlays it. Earlier supported versions use a scroll-dependent material fallback. The chat header uses a 44-point avatar and compact 15-point label. Inbox rows are 84 points tall, providing a little extra vertical space.
+On iOS 26, header and composer controls use `safeAreaBar` with the system’s soft scroll-edge effect. The system supplies the gradual blur as content passes underneath; no custom material rectangle overlays it. Earlier supported versions use a scroll-dependent material fallback. The chat header uses a 44-point avatar and compact 15-point label.
 
 References: [Adopting Liquid Glass](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass), [safeAreaBar](https://developer.apple.com/documentation/swiftui/view/safeareabar(edge:alignment:spacing:content:)), [soft scroll-edge effect](https://developer.apple.com/documentation/swiftui/scrolledgeeffectstyle/soft). Apple documents the platform behavior; the compact dimensions are Nessa’s design choices, not published Messages internals.
 

@@ -15,8 +15,9 @@ struct PendingCommandActions: View {
       Text(title).font(MessagesStyle.caption)
       Spacer()
       if store.checkingCommands.contains(command.requestID) { ProgressView() }
-      Button("Check") { recover(retry: false) }
-      Button("Retry") { recover(retry: true) }
+      // Borderless, so in a List row each button takes only its own taps.
+      Button("Check") { recover(retry: false) }.buttonStyle(.borderless)
+      Button("Retry") { recover(retry: true) }.buttonStyle(.borderless)
     }.font(MessagesStyle.caption).foregroundStyle(MessagesStyle.foreground)
       .padding(.horizontal, MessagesStyle.horizontal).padding(.vertical, NessaSpacing.sm)
       .disabled(!store.connected || store.checkingCommands.contains(command.requestID))

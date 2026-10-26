@@ -40,7 +40,7 @@ public final class MessagesViewModel: ObservableObject {
   @Published public var pinnedChats: [String] = []
   @Published public var unreadChats: [String] = []
   @Published public var mutedChats: [String] = []
-  /// The chats the gateway holds archived, read when the Archived list is shown. The
+  /// The chats the gateway holds archived, read when Settings' Archived page is shown. The
   /// gateway decides which chats are archived; a new message there unarchives one, and the
   /// inbox feed (which lists only unarchived chats) showing it again takes it off this list.
   /// Their rows also stay in `conversations`, so opening and previewing work the same.
@@ -562,7 +562,7 @@ public final class MessagesViewModel: ObservableObject {
     preferences.save(unreadChats, forKey: statusKey + ".unread")
     preferences.save(mutedChats, forKey: statusKey + ".muted")
   }
-  /// Reads the gateway's archived chats for the Archived list.
+  /// Reads the gateway's archived chats for the Archived page.
   public func loadArchived() async {
     guard connected else { return }
     let expected = generation
