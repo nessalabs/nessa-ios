@@ -45,7 +45,7 @@ public struct NessaProfileDisc: View {
 }
 
 enum ProfileDiscStyle {
-  static let cell: CGFloat = 2.5
+  static let cell: CGFloat = 2
   static let smallestDot: CGFloat = 0.6
   /// How lit the ground around the figure is, next to the figure's 1.
   static let ground: Double = 0.18
