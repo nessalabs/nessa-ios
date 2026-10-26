@@ -18,8 +18,6 @@ struct ChannelChatsView: View {
     let chats = store.conversations(inChannel: channel.id)
     List {
       Group {
-        Text(channel.folder).font(NessaType.mono).foregroundStyle(MessagesStyle.secondary)
-          .lineLimit(1).truncationMode(.head)
         if chats.isEmpty {
           Text("No chats in this channel yet.").font(MessagesStyle.body)
             .foregroundStyle(MessagesStyle.secondary).padding(.vertical, NessaSpacing.xl)

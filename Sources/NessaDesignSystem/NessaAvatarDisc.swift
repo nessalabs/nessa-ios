@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Nessa's face: a soft painted disc, seeded from a name and the agent hue wheel, the
-/// phone's version of the desktop's `RandomAvatar`. The same seed paints the same disc
-/// on every launch and device. It is drawn once and holds still: continuous paint work
-/// costs frames, which is why the desktop stilled its avatars too.
+/// A chat's face: the home screen's light in the same halftone as the channel tiles and the
+/// profile disc, falling from a few soft sources the seed places, so every chat has its own
+/// pattern and the app stays one monochrome ground. The same seed draws the same disc on every
+/// launch and device. It is drawn once and holds still: continuous paint work costs frames.
 public struct NessaAvatarDisc: View {
   private let paint: NessaAvatarPaint
   private let size: CGFloat
@@ -13,68 +13,56 @@ public struct NessaAvatarDisc: View {
   }
   public var body: some View {
     Canvas { context, canvas in
-      let bounds = CGRect(origin: .zero, size: canvas)
-      context.fill(
-        Path(bounds),
-        with: .linearGradient(
-          Gradient(colors: [paint.ground.0, paint.ground.1]),
-          startPoint: CGPoint(x: bounds.minX, y: bounds.minY),
-          endPoint: CGPoint(x: bounds.maxX, y: bounds.maxY)))
-      var blooms = context
-      blooms.addFilter(.blur(radius: canvas.width * 0.16))
-      for bloom in paint.blooms {
-        let radius = bloom.radius * canvas.width
-        let rect = CGRect(
-          x: bloom.center.x * canvas.width - radius, y: bloom.center.y * canvas.height - radius,
-          width: radius * 2, height: radius * 2)
-        blooms.fill(Path(ellipseIn: rect), with: .color(bloom.color))
-      }
-      context.fill(
-        Path(bounds),
-        with: .radialGradient(
-          Gradient(colors: [.white.opacity(0.32), .clear]),
-          center: CGPoint(x: canvas.width * 0.3, y: canvas.height * 0.22),
-          startRadius: 0, endRadius: canvas.width * 0.6))
+      // The dots keep about the same count across a disc, so a small one is not mush and a
+      // large one not coarse.
+      let cell = max(AvatarDiscStyle.smallestCell, canvas.width / AvatarDiscStyle.cellsAcross)
+      NessaHalftone.fill(
+        context, canvas, cell: cell, smallestDot: cell * AvatarDiscStyle.smallestDotShare,
+        color: MessagesStyle.channelLight
+      ) { p in paint.light(at: CGPoint(x: p.x / canvas.width, y: p.y / canvas.height)) }
     }
     .frame(width: size, height: size)
     .clipShape(Circle())
-    .overlay(Circle().strokeBorder(NessaColor.hairline, lineWidth: 0.5))
+    .overlay(Circle().strokeBorder(MessagesStyle.litRim, lineWidth: 0.5))
     .drawingGroup()
     .accessibilityHidden(true)
   }
 }
 
-/// What to paint for one seed. Separate from the view so the choice is plain data.
+enum AvatarDiscStyle {
+  static let cellsAcross: CGFloat = 18
+  static let smallestCell: CGFloat = 1.6
+  static let smallestDotShare: CGFloat = 0.25
+  /// The light every cell keeps, so the disc reads whole at its dimmest side.
+  static let floor: Double = 0.1
+}
+
+/// Where one seed's light comes from. Separate from the view so the choice is plain data.
 struct NessaAvatarPaint {
   struct Bloom {
     let center: CGPoint
     let radius: CGFloat
-    let color: Color
+    let strength: Double
   }
-  let ground: (Color, Color)
   let blooms: [Bloom]
 
   init(seed: String) {
     var random = SeededRandom(seed: seed)
-    let hues = NessaColor.agentHues
-    func hue(_ index: Int) -> Double {
-      let base = hues[index % hues.count] + random.next(in: -14.0...14.0)
-      return (base + 360).truncatingRemainder(dividingBy: 360) / 360
-    }
-    let first = Int(random.next(in: 0...Double(hues.count - 1)).rounded())
-    ground = (
-      Color(hue: hue(first), saturation: 0.16, brightness: 0.86),
-      Color(hue: hue(first + 1), saturation: 0.24, brightness: 0.74)
-    )
-    blooms = (0..<3).map { index in
+    blooms = (0..<3).map { _ in
       Bloom(
-        center: CGPoint(x: random.next(in: 0.1...0.9), y: random.next(in: 0.15...0.95)),
-        radius: CGFloat(random.next(in: 0.28...0.46)),
-        color: Color(
-          hue: hue(first + 2 + index), saturation: random.next(in: 0.26...0.4),
-          brightness: random.next(in: 0.78...0.9)
-        ).opacity(0.75))
+        center: CGPoint(x: random.next(in: -0.1...1.1), y: random.next(in: -0.1...1.1)),
+        radius: CGFloat(random.next(in: 0.45...0.85)),
+        strength: random.next(in: 0.55...1))
     }
+  }
+
+  /// How lit a point of the unit square is: each bloom fades out over its radius, and they add.
+  func light(at p: CGPoint) -> Double {
+    let lit = blooms.reduce(0.0) { total, bloom in
+      let falloff = max(0, 1 - hypot(p.x - bloom.center.x, p.y - bloom.center.y) / bloom.radius)
+      return total + bloom.strength * Double(falloff * falloff)
+    }
+    return AvatarDiscStyle.floor + (1 - AvatarDiscStyle.floor) * min(1, lit)
   }
 }
 
