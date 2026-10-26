@@ -20,11 +20,17 @@ public struct NessaProfileDisc: View {
   }
 
   /// How lit a point is: the figure full where the light reaches it, the ground around it
-  /// only faintly, both brighter towards the bottom.
+  /// only faintly, both brighter towards the bottom. The dimmest ground, at the top, still
+  /// draws dots (`ProfileDiscStyle.topLight`), so the disc reads as a whole circle rather than
+  /// one whose top is missing.
   static func light(_ p: CGPoint, _ s: CGSize) -> Double {
     let rise = max(0, min(1, 1.15 - p.y / s.height))
-    let below = 0.35 + 0.65 * (1 - rise)
-    return (figure(p, s) ? 1 : ProfileDiscStyle.ground) * below
+    let below = ProfileDiscStyle.topLight + (1 - ProfileDiscStyle.topLight) * (1 - rise)
+    // The figure keeps most of its light to the top of the head, so its crown stays round.
+    if figure(p, s) {
+      return ProfileDiscStyle.figureTop + (1 - ProfileDiscStyle.figureTop) * below
+    }
+    return ProfileDiscStyle.ground * below
   }
 
   /// Whether a point is on the head or the shoulders.
@@ -43,4 +49,9 @@ enum ProfileDiscStyle {
   static let smallestDot: CGFloat = 0.6
   /// How lit the ground around the figure is, next to the figure's 1.
   static let ground: Double = 0.18
+  /// How much of the light reaches the top of the disc, next to 1 at its foot. With `ground`
+  /// it keeps the top's dots above `smallestDot`, which the halftone leaves out.
+  static let topLight: Double = 0.6
+  /// The least light on the figure, at the top of the head, next to 1 at its shoulders.
+  static let figureTop: Double = 0.7
 }

@@ -60,7 +60,10 @@ public struct NessaChannelTile: View {
       NessaHalftone.fill(
         context, size, cell: ChannelTileStyle.cell, smallestDot: ChannelTileStyle.smallestDot,
         color: MessagesStyle.channelLight
-      ) { p in max(0, 1 - hypot(p.x - centre.x, p.y - centre.y) / reach) }
+      ) { p in
+        let falloff = max(0, 1 - hypot(p.x - centre.x, p.y - centre.y) / reach)
+        return ChannelTileStyle.floor + (1 - ChannelTileStyle.floor) * falloff
+      }
     }
     .overlay {
       Text(Self.initial(name)).font(MessagesStyle.channelInitial)
@@ -85,6 +88,9 @@ enum ChannelTileStyle {
   static let smallestDot: CGFloat = 0.7
   /// How far the light carries, as a share of the tile's width.
   static let reach: CGFloat = 1.15
+  /// The light every cell keeps, however far from the source: enough for a dot just over
+  /// `smallestDot`, so the far side of the tile is faint rather than missing.
+  static let floor: Double = 0.1
   /// Where the light comes from, in the tile's unit square: four sides, just off its edges.
   static let sources: [CGPoint] = [
     CGPoint(x: 0.5, y: 1.25), CGPoint(x: -0.15, y: -0.15), CGPoint(x: 1.25, y: 0.5),
