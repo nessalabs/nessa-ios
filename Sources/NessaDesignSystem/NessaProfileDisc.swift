@@ -51,7 +51,7 @@ enum ProfileDiscStyle {
   static let ground: Double = 0.18
   /// How much of the light reaches the top of the disc, next to 1 at its foot. With `ground`
   /// it keeps the top's dots above `smallestDot`, which the halftone leaves out.
-  static let topLight: Double = 0.6
+  static let topLight: Double = 0.7
   /// The least light on the figure, at the top of the head, next to 1 at its shoulders.
   static let figureTop: Double = 0.7
 }
