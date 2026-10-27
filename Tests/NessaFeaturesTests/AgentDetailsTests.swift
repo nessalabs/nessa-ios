@@ -1,10 +1,12 @@
 import Foundation
 import Testing
+
 @testable import NessaFeatures
 
 @Test func artifactsPreserveDuplicateOccurrencesAndTurnIdentity() {
-  let image = NessaImageAttachment(digest: "same", mimeType: "image/png", size: 1)
-  var turn = NessaTurn(executionId: "first", userText: "", status: "completed", error: nil, parts: [])
+  let image = NessaStoredAttachment(digest: "same", mimeType: "image/png", size: 1)
+  var turn = NessaTurn(
+    executionId: "first", userText: "", status: "completed", error: nil, parts: [])
   turn.attachments = [image, image]
   turn.files = [NessaFileAttachment(name: "notes.txt", mimeType: "text/plain", data: nil)]
   let artifacts = ConversationArtifact.collect(from: [turn])
@@ -14,8 +16,10 @@ import Testing
 }
 
 @Test func liveTurnsWithoutOptionalFilesRemainDecodable() throws {
-  let turn = try JSONDecoder().decode(NessaTurn.self, from: Data(
-    #"{"executionId":"live","userText":"Hi","status":"completed","parts":[]}"#.utf8))
+  let turn = try JSONDecoder().decode(
+    NessaTurn.self,
+    from: Data(
+      #"{"executionId":"live","userText":"Hi","status":"completed","parts":[]}"#.utf8))
   #expect(turn.files == nil)
   #expect(ConversationArtifact.collect(from: [turn]).isEmpty)
   let profile = AgentProfile(id: "other", displayName: "Other agent")
@@ -29,9 +33,11 @@ import Testing
   #expect(try await repository.agents().first?.prompt == nil)
   let id = try await repository.create(agent: "helper")
   let bytes = Data("Hello from a file".utf8)
-  try await repository.send("", attachments: [
-    DraftAttachment(name: "Hello.txt", mimeType: "text/plain", data: bytes)
-  ], conversationID: id)
+  try await repository.send(
+    "",
+    attachments: [
+      DraftAttachment(name: "Hello.txt", mimeType: "text/plain", data: bytes)
+    ], conversationID: id)
   #expect(try await repository.read(id).runtime?.agent == "helper")
   #expect(try await repository.read(id).messages.first?.files?.first?.data == bytes)
   try await Task.sleep(for: .seconds(1.5))

@@ -27,13 +27,13 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
     WaitingReviews(
       reviews: threads.values.sorted { updated($0.conversationId) < updated($1.conversationId) }
         .flatMap { view in
-        view.permissions.map {
-          WaitingReviews.Review(
-            conversationId: view.conversationId, executionId: $0.executionId,
-            permissionId: $0.permissionId, tool: $0.toolName,
-            title: summaries.first { $0.id == view.conversationId }?.title)
-        }
-      })
+          view.permissions.map {
+            WaitingReviews.Review(
+              conversationId: view.conversationId, executionId: $0.executionId,
+              permissionId: $0.permissionId, tool: $0.toolName,
+              title: summaries.first { $0.id == view.conversationId }?.title)
+          }
+        })
   }
   private func updated(_ id: String) -> Double {
     summaries.first { $0.id == id }?.updatedAtMs ?? 0
@@ -91,7 +91,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
   private var connected = false
   private var generation = 0
   private var images: [String: Data] = [:]
-  public func imageData(for attachment: NessaImageAttachment) throws -> Data? {
+  public func imageData(for attachment: NessaStoredAttachment) throws -> Data? {
     try requireConnection()
     return images[attachment.digest]
   }
@@ -247,7 +247,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
       NessaFileAttachment(name: $0.name, mimeType: $0.mimeType, data: $0.data)
     }
     turn.attachments = attachments.filter(\.isImage).map {
-      NessaImageAttachment(digest: "mock:\($0.id)", mimeType: $0.mimeType, size: $0.data.count)
+      NessaStoredAttachment(digest: "mock:\($0.id)", mimeType: $0.mimeType, size: $0.data.count)
     }
     threads[conversationID] = NessaConversationView(
       conversationId: conversationID, messages: current.messages + [turn],

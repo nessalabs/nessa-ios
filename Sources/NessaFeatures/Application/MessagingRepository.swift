@@ -19,7 +19,7 @@ public protocol MessagingRepository: Sendable {
   func answer(_ permission: NessaPermission, option: NessaPermission.Option, conversationID: String)
     async throws
   func delete(_ conversationID: String) async throws
-  func imageData(for attachment: NessaImageAttachment) async throws -> Data?
+  func imageData(for attachment: NessaStoredAttachment) async throws -> Data?
   func disconnect() async
 }
 
@@ -34,7 +34,7 @@ extension MessagingRepository {
   public func create(agent: String?, model: String?, channel: String?) async throws -> String {
     try await create(agent: agent, model: model)
   }
-  public func imageData(for attachment: NessaImageAttachment) async throws -> Data? { nil }
+  public func imageData(for attachment: NessaStoredAttachment) async throws -> Data? { nil }
   @discardableResult
   public func send(_ text: String, conversationID: String) async throws -> String {
     try await send(text, attachments: [], conversationID: conversationID)

@@ -119,3 +119,23 @@ background and physically close the app's native owner first. Never open the
 same private directory concurrently. An empty owner list does not prove no
 sessions exist: the product list excludes chats without a summary. Native
 `notLoaded` is recorded as such, not converted to an empty readable transcript.
+
+
+To check general files through the production Swift model against a disposable
+real gateway and its deterministic ACP fixture, build `PhoneSyncVerification`,
+then run from the matching gateway checkout:
+
+```sh
+NESSA_PHONE_FILE_CHECK=/absolute/path/to/nessa-ios/.build/debug/PhoneSyncVerification pnpm exec tsx scripts/smoke-conversation.mjs
+```
+
+The smoke runner creates its own private gateway namespace and credential, runs
+`--files`, and cleans up. The Swift check sends synthetic PDF, ZIP and text bytes
+(about 72 KiB each) through both the command journal and the persistent phone
+outbox, waits for provider-side SHA-256 readback, checks original history
+references and empty command journals, and deletes its test chats. The paired
+native lifecycle fixture separately checks uploaded-file metadata online,
+offline and after the gateway restarts. No
+personal file is read. Native exchange tests separately exercise piece writes
+and exact send/receipt references. This is live gateway/Swift-to-ACP-fixture
+coverage; it does not claim a physical phone picker or a real model service.

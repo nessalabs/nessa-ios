@@ -14,7 +14,7 @@ public struct NessaFileAttachment: Codable, Sendable, Equatable {
 
 public struct ConversationArtifact: Identifiable, Sendable, Equatable {
   public enum Content: Sendable, Equatable {
-    case image(NessaImageAttachment)
+    case image(NessaStoredAttachment)
     case file(NessaFileAttachment)
   }
   public let id: String
@@ -30,7 +30,12 @@ public struct ConversationArtifact: Identifiable, Sendable, Equatable {
       let files = (turn.files ?? []).enumerated().map { index, file in
         Self(id: "\(turn.id):file:\(index)", turnID: turn.id, content: .file(file))
       }
-      return images + files
+      let uploads = (turn.uploads ?? []).enumerated().map { index, file in
+        Self(
+          id: "\(turn.id):upload:\(index)", turnID: turn.id,
+          content: .file(NessaFileAttachment(name: file.name, mimeType: file.mimeType)))
+      }
+      return images + files + uploads
     }
   }
 }

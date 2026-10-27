@@ -33,8 +33,9 @@ public struct NessaTurn: Codable, Identifiable, Sendable, Equatable {
   public let status: String
   public let error: String?
   public let parts: [NessaPart]
-  public var attachments: [NessaImageAttachment]? = nil
+  public var attachments: [NessaStoredAttachment]? = nil
   public var files: [NessaFileAttachment]? = nil
+  public var uploads: [NessaUploadedFile]? = nil
   /// Join only adjacent fragments carrying the same provider message identity.
   public var bubbles: [String] { displayBubbles.map(\.text) }
   public var displayBubbles: [MessageFragment] {

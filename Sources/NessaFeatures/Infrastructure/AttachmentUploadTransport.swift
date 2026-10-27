@@ -12,7 +12,7 @@ private final class NoUploadRedirects: NSObject, URLSessionTaskDelegate {
 
 enum AttachmentUploadTransport {
   static func put(_ attachment: DraftAttachment, ticket: String, url: URL) async throws
-    -> NessaImageAttachment
+    -> NessaStoredAttachment
   {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.httpCookieStorage = nil
@@ -32,7 +32,7 @@ enum AttachmentUploadTransport {
     else {
       throw NessaGatewayError.rejected("The attachment upload failed. Your draft has been kept.")
     }
-    return try JSONDecoder().decode(NessaImageAttachment.self, from: data)
+    return try JSONDecoder().decode(NessaStoredAttachment.self, from: data)
   }
 }
 
@@ -47,9 +47,9 @@ enum AttachmentPieces {
     switch rejection.code {
     case "unknown_method":
       NessaGatewayError.rejected(
-        "Update Nessa on your Mac to send photos from your phone. Your draft has been kept.")
+        "Update Nessa on your Mac to send attachments from your phone. Your draft has been kept.")
     case "upload_ticket_invalid", "upload_failed":
-      NessaGatewayError.rejected("The photo didn’t finish sending. Your draft has been kept.")
+      NessaGatewayError.rejected("The attachment didn’t finish sending. Your draft has been kept.")
     case "unsupported_image":
       NessaGatewayError.rejected("Your Mac couldn’t read this photo. Try another one.")
     case "image_too_large":

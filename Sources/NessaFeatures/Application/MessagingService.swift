@@ -10,7 +10,7 @@ public struct MessagingService: Sendable, GatewayConversationSharingProviding,
     self.repository = repository
     self.directory = directory
   }
-  public func imageData(for attachment: NessaImageAttachment) async throws -> Data? {
+  public func imageData(for attachment: NessaStoredAttachment) async throws -> Data? {
     try await repository.imageData(for: attachment)
   }
   public var attachmentPolicy: AttachmentPolicy { repository.attachmentPolicy }

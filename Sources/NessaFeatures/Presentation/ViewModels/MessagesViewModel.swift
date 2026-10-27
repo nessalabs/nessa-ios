@@ -534,7 +534,7 @@ public final class MessagesViewModel: ObservableObject {
       name: name, turns: turns, targets: targets, value: value)
     return value
   }
-  public func imageData(for attachment: NessaImageAttachment) async -> Data? {
+  public func imageData(for attachment: NessaStoredAttachment) async -> Data? {
     try? await service.imageData(for: attachment)
   }
   public func isPinned(_ agent: String) -> Bool { pinnedChats.contains(agent) }
@@ -724,7 +724,8 @@ public final class MessagesViewModel: ObservableObject {
           return
         }
         do { _ = try await service.read(id) } catch {
-          let behavior = (error as? GatewayProductRejection)?.behavior ?? error as? NessaGatewayError
+          let behavior =
+            (error as? GatewayProductRejection)?.behavior ?? error as? NessaGatewayError
           if case .conversationNotFound = behavior, generation == currentGeneration {
             await removeDeletedConversation(id, identifier: agent)
           }
@@ -1469,12 +1470,15 @@ public final class MessagesViewModel: ObservableObject {
       connected = true
       if let phoneChat {
         do {
-          await phoneChat.activate(cacheScope(profile))
-          let recovered = try await phoneChat.recover()
-          phoneDeliveries = try await phoneChat.list()
+          let scope = cacheScope(profile)
+          await phoneChat.activate(scope)
+          let recovered = try await phoneChat.recover(scope: scope)
+          let deliveries = try await phoneChat.list(scope: scope)
+          guard generation == expected else { throw CancellationError() }
+          phoneDeliveries = deliveries
           noteRevokedDeliveries(recovered)
         } catch {
-          self.error = "Saved sends could not be read."
+          if generation == expected { self.error = "Saved sends could not be read." }
         }
       }
       await refreshPhoneShareIntents(generation: expected)
@@ -1603,7 +1607,7 @@ public final class MessagesViewModel: ObservableObject {
     self.error = error.localizedDescription
   }
   private func cache(_ update: ConversationUpdate) async {
-    if (phoneChat != nil || !nativeConfigured), let snapshotLease {
+    if phoneChat != nil || !nativeConfigured, let snapshotLease {
       await snapshots?.record(update, lease: snapshotLease)
     }
   }
@@ -1915,28 +1919,39 @@ public final class MessagesViewModel: ObservableObject {
   }
   public func stopTurn(_ executionID: String, in conversationID: String) async {
     guard let phoneChat, let profile, connected, !accessRevoked else { return }
-    await phoneChat.activate(cacheScope(profile))
+    let scope = cacheScope(profile)
+    let expectedGeneration = generation
+    await phoneChat.activate(scope)
     do {
       let outcome = try await phoneChat.stop(
-        conversationID: conversationID, executionID: executionID)
+        conversationID: conversationID, executionID: executionID, scope: scope)
+      guard generation == expectedGeneration, self.profile == profile else { return }
       if case .failed(let code) = outcome, PhoneAccess.revoked(code) {
         accessRevoked = true
         setAutomaticConnection(false)
         error = "This phone’s access was revoked."
       }
     } catch {
-      self.error = error.localizedDescription
+      if generation == expectedGeneration, self.profile == profile {
+        self.error = error.localizedDescription
+      }
     }
   }
   public func retryPhoneDelivery(_ commandID: String) async {
     guard let phoneChat, let profile, connected, !accessRevoked else { return }
-    await phoneChat.activate(cacheScope(profile))
+    let scope = cacheScope(profile)
+    let expectedGeneration = generation
+    await phoneChat.activate(scope)
     do {
-      let view = try await phoneChat.retry(commandID)
-      phoneDeliveries = try await phoneChat.list()
+      let view = try await phoneChat.retry(commandID, scope: scope)
+      let deliveries = try await phoneChat.list(scope: scope)
+      guard generation == expectedGeneration, self.profile == profile else { return }
+      phoneDeliveries = deliveries
       noteRevokedDeliveries([view])
     } catch {
-      self.error = error.localizedDescription
+      if generation == expectedGeneration, self.profile == profile {
+        self.error = error.localizedDescription
+      }
     }
   }
   /// Where this profile's saved chats and sends live. A linked Mac is named
@@ -1962,21 +1977,27 @@ public final class MessagesViewModel: ObservableObject {
   }
   private func deliverThroughOutbox(
     _ text: String, attachments: [DraftAttachment], reply: MessageReply?, to id: String,
-    identity: MessageCommandIdentity, generation currentGeneration: Int, profile currentProfile: Profile?,
+    identity: MessageCommandIdentity, generation currentGeneration: Int,
+    profile currentProfile: Profile?,
     chat: PhoneProductChat
   ) async -> Bool {
     let contextual = reply?.contextualizing(text) ?? text
-    if let currentProfile { await chat.activate(cacheScope(currentProfile)) }
+    let scope = currentProfile.map { cacheScope($0) }
+    guard generation == currentGeneration else { return false }
+    if let scope { await chat.activate(scope) }
     do {
       let view = try await chat.deliver(
-        text: contextual, attachments: attachments, conversationID: id, identity: identity)
+        text: contextual, attachments: attachments, conversationID: id, identity: identity,
+        scope: scope)
       let kept: Bool
       switch view.outcome {
       case .failed, .draft: kept = false
       case .accepted, .running, .done, .unknown: kept = true
       }
       guard generation == currentGeneration else { return kept }
-      phoneDeliveries = (try? await chat.list()) ?? phoneDeliveries
+      let deliveries = try? await chat.list(scope: scope)
+      guard generation == currentGeneration else { return kept }
+      phoneDeliveries = deliveries ?? phoneDeliveries
       noteRevokedDeliveries([view])
       switch view.outcome {
       case .accepted, .running, .done, .unknown:

@@ -1,13 +1,17 @@
 import Foundation
 
-/// Product-socket calls the outbox does not own: image upload and Stop.
+/// One scope's product operations; the factory binds every effect and lookup.
 protocol PhoneProductTransport: PhoneOutboxAsking {
-  func uploadPhoneImage(_ attachment: DraftAttachment, conversationID: String) async throws
-    -> NessaImageAttachment
+  func uploadPhoneAttachment(_ attachment: DraftAttachment, conversationID: String) async throws
+    -> NessaStoredAttachment
   func phoneStop(conversationID: String, requestID: String, executionID: String) async
     -> PhoneSendAnswer
   func phoneLookupStop(conversationID: String, requestID: String, executionID: String) async
     -> PhoneLookupAnswer
+}
+
+protocol PhoneProductTransportFactory: Sendable {
+  nonisolated func transport(for scope: PhoneCacheScope) -> any PhoneProductTransport
 }
 
 struct PhoneStopRecord: Equatable, Codable, Sendable {
@@ -37,39 +41,44 @@ enum PhoneAccess {
 }
 
 /// Chat over the ordinary product socket: subscribe for the list and for replies,
-/// and send text or images through the outbox.
+/// and send text, images or files through the outbox.
 public actor PhoneProductChat {
-  private var outbox: PhoneOutbox
-  private let transport: any PhoneProductTransport
-  private var stops: any PhoneStopStoring
-  /// When set, each `PhoneCacheScope` gets its own directory. Injected stores ignore it.
+  private struct Scope: Sendable {
+    let key: String?
+    let transport: any PhoneProductTransport
+    let outbox: PhoneOutbox
+    let stops: any PhoneStopStoring
+  }
+  private var current: Scope?
   private let root: URL?
-  private var boundScope: String?
-  init(
-    outbox: PhoneOutbox, transport: any PhoneProductTransport, stops: any PhoneStopStoring
-  ) {
-    self.outbox = outbox
-    self.transport = transport
-    self.stops = stops
+  private let factory: (any PhoneProductTransportFactory)?
+  /// Explicit single-scope application fixture; live wiring always uses the factory.
+  init(outbox: PhoneOutbox, transport: any PhoneProductTransport, stops: any PhoneStopStoring) {
+    current = Scope(key: nil, transport: transport, outbox: outbox, stops: stops)
     root = nil
+    factory = nil
   }
-
-  /// Live wiring. Records stay partitioned by the same connection scope as snapshots and commands.
-  init(root: URL, transport: any PhoneProductTransport) {
+  init(root: URL, transport: any PhoneProductTransportFactory) {
     self.root = root
-    self.transport = transport
-    let idle = root.appendingPathComponent("unbound", isDirectory: true)
-    outbox = PhoneOutbox(store: PhoneOutboxFileStore(directory: idle), gateway: transport)
-    stops = PhoneStopFileStore(directory: idle)
+    self.factory = transport
+    current = nil
   }
-
-  /// Point later sends, lookups, and Stop at this connection. A different scope does not see the previous one.
   public func activate(_ scope: PhoneCacheScope) {
-    guard let root, boundScope != scope.key else { return }
-    boundScope = scope.key
+    guard current?.key != scope.key else { return }
+    guard let root, let factory else {
+      if let current {
+        self.current = Scope(
+          key: scope.key, transport: current.transport, outbox: current.outbox, stops: current.stops
+        )
+      }
+      return
+    }
     let directory = root.appendingPathComponent(scope.key, isDirectory: true)
-    outbox = PhoneOutbox(store: PhoneOutboxFileStore(directory: directory), gateway: transport)
-    stops = PhoneStopFileStore(directory: directory)
+    let transport = factory.transport(for: scope)
+    current = Scope(
+      key: scope.key, transport: transport,
+      outbox: PhoneOutbox(store: PhoneOutboxFileStore(directory: directory), gateway: transport),
+      stops: PhoneStopFileStore(directory: directory))
   }
 
   /// Keeps every owned conversation the product list names, including one with no title or preview.
@@ -81,50 +90,64 @@ public actor PhoneProductChat {
 
   public func deliver(
     text: String, attachments: [DraftAttachment], conversationID: String,
-    identity: MessageCommandIdentity
+    identity: MessageCommandIdentity, scope expected: PhoneCacheScope?
   ) async throws -> PhoneOutboxView {
-    try requireBound()
-    var images: [NessaImageAttachment] = []
+    let scope = try requireBound(expected)
+    try AttachmentPolicy.nessa.validate(attachments)
+    var images: [NessaStoredAttachment] = []
+    var uploads: [NessaUploadedFile] = []
     for attachment in attachments {
-      images.append(try await transport.uploadPhoneImage(attachment, conversationID: conversationID))
+      let stored = try await scope.transport.uploadPhoneAttachment(
+        attachment, conversationID: conversationID)
+      guard scope.key == current?.key else { throw NessaGatewayError.disconnected }
+      if attachment.isImage {
+        images.append(stored)
+      } else {
+        uploads.append(NessaUploadedFile(stored, name: attachment.name))
+      }
     }
     let intent = try PhoneSendIntent(
       conversationID: conversationID, commandID: identity.requestID, turnID: identity.executionID,
-      text: text, images: images)
-    _ = try await outbox.hold(intent)
-    return try await outbox.send(identity.requestID)
+      text: text, images: images, uploads: uploads)
+    guard scope.key == current?.key else { throw NessaGatewayError.disconnected }
+    _ = try await scope.outbox.hold(intent)
+    return try await scope.outbox.send(identity.requestID)
   }
 
-  public func recover() async throws -> [PhoneOutboxView] {
-    try requireBound()
-    _ = try await recoverStops()
-    return try await outbox.recover()
+  public func recover(scope expected: PhoneCacheScope?) async throws -> [PhoneOutboxView] {
+    let scope = try requireBound(expected)
+    _ = try await recoverStops(scope)
+    return try await scope.outbox.recover()
   }
 
-  public func retry(_ commandID: String) async throws -> PhoneOutboxView {
-    try requireBound()
-    return try await outbox.retry(commandID)
+  public func retry(_ commandID: String, scope expected: PhoneCacheScope?) async throws
+    -> PhoneOutboxView
+  {
+    let scope = try requireBound(expected)
+    return try await scope.outbox.retry(commandID)
   }
 
-  public func list() async throws -> [PhoneOutboxView] {
-    try requireBound()
-    return try await outbox.list()
+  public func list(scope expected: PhoneCacheScope?) async throws -> [PhoneOutboxView] {
+    let scope = try requireBound(expected)
+    return try await scope.outbox.list()
   }
 
   /// One Stop request id for this turn. A restart only looks it up. An explicit Stop sends
   /// again, with that same id, only when the lookup confirms the receipt is absent.
-  public func stop(conversationID: String, executionID: String) async throws -> PhoneSendOutcome {
-    try requireBound()
-    var records = try await stops.load()
+  public func stop(conversationID: String, executionID: String, scope expected: PhoneCacheScope?)
+    async throws -> PhoneSendOutcome
+  {
+    let scope = try requireBound(expected)
+    var records = try await scope.stops.load()
     if let existing = records.first(where: {
       $0.conversationID == conversationID && $0.executionID == executionID && $0.departed
     }) {
-      let looked = try await recoverStop(existing, records: &records)
+      let looked = try await recoverStop(existing, records: &records, scope: scope)
       guard looked == .unknown(.notAdmitted) else { return looked }
       var resent = existing
-      resent.outcome = await finishStop(existing)
+      resent.outcome = await finishStop(existing, scope: scope)
       replace(&records, resent)
-      try await stops.save(records)
+      try await scope.stops.save(records)
       return resent.outcome
     }
     let requestID = UUID().uuidString.lowercased()
@@ -132,52 +155,56 @@ public actor PhoneProductChat {
       conversationID: conversationID, requestID: requestID, executionID: executionID,
       departed: true, outcome: .unknown(.notAdmitted))
     records.append(record)
-    try await stops.save(records)
-    record.outcome = await finishStop(record)
+    try await scope.stops.save(records)
+    record.outcome = await finishStop(record, scope: scope)
     replace(&records, record)
-    try await stops.save(records)
+    try await scope.stops.save(records)
     return record.outcome
   }
 
-  private func recoverStops() async throws -> [PhoneStopRecord] {
-    var records = try await stops.load()
+  private func recoverStops(_ scope: Scope) async throws -> [PhoneStopRecord] {
+    var records = try await scope.stops.load()
     for index in records.indices where records[index].departed && retryableStop(records[index]) {
-      records[index].outcome = try await recoverStop(records[index], records: &records)
+      records[index].outcome = try await recoverStop(
+        records[index], records: &records, scope: scope)
     }
-    try await stops.save(records)
+    try await scope.stops.save(records)
     return records
   }
 
-  private func recoverStop(_ record: PhoneStopRecord, records: inout [PhoneStopRecord]) async throws
+  private func recoverStop(
+    _ record: PhoneStopRecord, records: inout [PhoneStopRecord], scope: Scope
+  ) async throws
     -> PhoneSendOutcome
   {
     guard retryableStop(record) else { return record.outcome }
-    let looked = await lookedUp(record)
+    let looked = await lookedUp(record, scope: scope)
     var updated = record
     updated.outcome = looked
     replace(&records, updated)
-    try await stops.save(records)
+    try await scope.stops.save(records)
     return updated.outcome
   }
 
-  private func finishStop(_ record: PhoneStopRecord) async -> PhoneSendOutcome {
-    let answer = await transport.phoneStop(
+  private func finishStop(_ record: PhoneStopRecord, scope: Scope) async -> PhoneSendOutcome {
+    let answer = await scope.transport.phoneStop(
       conversationID: record.conversationID, requestID: record.requestID,
       executionID: record.executionID)
-    if case .lost = answer { return await lookedUp(record) }
-    if case .broken = answer { return await lookedUp(record) }
+    if case .lost = answer { return await lookedUp(record, scope: scope) }
+    if case .broken = answer { return await lookedUp(record, scope: scope) }
     return outcome(of: answer)
   }
 
-  private func lookedUp(_ record: PhoneStopRecord) async -> PhoneSendOutcome {
+  private func lookedUp(_ record: PhoneStopRecord, scope: Scope) async -> PhoneSendOutcome {
     outcome(
-      of: await transport.phoneLookupStop(
+      of: await scope.transport.phoneLookupStop(
         conversationID: record.conversationID, requestID: record.requestID,
         executionID: record.executionID))
   }
 
-  private func requireBound() throws {
-    if root != nil, boundScope == nil { throw PhoneOutboxFailure.unavailable }
+  private func requireBound(_ expected: PhoneCacheScope?) throws -> Scope {
+    guard let current, current.key == expected?.key else { throw PhoneOutboxFailure.unavailable }
+    return current
   }
 
   private func replace(_ records: inout [PhoneStopRecord], _ record: PhoneStopRecord) {

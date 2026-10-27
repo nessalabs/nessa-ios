@@ -25,18 +25,35 @@ public enum PreparedConversationCommand: Codable, Sendable, Equatable {
     public let conversationID: String
     public let executionID: String
     public let text: String
-    public let images: [NessaImageAttachment]
+    public let images: [NessaStoredAttachment]
+    public let uploads: [NessaUploadedFile]
     public let replyTo: String?
     public init(
       requestID: String, conversationID: String, executionID: String, text: String,
-      images: [NessaImageAttachment] = [], replyTo: String? = nil
+      images: [NessaStoredAttachment] = [], uploads: [NessaUploadedFile] = [],
+      replyTo: String? = nil
     ) {
       self.requestID = requestID
       self.conversationID = conversationID
       self.executionID = executionID
       self.text = text
       self.images = images
+      self.uploads = uploads
       self.replyTo = replyTo
+    }
+    private enum CodingKeys: String, CodingKey {
+      case requestID, conversationID, executionID, text, images, uploads, replyTo
+    }
+    public init(from decoder: Decoder) throws {
+      let values = try decoder.container(keyedBy: CodingKeys.self)
+      self.init(
+        requestID: try values.decode(String.self, forKey: .requestID),
+        conversationID: try values.decode(String.self, forKey: .conversationID),
+        executionID: try values.decode(String.self, forKey: .executionID),
+        text: try values.decode(String.self, forKey: .text),
+        images: try values.decode([NessaStoredAttachment].self, forKey: .images),
+        uploads: try values.decodeIfPresent([NessaUploadedFile].self, forKey: .uploads) ?? [],
+        replyTo: try values.decodeIfPresent(String.self, forKey: .replyTo))
     }
   }
   case create(Creation)
@@ -71,16 +88,8 @@ public enum PreparedConversationCommand: Codable, Sendable, Equatable {
         value.replyTo == nil
           || (value.replyTo?.isEmpty == false && (value.replyTo?.utf8.count ?? 0) <= 1024),
         !value.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-          || !value.images.isEmpty,
-        value.images.count <= 8,
-        value.images.allSatisfy({ image in
-          image.size > 0 && image.size <= 5 * 1024 * 1024
-            && ["image/png", "image/jpeg", "image/gif", "image/webp"].contains(image.mimeType)
-            && image.digest.hasPrefix("sha256:") && image.digest.count == 71
-            && image.digest.dropFirst(7).utf8.allSatisfy({
-              (48...57).contains($0) || (97...102).contains($0)
-            })
-        }), value.images.reduce(0, { $0 + $1.size }) <= 10 * 1024 * 1024
+          || !value.images.isEmpty || !value.uploads.isEmpty,
+        AttachmentReferences.valid(images: value.images, uploads: value.uploads)
       else { throw ConversationCommandError.invalid }
     }
   }

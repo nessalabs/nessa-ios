@@ -490,7 +490,7 @@ private func refusedCreation(_ number: Int = 1) -> PreparedConversationCommand {
       .acknowledgment(for: command())
   }
   let images = ["a", "b"].map {
-    NessaImageAttachment(
+    NessaStoredAttachment(
       digest: "sha256:" + String(repeating: $0, count: 64), mimeType: "image/png", size: 8)
   }
   let photo = PreparedConversationCommand.submit(
@@ -565,4 +565,29 @@ private func refusedCreation(_ number: Int = 1) -> PreparedConversationCommand {
   #expect(lstat(lock.path, &after) == 0)
   #expect(before.st_ino == after.st_ino)
   #expect(after.st_mode & 0o777 == 0o600)
+}
+
+@Test func uploadedFilenameBytesAreFrozenAcrossCanonicalUnicodeForms() async throws {
+  let store = ControlledCommandStore()
+  let journal = PhoneCommandJournal(store: store)
+  let lease = try await journal.prepare(scope())
+  let make: (String) -> PreparedConversationCommand = { name in
+    .submit(
+      .init(
+        requestID: "00000000-0000-4000-8000-000000000001",
+        conversationID: "00000000-0000-4000-8000-100000000001",
+        executionID: "00000000-0000-4000-8000-000000001001", text: "",
+        uploads: [
+          .init(
+            digest: "sha256:" + String(repeating: "a", count: 64), mimeType: "text/plain", size: 1,
+            name: name)
+        ]))
+  }
+  let original = make("é.txt")
+  let changed = make("e\u{301}.txt")
+  #expect(original != changed)
+  try await journal.recordProductIntent(original, lease: lease)
+  await #expect(throws: ConversationCommandError.conflict) {
+    try await journal.recordProductIntent(changed, lease: lease)
+  }
 }

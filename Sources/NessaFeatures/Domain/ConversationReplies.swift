@@ -3,7 +3,7 @@ import Foundation
 public struct ConversationMessage: Identifiable, Equatable, Sendable {
   public enum Content: Equatable, Sendable {
     case text(String)
-    case photos([NessaImageAttachment])
+    case photos([NessaStoredAttachment])
     case file(NessaFileAttachment)
   }
   public let id: String
@@ -56,6 +56,12 @@ public struct ConversationReplies: Sendable {
             id: turn.id + ":file:\(index)", turnID: turn.id, author: "You", outgoing: true,
             content: .file(file)))
       }
+      for (index, file) in (turn.uploads ?? []).enumerated() {
+        messages.append(
+          ConversationMessage(
+            id: turn.id + ":upload:\(index)", turnID: turn.id, author: "You", outgoing: true,
+            content: .file(NessaFileAttachment(name: file.name, mimeType: file.mimeType))))
+      }
       if !userText.isEmpty {
         messages.append(
           ConversationMessage(
@@ -75,7 +81,8 @@ public struct ConversationReplies: Sendable {
         let context = MessageReply.splitContext(turn.userText)
       {
         let outgoing =
-          target.hasSuffix(":user") || target.hasSuffix(":photos") || target.contains(":file:")
+          target.hasSuffix(":user") || target.hasSuffix(":photos")
+          || (target.contains(":file:") || target.contains(":upload:"))
         byID[target] = ConversationMessage(
           id: target, turnID: "", author: outgoing ? "You" : agentName,
           outgoing: outgoing, content: .text(context.quote))

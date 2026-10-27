@@ -29,7 +29,8 @@ import Foundation
     retainedSessions: (any RetainedSessionFactory)? = nil,
     phoneSync: (any PhoneSyncRunning)? = nil,
     shareIntents: (any PhoneConversationShareIntentStoring)? = nil,
-    deletionIntents: (any PhoneDeletionIntentStoring)? = nil
+    deletionIntents: (any PhoneDeletionIntentStoring)? = nil,
+    phoneOutboxRoot: URL? = nil
   ) {
     self.mode = mode
     self.service = MessagingService(
@@ -82,9 +83,11 @@ import Foundation
       self.conversationDeletion = nil
     }
     self.recovery = recovery ?? ConnectionRecovery(waiting: SystemRecoveryWait())
-    if mode == .live, let transport = repository as? any PhoneProductTransport {
-      let directory = FileManager.default.urls(
-        for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    if mode == .live, let transport = repository as? any PhoneProductTransportFactory {
+      let directory =
+        phoneOutboxRoot
+        ?? FileManager.default.urls(
+          for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Nessa/PhoneOutbox", isDirectory: true)
       phoneChat = PhoneProductChat(root: directory, transport: transport)
     } else {

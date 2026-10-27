@@ -74,7 +74,7 @@ is implemented and explicitly authorized.
 
 ## Remaining product work
 
-General mobile file uploads, audio attachments, push notifications, agent
+Audio attachments, push notifications, agent
 questions, full transcript pagination and uncertain deletion recovery remain
 unfinished. Physical-device execution and broader backlog/failure experiments
 are still required. Supply a real gateway credential and reachable product and
@@ -106,7 +106,7 @@ Source layout:
 - `Presentation/Components/`: leaf controls, bubbles, avatars and platform picker bridges.
 - `NessaDesignSystem/`: shared visual tokens, shapes, glass and scroll-dependent header blur.
 
-The plus menu provides Camera, Photos and Add Files. Camera requires a physical iPhone; the simulator reports that it is unavailable. The system photo picker needs no broad photo-library permission. Draft attachments stay until a send succeeds. Live image sending uses `attachment.begin` and a single-use-ticket `PUT /attachments`; tickets are never logged, and redirects and cookies are disabled. General files can be selected and sent in mock mode. The current live protocol only links general files already on the gateway machine, so it cannot send general iPhone files yet; the app reports this and retains the draft.
+The plus menu provides Camera, Photos and Add Files. Camera requires a physical iPhone; the simulator reports that it is unavailable. The system photo picker needs no broad photo-library permission. Draft attachments stay until a send succeeds. Photos retain their 5 MiB each / 10 MiB combined limits; general files use a 64 MiB message budget. Native uploads use `attachment.begin` and `attachment.write` pieces; the WebSocket verification path uses a single-use-ticket `PUT /attachments`. Tickets are never logged, and HTTP redirects and cookies are disabled. General files send original digest, media type, size and name in `uploads`. The gateway verifies and places their bytes where the selected agent runs before dispatching its prompt. Both phone journals retain those references for exact send/receipt recovery. File tiles show original metadata without inventing a local path. See gateway [#1149](https://github.com/nessalabs/nessa-agent/issues/1149).
 
 The waveform starts Apple speech recognition and fills the message field with text. Stop dictation, review the text, and tap Send. Live mode requests microphone and speech-recognition permission; development mode injects a mocked transcript. Physical-iPhone microphone verification remains outstanding. The menu has no Clear Draft action.
 

@@ -14,7 +14,8 @@ is not compatible with this gateway and is not used by the new app entry point.
   Surface metadata does not grant authorization.
 - Requests are `{type:"req", id, method, params}`; responses use `ok` and `payload`.
 - Use `conversation.list`, `.create`, `.read`, `.send`, and `.answer`.
-- Send includes stable request/execution IDs and uploaded image references.
+- Send includes stable request/execution IDs, image references in `attachments`,
+  and original general-file references in `uploads` (digest, media type, size, name).
   Text is bounded to 8192 UTF-8 bytes. Sent commands are never automatically replayed.
 - Read is a bounded projection. Text fragments are combined only when adjacent
   and carrying the same provider message ID. Thoughts are not shown as replies.
@@ -214,3 +215,19 @@ New phone conversations consume the gateway's advertised model list, retaining a
 October 12 image verification found two gateway refusals: the Codex binding offered text-only input, and the OpenAI model catalog omitted image admission limits. The isolated test gateway now runs the fix in [PR #779](https://github.com/nessalabs/nessa-agent/pull/779), based on upstream `a2084194743e41cd9b0ffd62c6a7cb93494cc77f`. Terra publishes a conservative PNG/JPEG profile (5,000,000 encoded bytes / 3,750,000 raw bytes, 2048 pixels per edge). The real Swift client selected Terra, uploaded a synthetic photo, sent/read its reference, loaded its local image cache, and received the correct blue-background/red-circle/yellow-square description from the model. No personal image was sent. The full SDK suite, Clippy, docs, gateway build and independent review passed. The gateway change is a draft PR, not yet merged upstream.
 
 The simulator Photos picker subsequently recovered. A pre-existing simulator sample waterfall photo was selected, displayed in the draft tray, sent as an image-only message through the live app, and rendered as a rounded image attachment. The real model replied “What would you like me to do with this waterfall image?”, confirming the actual picker/preparation/upload/reference/read/render path. Synthetic import via `simctl addmedia` remained stalled and was canceled; the native-client synthetic PNG check and app sample JPEG check both succeeded.
+
+## File delivery and connection ownership (#1149)
+
+One immutable phone-chat scope owns its product transport, outbox and Stop store.
+The transport factory binds all five operations (upload, send, receipt lookup,
+Stop and Stop lookup) to the same `PhoneCacheScope`. Each application operation
+also receives the expected scope captured by its caller, so activation and entry
+are checked independently of transport admission.
+
+| Ordering | Owner/result |
+| --- | --- |
+| Chat A activated; client switches to B before chat activation changes | Bound A transport refuses before admitting bytes or commands on B. |
+| Caller activates A; another caller activates B before A's send enters | Expected A scope fails at chat entry; B's context cannot capture A's file. |
+| A's store commit waits while B activates | The captured A context retains A's store and bound transport; no operation changes owner after an await. |
+| An A upload was admitted before replacement | Its existing product/socket owner settles it; it never falls back to B. |
+| Same scope reconnects | Receipt recovery may use that scope's current authenticated connection; original command/file identity remains unchanged. |

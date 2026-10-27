@@ -180,6 +180,11 @@ private func connectionOwnership(_ endpoint: String) async throws {
           endpoint: CommandLine.arguments[2], credentialFile: CommandLine.arguments[3])
         return
       }
+      if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "--files" {
+        try await FileVerification.run(
+          endpoint: CommandLine.arguments[2], credentialFile: CommandLine.arguments[3])
+        return
+      }
       if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "--image" {
         try await ImageVerification.run(
           endpoint: CommandLine.arguments[2], credentialFile: CommandLine.arguments[3])

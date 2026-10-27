@@ -32,7 +32,10 @@ actor MemoryOutboxStore: PhoneOutboxStoring {
   func list() async throws -> [PhoneOutboxRecord] { records }
 }
 
-final class ScriptedGateway: PhoneProductTransport, @unchecked Sendable {
+final class ScriptedGateway: PhoneProductTransport, PhoneProductTransportFactory,
+  @unchecked Sendable
+{
+  func transport(for scope: PhoneCacheScope) -> any PhoneProductTransport { self }
   let store: MemoryOutboxStore
   var sendAnswers: [PhoneSendAnswer]
   var lookupAnswers: [PhoneLookupAnswer]
@@ -62,11 +65,11 @@ final class ScriptedGateway: PhoneProductTransport, @unchecked Sendable {
     lookups += 1
     return lookupAnswers.isEmpty ? .lost : lookupAnswers.removeFirst()
   }
-  func uploadPhoneImage(_ attachment: DraftAttachment, conversationID: String) async throws
-    -> NessaImageAttachment
+  func uploadPhoneAttachment(_ attachment: DraftAttachment, conversationID: String) async throws
+    -> NessaStoredAttachment
   {
     uploads += 1
-    return NessaImageAttachment(
+    return NessaStoredAttachment(
       digest: "sha256:" + String(repeating: "ab", count: 32), mimeType: attachment.mimeType,
       size: attachment.data.count)
   }
@@ -90,7 +93,7 @@ private func intent(
   _ command: String = "11111111-1111-4111-8111-111111111111",
   turn: String = "22222222-2222-4222-8222-222222222222",
   text: String = "Hello",
-  images: [NessaImageAttachment] = []
+  images: [NessaStoredAttachment] = []
 ) throws -> PhoneSendIntent {
   try PhoneSendIntent(
     conversationID: "00000000-0000-4000-8000-0000000000aa", commandID: command, turnID: turn,
@@ -202,7 +205,9 @@ private func intent(
   let failed = try await outbox.send("11111111-1111-4111-8111-111111111111")
   #expect(failed.outcome == .failed("turn_running"))
   let rows = try await outbox.list()
-  #expect(rows.contains { $0.outcome == .draft && $0.text == "Hello" && $0.commandID != failed.commandID })
+  #expect(
+    rows.contains { $0.outcome == .draft && $0.text == "Hello" && $0.commandID != failed.commandID }
+  )
   _ = try await outbox.send(failed.commandID)
   #expect(gateway.sends == 1)
 }
@@ -231,7 +236,7 @@ private func intent(
 }
 
 @Test func anImageSendKeepsTheUploadedReference() async throws {
-  let image = NessaImageAttachment(
+  let image = NessaStoredAttachment(
     digest: "sha256:" + String(repeating: "cd", count: 32), mimeType: "image/png", size: 4)
   let store = MemoryOutboxStore()
   let gateway = ScriptedGateway(store: store, sendAnswers: [.receipt(.queued)])
@@ -267,12 +272,12 @@ private func intent(
     transport: gateway, stops: stops)
   let first = try await chat.stop(
     conversationID: "00000000-0000-4000-8000-0000000000aa",
-    executionID: "22222222-2222-4222-8222-222222222222")
+    executionID: "22222222-2222-4222-8222-222222222222", scope: nil)
   #expect(first == .done)
   #expect(gateway.stops == 1 && gateway.stopLookups == 0)
   let again = try await chat.stop(
     conversationID: "00000000-0000-4000-8000-0000000000aa",
-    executionID: "22222222-2222-4222-8222-222222222222")
+    executionID: "22222222-2222-4222-8222-222222222222", scope: nil)
   #expect(again == .done)
   #expect(gateway.stops == 1 && gateway.stopLookups == 0)
   try await stops.save([
@@ -282,7 +287,7 @@ private func intent(
       executionID: "44444444-4444-4444-8444-444444444444", departed: true,
       outcome: .unknown(.notAdmitted))
   ])
-  _ = try await chat.recover()
+  _ = try await chat.recover(scope: nil)
   #expect(gateway.stops == 1)
   #expect(gateway.stopLookups == 1)
 }
@@ -306,12 +311,12 @@ private func intent(
     transport: gateway, stops: stops)
   let outcome = try await chat.stop(
     conversationID: "00000000-0000-4000-8000-0000000000aa",
-    executionID: "44444444-4444-4444-8444-444444444444")
+    executionID: "44444444-4444-4444-8444-444444444444", scope: nil)
   #expect(outcome == .done)
   #expect(gateway.stopLookups == 1)
   #expect(gateway.stops == 1)
   #expect(gateway.stopRequestIDs == [requestID])
-  _ = try await chat.recover()
+  _ = try await chat.recover(scope: nil)
   #expect(gateway.stops == 1)
 }
 
@@ -366,7 +371,8 @@ private func intent(
 
 @Test func aMacThatTurnedThePhoneAwayIsNotRetried() {
   let refused = RetainedSessionError.session(
-    .init(cache: .refused, enrollment: nil, kind: .cache, privateState: nil, runtimeDiagnostic: nil))
+    .init(cache: .refused, enrollment: nil, kind: .cache, privateState: nil, runtimeDiagnostic: nil)
+  )
   #expect(!ConnectionRecovery.retryable(refused))
   #expect(refused.localizedDescription.contains("Pair it again"))
 }
