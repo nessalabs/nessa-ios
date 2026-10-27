@@ -1400,14 +1400,19 @@ open class NativeDeviceSession: NativeDeviceSessionProtocol, @unchecked Sendable
     /**
      * Compose numeric address and an existing private directory. No port offset,
      * hostname-derived origin, socket connect or enrollment is performed.
+     * `tunnel` is the origin `server.reach` last named (`https://host`), which
+     * status and product dials fall back on when the direct one does not
+     * connect. One this build cannot read is left out rather than refused:
+     * the local network still works, and the next `server.reach` replaces it.
      */
-public static func `open`(root: String, directory: String, address: String)throws  -> NativeDeviceSession  {
+public static func `open`(root: String, directory: String, address: String, tunnel: String?)throws  -> NativeDeviceSession  {
     return try  FfiConverterTypeNativeDeviceSession_lift(try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
         uniffiCallStatus in
     uniffi_nessa_device_client_fn_constructor_nativedevicesession_open(
         FfiConverterString.lower(root),
         FfiConverterString.lower(directory),
-        FfiConverterString.lower(address),uniffiCallStatus
+        FfiConverterString.lower(address),
+        FfiConverterOptionString.lower(tunnel),uniffiCallStatus
     )
 })
 }
@@ -13520,7 +13525,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nessa_device_client_checksum_method_nativetranscript_view_json() != 768) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nessa_device_client_checksum_constructor_nativedevicesession_open() != 61495) {
+    if (uniffi_nessa_device_client_checksum_constructor_nativedevicesession_open() != 16825) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_constructor_nativeentrykey_new() != 53828) {
