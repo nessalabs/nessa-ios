@@ -499,7 +499,10 @@ private struct DialingProducts: LinkedProductOpening {
       desktop, instance: "phone", through: DialingProducts(exchange: reaching, dialed: dialed))
     _ = try await product.ready()
     let deadline = ContinuousClock.now + .seconds(5)
-    while await store.desktop?.tunnel != origin, ContinuousClock.now < deadline {
+    // The second pass starts with the tunnel kept: wait for its own ask too.
+    while ContinuousClock.now < deadline {
+      let kept = await store.desktop?.tunnel
+      if !reaching.methods.isEmpty, kept == origin { break }
       try await Task.sleep(for: .milliseconds(1))
     }
     #expect(await store.desktop == desktop.reaching(origin))
