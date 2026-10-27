@@ -74,7 +74,7 @@ struct NessaThreadView: View {
   }
   var body: some View {
     let replies = store.replyProjection(in: conversationID)
-    transcript(replies: replies)
+    let threadGround = transcript(replies: replies)
     .messagesAmbientGround()
     .environment(\.messageContext, messageContext)
     .blur(
@@ -83,6 +83,7 @@ struct NessaThreadView: View {
         : (messageContext.selection == nil ? 0 : MessagesStyle.contextBackgroundBlur)
     )
     .accessibilityHidden(messageContext.selection != nil || composer.reply != nil)
+    let threadOverlays = threadGround
     .overlay {
       if composer.reply != nil {
         ReplyThreadView(
@@ -106,6 +107,7 @@ struct NessaThreadView: View {
     }
     // Closing a message's menu fades the menu and the blur behind it out together, instead of
     // both vanishing in one frame; opening keeps the menu's own spring.
+    let threadFeedback = threadOverlays
     .animation(
       .easeOut(duration: MessagesStyle.contextFadeDuration), value: messageContext.selection?.id)
     .animation(
@@ -122,6 +124,7 @@ struct NessaThreadView: View {
     // The system's own navigation bar, so its back button and edge swipe are the real ones.
     // While a reply thread or a message's menu covers the screen, the bar's controls step
     // aside rather than the bar itself, so the layout under it never moves.
+    threadFeedback
     .nessaInlineNavigationTitle()
     .navigationBarBackButtonHidden(overlayOpen)
     .toolbar {
