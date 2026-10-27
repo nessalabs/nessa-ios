@@ -32,6 +32,10 @@ struct MessageComposer: View {
   var autoFocus = false
   /// Lights the composer's rim while the agent is answering.
   var working = false
+  /// Stops the turn the agent is working on. While set, an empty composer's trailing button
+  /// is Stop in place of dictation; typing brings back Send.
+  var onStop: (() -> Void)? = nil
+  var stopAvailable = true
   /// Sending takes the person somewhere else (home's composer opens the chat it starts), so
   /// the keyboard goes down with the send. Left up, SwiftUI hands focus back to this field
   /// when the person returns, and the keyboard rises over a screen with nothing to type in.
@@ -40,13 +44,12 @@ struct MessageComposer: View {
   @FocusState private var focused: Bool
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  private enum Trailing: Equatable { case busy, dictate, send }
+  private enum Trailing: Equatable { case busy, dictate, stop, send }
   private var trailing: Trailing {
     if preparing || dictation.state == .finishing { return .busy }
-    if dictation.active
-      || (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty)
-    {
-      return .dictate
+    if dictation.active { return .dictate }
+    if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty {
+      return onStop == nil ? .dictate : .stop
     }
     return .send
   }
@@ -124,6 +127,23 @@ struct MessageComposer: View {
               .disabled(sending || dictation.state == .finishing)
               .accessibilityLabel(dictation.active ? "Stop dictation" : "Dictate message")
               .transition(.scale(scale: MessagesStyle.swapScale).combined(with: .opacity))
+            case .stop:
+              Button {
+                onStop?()
+              } label: {
+                RoundedRectangle(cornerRadius: MessagesStyle.stopGlyphRadius, style: .continuous)
+                  .fill(MessagesStyle.background)
+                  .frame(width: MessagesStyle.stopGlyph, height: MessagesStyle.stopGlyph)
+                  .frame(width: MessagesStyle.sendButton, height: MessagesStyle.sendButton)
+                  .background(
+                    stopAvailable
+                      ? AnyShapeStyle(MessagesStyle.foreground)
+                      : AnyShapeStyle(MessagesStyle.control),
+                    in: Circle())
+              }.buttonStyle(NessaPressStyle(scale: MessagesStyle.sendPressScale))
+                .disabled(!stopAvailable)
+                .accessibilityLabel("Stop")
+                .transition(.scale(scale: MessagesStyle.swapScale).combined(with: .opacity))
             case .send:
               Button(action: send) {
                 Image(systemName: "arrow.up").font(MessagesStyle.title)

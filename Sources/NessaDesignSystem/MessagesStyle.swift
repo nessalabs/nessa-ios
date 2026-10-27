@@ -183,6 +183,9 @@ public enum MessagesStyle {
   public static let previewHeight: CGFloat = 480
   public static let detailsAvatar: CGFloat = 64
   public static let sendButton: CGFloat = 30
+  /// The square inside the composer's Stop button.
+  public static let stopGlyph: CGFloat = 10
+  public static let stopGlyphRadius: CGFloat = 2.5
   public static let bubbleGutter: CGFloat = 70
   public static let rowAvatar: CGFloat = 45
   /// The agent's disc in the thread's navigation bar title.

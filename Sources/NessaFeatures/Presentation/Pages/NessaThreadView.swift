@@ -49,7 +49,14 @@ struct NessaThreadView: View {
     store.views[conversationID]
   }
   private var name: String { store.agentName(for: conversationID) }
-  private var working: Bool { current?.messages.contains { $0.status == "running" } == true }
+  /// The turn the agent is working on, which the composer's Stop button stops.
+  private var runningTurn: String? {
+    current?.messages.last { $0.status == "running" }?.id
+  }
+  private var working: Bool { runningTurn != nil }
+  private func stop(_ turn: String) {
+    Task { await store.stopTurn(turn, in: conversationID) }
+  }
   // Content edits keep their identity, so streamed text doesn't replay the entrance.
   private var messageStructure: [String] {
     (current?.messages ?? []).flatMap { turn in
@@ -106,12 +113,6 @@ struct NessaThreadView: View {
                   .environment(\.messageMorph, MessageMorph(id: slot, namespace: replyMorph))
                   .id(slot)
                   .transition(MessagesStyle.typingTransition)
-                Button("Stop") {
-                  Task { await store.stopTurn(turn.id, in: conversationID) }
-                }
-                .font(MessagesStyle.caption)
-                .foregroundStyle(MessagesStyle.danger)
-                .disabled(!store.connected || store.accessRevoked)
               }
               if let error = turn.error {
                 Text(error).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.danger)
@@ -244,7 +245,9 @@ struct NessaThreadView: View {
                 attachmentPolicy: store.attachmentPolicy,
                 submissionAllowed: store.canSubmit(in: conversationID),
                 submissionUnavailableReason: store.submissionUnavailableReason(in: conversationID),
-                autoFocus: autoFocusComposer, working: working, onSend: send)
+                autoFocus: autoFocusComposer, working: working,
+                onStop: runningTurn.map { turn in { stop(turn) } },
+                stopAvailable: store.connected && !store.accessRevoked, onSend: send)
             }
           }
         }
