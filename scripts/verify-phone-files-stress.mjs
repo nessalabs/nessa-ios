@@ -16,6 +16,8 @@ const driver = join(
   "verification/desktop/scripts/conversation-stress.mjs",
 );
 mkdirSync(evidence, { recursive: true });
+// The driver owns async teardown. CI owns the process-tree budget; killing
+// only the driver leader on a local timeout can strand its owned children.
 function run(args) {
   const result = spawnSync(
     process.execPath,
@@ -24,7 +26,6 @@ function run(args) {
       cwd: gateway,
       env: process.env,
       stdio: "inherit",
-      timeout: 35 * 60_000,
     },
   );
   if (result.error || result.status !== 0) {
