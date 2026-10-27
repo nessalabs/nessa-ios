@@ -4,11 +4,11 @@ import SwiftUI
 
 /// One message owns one swipeable photo stack; occurrence indices allow duplicate images.
 struct PhotoAttachmentsGroup: View {
-  let attachments: [NessaImageAttachment]
+  let attachments: [NessaStoredAttachment]
   var reaction: String? = nil
   var onReact: ((String) -> Void)? = nil
   var onReply: (() -> Void)? = nil
-  let load: (NessaImageAttachment) async -> Data?
+  let load: (NessaStoredAttachment) async -> Data?
   @State private var page = 0
   @Environment(\.messageContext) private var messageContext
   @State private var thumbnails: [String: CGImage] = [:]
@@ -73,13 +73,13 @@ struct PhotoAttachmentsGroup: View {
 }
 
 private struct PhotoGallery: View {
-  let attachments: [NessaImageAttachment]
-  let load: (NessaImageAttachment) async -> Data?
+  let attachments: [NessaStoredAttachment]
+  let load: (NessaStoredAttachment) async -> Data?
   @State private var selected: Int?
   @Environment(\.dismiss) private var dismiss
   init(
-    attachments: [NessaImageAttachment], initialPage: Int?,
-    load: @escaping (NessaImageAttachment) async -> Data?
+    attachments: [NessaStoredAttachment], initialPage: Int?,
+    load: @escaping (NessaStoredAttachment) async -> Data?
   ) {
     self.attachments = attachments
     self.load = load
@@ -126,8 +126,8 @@ private struct PhotoGallery: View {
 }
 
 private struct GalleryPhotoPage: View {
-  let attachment: NessaImageAttachment
-  let load: (NessaImageAttachment) async -> Data?
+  let attachment: NessaStoredAttachment
+  let load: (NessaStoredAttachment) async -> Data?
   @State private var data: Data?
   @State private var loaded = false
   var body: some View {

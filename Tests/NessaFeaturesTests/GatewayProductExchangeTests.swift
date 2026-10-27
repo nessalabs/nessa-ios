@@ -25,9 +25,11 @@ private actor ProductExchangeFixture: GatewayProductExchange {
   private var readyCalls = 0
   /// Answers for any other method, one per call, in order.
   private var scripted: [String: [Data]]
-  init(ready: Data = productReady(), listResponse: Data? = nil, channelPages: [Data] = [],
+  init(
+    ready: Data = productReady(), listResponse: Data? = nil, channelPages: [Data] = [],
     scripted: [String: [Data]] = [:],
-    releaseConfirmed: Bool = true, closeFailure: (any Error)? = nil) {
+    releaseConfirmed: Bool = true, closeFailure: (any Error)? = nil
+  ) {
     self.scripted = scripted
     readyBytes = ready
     self.listResponse = listResponse
@@ -35,7 +37,10 @@ private actor ProductExchangeFixture: GatewayProductExchange {
     self.releaseConfirmed = releaseConfirmed
     self.closeFailure = closeFailure
   }
-  func ready() -> Data { readyCalls += 1; return readyBytes }
+  func ready() -> Data {
+    readyCalls += 1
+    return readyBytes
+  }
   func request(method: String, parameters: Data) async throws -> Data {
     calls.append((method, parameters))
     if stopped { throw ProductFixtureFailure.notDispatched }
@@ -44,7 +49,9 @@ private actor ProductExchangeFixture: GatewayProductExchange {
     }
     if method == "conversation.list" {
       if let listResponse { return listResponse }
-      return Data(#"{"type":"res","id":"9007199254740993","ok":true,"payload":{"conversations":[],"complete":true}}"#.utf8)
+      return Data(
+        #"{"type":"res","id":"9007199254740993","ok":true,"payload":{"conversations":[],"complete":true}}"#
+          .utf8)
     }
     if method == "channel.list", !channelPages.isEmpty { return channelPages.removeFirst() }
     if var answers = scripted[method], !answers.isEmpty {
@@ -64,7 +71,8 @@ private actor ProductExchangeFixture: GatewayProductExchange {
   }
   nonisolated func requestClose() { Task { await self.stop() } }
   func close() -> GatewayProductCloseObservation {
-    stop(); closes += 1
+    stop()
+    closes += 1
     return .init(released: releaseConfirmed, failure: closeFailure)
   }
   func stop() {
@@ -84,7 +92,10 @@ private actor ProductExchangeFixture: GatewayProductExchange {
   func confirmRelease() { releaseConfirmed = true }
   func creationAccepted() -> Bool { creation != nil }
   func finishCreation(_ id: String) {
-    creation?.resume(returning: Data("{\"type\":\"res\",\"id\":\"18446744073709551614\",\"ok\":true,\"payload\":{\"conversationId\":\"\(id)\"}}".utf8))
+    creation?.resume(
+      returning: Data(
+        "{\"type\":\"res\",\"id\":\"18446744073709551614\",\"ok\":true,\"payload\":{\"conversationId\":\"\(id)\"}}"
+          .utf8))
     creation = nil
   }
   func finishRegistration(_ result: Result<Data, Error>) {
@@ -94,18 +105,26 @@ private actor ProductExchangeFixture: GatewayProductExchange {
     if let waiter = eventWaiter {
       eventWaiter = nil
       waiter.resume(returning: [bytes])
-    } else { queued.append([bytes]) }
+    } else {
+      queued.append([bytes])
+    }
   }
 }
 
 private func productReady() -> Data {
-  Data(#"{"version":1,"gatewayId":"gateway","principalId":"device","organizationId":"org","membershipId":"member","credentialId":"issued","audienceId":"phone","expiresAt":null,"grants":[],"methods":["conversation.list","conversation.subscribeList","conversation.subscribe","conversation.unsubscribe"]}"#.utf8)
+  Data(
+    #"{"version":1,"gatewayId":"gateway","principalId":"device","organizationId":"org","membershipId":"member","credentialId":"issued","audienceId":"phone","expiresAt":null,"grants":[],"methods":["conversation.list","conversation.subscribeList","conversation.subscribe","conversation.unsubscribe"]}"#
+      .utf8)
 }
 private func registered(_ id: String) -> Data {
-  Data("{\"type\":\"res\",\"id\":\"18446744073709551614\",\"ok\":true,\"payload\":{\"subscriptionId\":\"\(id)\"}}".utf8)
+  Data(
+    "{\"type\":\"res\",\"id\":\"18446744073709551614\",\"ok\":true,\"payload\":{\"subscriptionId\":\"\(id)\"}}"
+      .utf8)
 }
 private func listed(_ id: String) -> Data {
-  Data("{\"type\":\"event\",\"event\":\"conversation.listed\",\"payload\":{\"subscriptionId\":\"\(id)\",\"list\":{\"conversations\":[],\"complete\":true}}}".utf8)
+  Data(
+    "{\"type\":\"event\",\"event\":\"conversation.listed\",\"payload\":{\"subscriptionId\":\"\(id)\",\"list\":{\"conversations\":[],\"complete\":true}}}"
+      .utf8)
 }
 private final class BatchObservation: @unchecked Sendable {
   private let lock = NSLock()
@@ -132,7 +151,8 @@ private func connect(_ client: NessaGatewayClient, _ exchange: ProductExchangeFi
   let exchange = ProductExchangeFixture()
   let client = NessaGatewayClient()
   let lease = try await connect(client, exchange)
-  #expect(try await client.authenticatedSession(for: lease).snapshot.identity.credentialID == "issued")
+  #expect(
+    try await client.authenticatedSession(for: lease).snapshot.identity.credentialID == "issued")
   try await eventually { await exchange.waitingForEvents() }
   #expect(try await client.list().complete)
   #expect(await exchange.callCount("conversation.list") == 1)
@@ -141,11 +161,15 @@ private func connect(_ client: NessaGatewayClient, _ exchange: ProductExchangeFi
   #expect(object["id"] == nil && object["type"] == nil)
   await client.disconnect()
   try await eventually { await exchange.closeCount() > 0 }
-  await #expect(throws: NessaGatewayError.self) { try await client.authenticatedSession(for: lease) }
+  await #expect(throws: NessaGatewayError.self) {
+    try await client.authenticatedSession(for: lease)
+  }
 }
 
 @Test func productRejectionRetainsCanonicalDetailsAndUsesOnlyPublishedCode() async throws {
-  let response = Data(#"{"type":"res","id":"18446744073709551614","ok":false,"error":{"code":"model_unavailable","message":"Timed out; please retry","details":null}}"#.utf8)
+  let response = Data(
+    #"{"type":"res","id":"18446744073709551614","ok":false,"error":{"code":"model_unavailable","message":"Timed out; please retry","details":null}}"#
+      .utf8)
   let exchange = ProductExchangeFixture(listResponse: response)
   let client = NessaGatewayClient()
   _ = try await connect(client, exchange)
@@ -178,7 +202,9 @@ private func connect(_ client: NessaGatewayClient, _ exchange: ProductExchangeFi
   var iterator = stream.makeAsyncIterator()
   if case .list(let list) = try await iterator.next() {
     #expect(list == .init(conversations: [], complete: true))
-  } else { Issue.record("Missing first inbox publication") }
+  } else {
+    Issue.record("Missing first inbox publication")
+  }
   await client.disconnect()
 }
 
@@ -201,7 +227,9 @@ private func connect(_ client: NessaGatewayClient, _ exchange: ProductExchangeFi
   var iterator = stream.makeAsyncIterator()
   if case .list(let list) = try await iterator.next() {
     #expect(list == .init(conversations: [], complete: true))
-  } else { Issue.record("Missing first inbox publication") }
+  } else {
+    Issue.record("Missing first inbox publication")
+  }
   #expect(try await client.list().complete)
   await client.disconnect()
 }
@@ -218,7 +246,9 @@ private func connect(_ client: NessaGatewayClient, _ exchange: ProductExchangeFi
   await client.disconnect()
   await #expect(throws: (any Error).self) { try await follow.value }
   try await eventually { await exchange.closeCount() > 0 }
-  await #expect(throws: NessaGatewayError.self) { try await client.authenticatedSession(for: lease) }
+  await #expect(throws: NessaGatewayError.self) {
+    try await client.authenticatedSession(for: lease)
+  }
   let next = ProductExchangeFixture()
   let replacement = try await connect(client, next)
   #expect(replacement != lease)
@@ -231,10 +261,12 @@ private func connect(_ client: NessaGatewayClient, _ exchange: ProductExchangeFi
   let client = NessaGatewayClient()
   let lease = try await connect(client, exchange)
   let id = UUID().uuidString.lowercased()
-  let command = PreparedConversationCommand.create(.init(
-    requestID: UUID().uuidString.lowercased(), conversationID: id, agent: nil, model: nil))
+  let command = PreparedConversationCommand.create(
+    .init(
+      requestID: UUID().uuidString.lowercased(), conversationID: id, agent: nil, model: nil))
   let request = Task {
-    try await client.dispatch(command, connection: lease,
+    try await client.dispatch(
+      command, connection: lease,
       scope: .init(address: "native-original", credential: "public-device-key", instance: "phone"))
   }
   try await eventually { await exchange.creationAccepted() }
@@ -243,12 +275,15 @@ private func connect(_ client: NessaGatewayClient, _ exchange: ProductExchangeFi
   await client.disconnect()
   await exchange.finishCreation(id)
   #expect(try await request.value == .created(id))
-  await #expect(throws: NessaGatewayError.self) { try await client.authenticatedSession(for: lease) }
+  await #expect(throws: NessaGatewayError.self) {
+    try await client.authenticatedSession(for: lease)
+  }
 }
 
 @Test(arguments: [false, true])
 func productReplacementUsesReleaseFactSeparatelyFromHistoricalFault(released: Bool) async throws {
-  let old = ProductExchangeFixture(releaseConfirmed: released,
+  let old = ProductExchangeFixture(
+    releaseConfirmed: released,
     closeFailure: ProductFixtureFailure.uncertain)
   let client = NessaGatewayClient()
   _ = try await connect(client, old)
@@ -259,7 +294,9 @@ func productReplacementUsesReleaseFactSeparatelyFromHistoricalFault(released: Bo
     #expect(await replacement.readyCount() == 1)
     #expect(try await client.list().complete)
   } else {
-    await #expect(throws: ProductFixtureFailure.uncertain) { try await connect(client, replacement) }
+    await #expect(throws: ProductFixtureFailure.uncertain) {
+      try await connect(client, replacement)
+    }
     #expect(await replacement.readyCount() == 0)
     #expect(await replacement.closeCount() == 1)
   }
@@ -267,13 +304,16 @@ func productReplacementUsesReleaseFactSeparatelyFromHistoricalFault(released: Bo
 }
 
 @Test func productPretransferChildKeepsItsOwnUnconfirmedReleaseBarrier() async throws {
-  let old = ProductExchangeFixture(releaseConfirmed: false,
+  let old = ProductExchangeFixture(
+    releaseConfirmed: false,
     closeFailure: ProductFixtureFailure.uncertain)
   let client = NessaGatewayClient()
   _ = try await connect(client, old)
   await client.disconnect()
   let untransferred = ProductExchangeFixture(releaseConfirmed: false)
-  await #expect(throws: ProductFixtureFailure.uncertain) { try await connect(client, untransferred) }
+  await #expect(throws: ProductFixtureFailure.uncertain) {
+    try await connect(client, untransferred)
+  }
   #expect(await untransferred.readyCount() == 0)
   await old.confirmRelease()
   let blocked = ProductExchangeFixture()
@@ -389,7 +429,9 @@ private func answered(_ payload: String) -> Data {
   Data("{\"type\":\"res\",\"id\":\"18446744073709551614\",\"ok\":true,\"payload\":\(payload)}".utf8)
 }
 private func refusedWith(_ code: String) -> Data {
-  Data("{\"type\":\"res\",\"id\":\"18446744073709551614\",\"ok\":false,\"error\":{\"code\":\"\(code)\",\"message\":\"internal words\"}}".utf8)
+  Data(
+    "{\"type\":\"res\",\"id\":\"18446744073709551614\",\"ok\":false,\"error\":{\"code\":\"\(code)\",\"message\":\"internal words\"}}"
+      .utf8)
 }
 private let uploadTicket = String(repeating: "ab", count: 32)
 private func ticketAnswer() -> Data {
@@ -401,7 +443,8 @@ private func connectLinked(_ client: NessaGatewayClient, _ exchange: ProductExch
   async throws
 {
   _ = try await client.connectLinked(
-    exchange, scope: .init(address: "native-original", credential: "public-device-key", instance: "phone"))
+    exchange,
+    scope: .init(address: "native-original", credential: "public-device-key", instance: "phone"))
 }
 private struct WrittenPiece: Decodable {
   let ticket: String
@@ -418,15 +461,17 @@ private struct WrittenPiece: Decodable {
     "attachment.write": [
       answered(#"{"received":32768,"digest":null,"mimeType":null,"size":null}"#),
       answered(#"{"received":65536,"digest":null,"mimeType":null,"size":null}"#),
-      answered("{\"received\":\(bytes.count),\"digest\":\"\(digest)\",\"mimeType\":\"image/png\",\"size\":\(bytes.count)}"),
+      answered(
+        "{\"received\":\(bytes.count),\"digest\":\"\(digest)\",\"mimeType\":\"image/png\",\"size\":\(bytes.count)}"
+      ),
     ],
   ])
   let client = NessaGatewayClient()
   try await connectLinked(client, exchange)
-  let image = try await client.uploadPhoneImage(
+  let image = try await client.uploadPhoneAttachment(
     DraftAttachment(name: "photo.png", mimeType: "image/png", data: bytes),
     conversationID: "00000000-0000-4000-8000-000000000001")
-  #expect(image == NessaImageAttachment(digest: digest, mimeType: "image/png", size: bytes.count))
+  #expect(image == NessaStoredAttachment(digest: digest, mimeType: "image/png", size: bytes.count))
   let pieces = try await exchange.allParameters("attachment.write").map {
     try JSONDecoder().decode(WrittenPiece.self, from: $0)
   }
@@ -438,8 +483,11 @@ private struct WrittenPiece: Decodable {
 }
 
 @Test(arguments: [
-  ("unknown_method", "Update Nessa on your Mac to send photos from your phone. Your draft has been kept."),
-  ("upload_failed", "The photo didn’t finish sending. Your draft has been kept."),
+  (
+    "unknown_method",
+    "Update Nessa on your Mac to send attachments from your phone. Your draft has been kept."
+  ),
+  ("upload_failed", "The attachment didn’t finish sending. Your draft has been kept."),
   ("image_too_large", "This photo is too large to send. Try a smaller one."),
 ])
 func aRefusedPieceIsToldInPlainWords(code: String, words: String) async throws {
@@ -449,7 +497,7 @@ func aRefusedPieceIsToldInPlainWords(code: String, words: String) async throws {
   let client = NessaGatewayClient()
   try await connectLinked(client, exchange)
   do {
-    _ = try await client.uploadPhoneImage(
+    _ = try await client.uploadPhoneAttachment(
       DraftAttachment(name: "photo.png", mimeType: "image/png", data: Data([1, 2, 3])),
       conversationID: "00000000-0000-4000-8000-000000000001")
     Issue.record("the upload should have been refused")
@@ -457,6 +505,97 @@ func aRefusedPieceIsToldInPlainWords(code: String, words: String) async throws {
     #expect(error.localizedDescription == words)
   }
   #expect(await exchange.callCount("attachment.write") == 1)
+  await client.disconnect()
+}
+
+@Test(arguments: ["application/pdf", "application/zip", "text/plain"])
+func aFileCrossesTheNativeLinkAndBothSendLookupsKeepItsOriginalReference(media: String) async throws
+{
+  let bytes = Data((0..<(70 * 1024)).map { UInt8($0 % 251) })
+  let digest = "sha256:" + SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+  let identity = MessageCommandIdentity()
+  let scope = PhoneCacheScope(
+    address: "native-original", credential: "public-device-key", instance: "phone")
+  let exchange = ProductExchangeFixture(scripted: [
+    "attachment.begin": [ticketAnswer()],
+    "attachment.write": [
+      answered(#"{"received":32768}"#), answered(#"{"received":65536}"#),
+      answered(
+        "{\"received\":\(bytes.count),\"digest\":\"\(digest)\",\"mimeType\":\"\(media)\",\"size\":\(bytes.count)}"
+      ),
+    ],
+    "conversation.receipt": [answered("{\"found\":false,\"requestId\":\"\(identity.requestID)\"}")],
+  ])
+  let client = NessaGatewayClient()
+  let lease = try await client.connectLinked(exchange, scope: scope)
+  let file = DraftAttachment(name: "phone-file.txt", mimeType: media, data: bytes)
+  _ = try await client.send(
+    "", attachments: [file], conversationID: "00000000-0000-4000-8000-000000000001",
+    identity: identity, replyTo: nil)
+  let original = NessaUploadedFile(
+    digest: digest, mimeType: media, size: bytes.count, name: file.name)
+  let command = PreparedConversationCommand.submit(
+    .init(
+      requestID: identity.requestID, conversationID: "00000000-0000-4000-8000-000000000001",
+      executionID: identity.executionID, text: "", uploads: [original]))
+  _ = try await client.receipt(command, connection: lease, scope: scope)
+  for method in ["conversation.send", "conversation.receipt"] {
+    let parameters = try #require(await exchange.allParameters(method).last)
+    let object = try #require(JSONSerialization.jsonObject(with: parameters) as? [String: Any])
+    let uploads = try #require(object["uploads"] as? [[String: Any]])
+    #expect(uploads.count == 1)
+    #expect(uploads[0]["digest"] as? String == digest)
+    #expect(uploads[0]["mimeType"] as? String == media)
+    #expect(uploads[0]["name"] as? String == file.name)
+    #expect(uploads[0]["size"] as? Int == bytes.count)
+    #expect((object["attachments"] as? [Any])?.isEmpty == true)
+    #expect((object["files"] as? [Any])?.isEmpty == true)
+  }
+  let pieces = try await exchange.allParameters("attachment.write").map {
+    try JSONDecoder().decode(WrittenPiece.self, from: $0)
+  }
+  #expect(Data(pieces.compactMap { Data(base64Encoded: $0.data) }.joined()) == bytes)
+  await client.disconnect()
+}
+
+@Test func aProductBindingCannotUploadSendLookupOrStopOnAReplacementScope() async throws {
+  let client = NessaGatewayClient()
+  let a = PhoneCacheScope(address: "a", credential: "a", instance: "a")
+  let b = PhoneCacheScope(address: "b", credential: "b", instance: "b")
+  let first = ProductExchangeFixture()
+  _ = try await client.connectProduct(first, uploads: nil, scope: a)
+  let original = client.transport(for: a)
+  let replacement = ProductExchangeFixture()
+  _ = try await client.connectProduct(replacement, uploads: nil, scope: b)
+  let intent = try PhoneSendIntent(
+    conversationID: "00000000-0000-4000-8000-000000000001",
+    commandID: "00000000-0000-4000-8000-000000000002",
+    turnID: "00000000-0000-4000-8000-000000000003", text: "", images: [],
+    uploads: [
+      .init(
+        digest: "sha256:" + String(repeating: "a", count: 64), mimeType: "text/plain", size: 1,
+        name: "notes.txt")
+    ])
+  await #expect(throws: NessaGatewayError.self) {
+    _ = try await original.uploadPhoneAttachment(
+      .init(name: "notes.txt", mimeType: "text/plain", data: Data([1])),
+      conversationID: intent.conversationID)
+  }
+  #expect(
+    await original.phoneStop(
+      conversationID: intent.conversationID, requestID: intent.commandID, executionID: intent.turnID
+    ) == .lost)
+  #expect(
+    await original.phoneLookupStop(
+      conversationID: intent.conversationID, requestID: intent.commandID, executionID: intent.turnID
+    ) == .lost)
+  #expect(await original.send(intent) == .lost)
+  #expect(await original.lookup(intent) == .lost)
+  #expect(await replacement.callCount("attachment.begin") == 0)
+  #expect(await replacement.callCount("attachment.write") == 0)
+  #expect(await replacement.callCount("conversation.stop") == 0)
+  #expect(await replacement.callCount("conversation.send") == 0)
+  #expect(await replacement.callCount("conversation.receipt") == 0)
   await client.disconnect()
 }
 

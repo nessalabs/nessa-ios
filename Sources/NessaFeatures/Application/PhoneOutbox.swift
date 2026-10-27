@@ -77,31 +77,33 @@ public struct PhoneSendIntent: Equatable, Sendable, Codable {
   public let commandID: String
   public let turnID: String
   public let text: String
-  public let images: [NessaImageAttachment]
+  public let images: [NessaStoredAttachment]
+  public let uploads: [NessaUploadedFile]
   public let canonical: Data
 
   public init(
     conversationID: String, commandID: String, turnID: String, text: String,
-    images: [NessaImageAttachment]
+    images: [NessaStoredAttachment], uploads: [NessaUploadedFile] = []
   ) throws {
     guard Self.identifier(commandID), Self.identifier(turnID), Self.conversation(conversationID),
       text.utf8.count <= 8192,
-      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.isEmpty,
-      images.count <= 8, images.reduce(0, { $0 + $1.size }) <= 10 * 1024 * 1024,
-      images.allSatisfy(Self.image)
+      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.isEmpty
+        || !uploads.isEmpty,
+      AttachmentReferences.valid(images: images, uploads: uploads)
     else { throw PhoneOutboxFailure.invalid }
     self.conversationID = conversationID
     self.commandID = commandID
     self.turnID = turnID
     self.text = text
     self.images = images
+    self.uploads = uploads
     canonical = Self.bytes(
       conversationID: conversationID, commandID: commandID, turnID: turnID, text: text,
-      images: images)
+      images: images, uploads: uploads)
   }
 
   private enum CodingKeys: String, CodingKey {
-    case conversationID, commandID, turnID, text, images, canonical
+    case conversationID, commandID, turnID, text, images, uploads, canonical
   }
 
   public init(from decoder: Decoder) throws {
@@ -111,7 +113,8 @@ public struct PhoneSendIntent: Equatable, Sendable, Codable {
       commandID: try values.decode(String.self, forKey: .commandID),
       turnID: try values.decode(String.self, forKey: .turnID),
       text: try values.decode(String.self, forKey: .text),
-      images: try values.decode([NessaImageAttachment].self, forKey: .images))
+      images: try values.decode([NessaStoredAttachment].self, forKey: .images),
+      uploads: try values.decodeIfPresent([NessaUploadedFile].self, forKey: .uploads) ?? [])
     let stored = try values.decode(Data.self, forKey: .canonical)
     guard canonical == stored else {
       throw DecodingError.dataCorruptedError(
@@ -126,6 +129,7 @@ public struct PhoneSendIntent: Equatable, Sendable, Codable {
     try values.encode(turnID, forKey: .turnID)
     try values.encode(text, forKey: .text)
     try values.encode(images, forKey: .images)
+    if !uploads.isEmpty { try values.encode(uploads, forKey: .uploads) }
     try values.encode(canonical, forKey: .canonical)
   }
 
@@ -137,19 +141,11 @@ public struct PhoneSendIntent: Equatable, Sendable, Codable {
   private static func conversation(_ value: String) -> Bool {
     UUID(uuidString: value)?.uuidString.lowercased() == value
   }
-  private static func image(_ image: NessaImageAttachment) -> Bool {
-    image.size > 0 && image.size <= 5 * 1024 * 1024
-      && ["image/png", "image/jpeg", "image/gif", "image/webp"].contains(image.mimeType)
-      && image.digest.hasPrefix("sha256:") && image.digest.count == 71
-      && image.digest.dropFirst(7).utf8.allSatisfy {
-        (48...57).contains($0) || (97...102).contains($0)
-      }
-  }
   private static func bytes(
     conversationID: String, commandID: String, turnID: String, text: String,
-    images: [NessaImageAttachment]
+    images: [NessaStoredAttachment], uploads: [NessaUploadedFile]
   ) -> Data {
-    let object: [String: Any] = [
+    var object: [String: Any] = [
       "commandId": commandID,
       "conversationId": conversationID,
       "images": images.map {
@@ -159,6 +155,12 @@ public struct PhoneSendIntent: Equatable, Sendable, Codable {
       "turnId": turnID,
       "v": 1,
     ]
+    if !uploads.isEmpty {
+      object["uploads"] = uploads.map {
+        ["digest": $0.digest, "mimeType": $0.mimeType, "size": $0.size, "name": $0.name]
+          as [String: Any]
+      }
+    }
     return (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data()
   }
 }
@@ -169,7 +171,8 @@ public struct PhoneOutboxView: Equatable, Sendable, Identifiable {
   public let turnID: String
   public let conversationID: String
   public let text: String
-  public let images: [NessaImageAttachment]
+  public let images: [NessaStoredAttachment]
+  public let uploads: [NessaUploadedFile]
   public let outcome: PhoneSendOutcome
   public let successor: String?
 }
@@ -205,7 +208,8 @@ struct PhoneOutboxRecord: Equatable, Codable, Sendable {
   var view: PhoneOutboxView {
     PhoneOutboxView(
       commandID: intent.commandID, turnID: intent.turnID, conversationID: intent.conversationID,
-      text: intent.text, images: intent.images, outcome: outcome, successor: successor)
+      text: intent.text, images: intent.images, uploads: intent.uploads, outcome: outcome,
+      successor: successor)
   }
 }
 
@@ -386,7 +390,7 @@ public actor PhoneOutbox {
     let (command, turn) = mint()
     let draftIntent = try PhoneSendIntent(
       conversationID: failed.intent.conversationID, commandID: command, turnID: turn,
-      text: failed.intent.text, images: failed.intent.images)
+      text: failed.intent.text, images: failed.intent.images, uploads: failed.intent.uploads)
     let draft = PhoneOutboxRecord.held(draftIntent)
     let failed = failed.with(successor: command)
     do {

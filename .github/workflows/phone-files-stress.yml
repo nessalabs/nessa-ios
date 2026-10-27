@@ -1,0 +1,59 @@
+name: Phone file sending
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: phone-files-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  phone-files:
+    name: Swift phone file stress
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      # Use the stable SDK for the product's iOS/macOS 26 SwiftUI surface.
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      NESSA_PHONE_FILES_VERIFIER: ${{ github.workspace }}/phone/.build/debug/PhoneSyncVerification
+      PHONE_STRESS_EVIDENCE: ${{ github.workspace }}/phone-file-stress-evidence
+    steps:
+      # The gateway is public. The private phone source uses this repository's
+      # normal token; no credential with access to another private repo is needed.
+      - uses: actions/checkout@v4
+        with:
+          repository: nessalabs/nessa-agent
+          ref: 02024720a96de58578472220a1b00295e35e235e
+      - uses: actions/checkout@v4
+        with:
+          path: phone
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: ./.github/actions/pnpm-install
+      - name: Install verification tools
+        run: brew install ripgrep
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+      - name: Verify the phone product
+        run: ./phone/scripts/verify.sh
+      - name: Install the pinned browsers
+        run: pnpm exec playwright install chromium webkit
+        timeout-minutes: 15
+      - name: Build the gateway and scripted agent host
+        run: cargo build --locked -p nessa-server -p nessa-mcp
+      - name: Run default and raised phone file stress
+        run: node phone/scripts/verify-phone-files-stress.mjs . "$PHONE_STRESS_EVIDENCE"
+        timeout-minutes: 40
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phone-file-stress-${{ github.run_id }}
+          path: ${{ env.PHONE_STRESS_EVIDENCE }}
+          if-no-files-found: ignore

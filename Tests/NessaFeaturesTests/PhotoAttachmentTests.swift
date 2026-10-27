@@ -63,9 +63,9 @@ func imageCacheSurvivesRecreationButIsScopedToIdentity() async throws {
 }
 
 @Test
-func liveAttachmentPolicyRejectsFilesAndOversizeImagesBeforeUpload() throws {
+func liveAttachmentPolicyAcceptsFilesAndRejectsOversizeImagesBeforeUpload() throws {
   let file = DraftAttachment(name: "notes.txt", mimeType: "text/plain", data: Data([1]))
-  #expect(throws: NessaGatewayError.self) { try AttachmentPolicy.nessa.validate([file]) }
+  try AttachmentPolicy.nessa.validate([file])
   let large = DraftAttachment(
     name: "large.jpg", mimeType: "image/jpeg", data: Data(count: 5 * 1024 * 1024 + 1))
   #expect(throws: NessaGatewayError.self) { try AttachmentPolicy.nessa.validate([large]) }

@@ -133,7 +133,7 @@ private actor ScriptedReviews: MessagingRepository, ReviewNoticeSource {
     async throws
   { try await base.answer(permission, option: option, conversationID: conversationID) }
   func delete(_ conversationID: String) async throws { try await base.delete(conversationID) }
-  func imageData(for attachment: NessaImageAttachment) async throws -> Data? {
+  func imageData(for attachment: NessaStoredAttachment) async throws -> Data? {
     try await base.imageData(for: attachment)
   }
   func disconnect() async { await base.disconnect() }

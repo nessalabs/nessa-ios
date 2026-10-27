@@ -177,11 +177,11 @@ private final class CatalogueSpy: PhoneSyncRunning, @unchecked Sendable {
     executionID: "22222222-2222-4222-8222-222222222222")
   await chat.activate(first)
   _ = try await chat.deliver(
-    text: "Hello", attachments: [], conversationID: emptyChat, identity: identity)
+    text: "Hello", attachments: [], conversationID: emptyChat, identity: identity, scope: first)
   await chat.activate(second)
-  #expect(try await chat.list().isEmpty)
+  #expect(try await chat.list(scope: second).isEmpty)
   await chat.activate(first)
-  #expect(try await chat.list().map(\.text) == ["Hello"])
+  #expect(try await chat.list(scope: first).map(\.text) == ["Hello"])
 }
 
 @Test func aFailedSendStaysListedAfterRecovery() async throws {
@@ -194,9 +194,9 @@ private final class CatalogueSpy: PhoneSyncRunning, @unchecked Sendable {
     text: "Hello", attachments: [], conversationID: emptyChat,
     identity: MessageCommandIdentity(
       requestID: "11111111-1111-4111-8111-111111111111",
-      executionID: "22222222-2222-4222-8222-222222222222"))
-  #expect(try await chat.recover().isEmpty)
-  #expect(try await chat.list().map(\.outcome) == [.failed("forbidden")])
+      executionID: "22222222-2222-4222-8222-222222222222"), scope: nil)
+  #expect(try await chat.recover(scope: nil).isEmpty)
+  #expect(try await chat.list(scope: nil).map(\.outcome) == [.failed("forbidden")])
 }
 
 @Test @MainActor func aNewCredentialClearsRevocationAndThePreviousOutbox() async throws {
@@ -240,7 +240,8 @@ private final class CatalogueSpy: PhoneSyncRunning, @unchecked Sendable {
   let model = MessagesViewModel(
     service: MessagingService(repository: ProductListGateway()),
     credentials: InMemoryCredentialStore(), preferences: InMemoryChatPreferences(),
-    phoneSync: CatalogueSpy(snapshot), phoneChat: PhoneProductChat(root: root, transport: transport))
+    phoneSync: CatalogueSpy(snapshot), phoneChat: PhoneProductChat(root: root, transport: transport)
+  )
   await model.connect(
     address: profile.productAddress, credential: "fixture", instance: profile.instance)
   #expect(
@@ -261,4 +262,22 @@ private actor MemoryStopStore: PhoneStopStoring {
   private var records: [PhoneStopRecord] = []
   func load() async throws -> [PhoneStopRecord] { records }
   func save(_ records: [PhoneStopRecord]) async throws { self.records = records }
+}
+
+@Test func aStaleCallerCannotCaptureTheReplacementChatScope() async throws {
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let gateway = ScriptedGateway(store: MemoryOutboxStore())
+  let chat = PhoneProductChat(root: root, transport: gateway)
+  let a = PhoneCacheScope(address: "a", credential: "a", instance: "a")
+  let b = PhoneCacheScope(address: "b", credential: "b", instance: "b")
+  await chat.activate(a)
+  await chat.activate(b)
+  await #expect(throws: PhoneOutboxFailure.unavailable) {
+    _ = try await chat.deliver(
+      text: "", attachments: [.init(name: "notes.txt", mimeType: "text/plain", data: Data([1]))],
+      conversationID: emptyChat, identity: MessageCommandIdentity(), scope: a)
+  }
+  #expect(gateway.uploads == 0 && gateway.sends == 0)
+  #expect(try await chat.list(scope: b).isEmpty)
 }

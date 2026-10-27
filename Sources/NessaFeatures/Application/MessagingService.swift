@@ -17,7 +17,7 @@ public struct MessagingService: Sendable, GatewayConversationSharingProviding,
     guard let reader = repository as? any PermissionReviewReading else { return view }
     return await reviews.resolve(view, with: reader)
   }
-  public func imageData(for attachment: NessaImageAttachment) async throws -> Data? {
+  public func imageData(for attachment: NessaStoredAttachment) async throws -> Data? {
     try await repository.imageData(for: attachment)
   }
   public var attachmentPolicy: AttachmentPolicy { repository.attachmentPolicy }

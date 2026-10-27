@@ -52,7 +52,7 @@ func legacyRepliesMigrateOnlyWhenTheQuotedSourceIsUnambiguous() throws {
 @Test
 func attachmentRepliesUseTheSameThreadRelationships() throws {
   var first = replyTurn("first", user: "")
-  first.attachments = [NessaImageAttachment(digest: "photo", mimeType: "image/jpeg", size: 10)]
+  first.attachments = [NessaStoredAttachment(digest: "photo", mimeType: "image/jpeg", size: 10)]
   first.files = [NessaFileAttachment(name: "Notes.txt", mimeType: "text/plain")]
   var photoReply = replyTurn("photo-reply", user: "> Photo\n\n")
   photoReply.attachments = first.attachments

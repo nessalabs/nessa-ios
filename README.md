@@ -76,7 +76,7 @@ is implemented and explicitly authorized.
 
 ## Remaining product work
 
-General mobile file uploads, audio attachments, push notifications, agent
+Audio attachments, push notifications, agent
 questions, full transcript pagination and uncertain deletion recovery remain
 unfinished. Physical-device execution and broader backlog/failure experiments
 are still required. Supply a real gateway credential and reachable product and
@@ -108,7 +108,7 @@ Source layout:
 - `Presentation/Components/`: leaf controls, bubbles, avatars and platform picker bridges.
 - `NessaDesignSystem/`: shared visual tokens, shapes, glass and scroll-dependent header blur.
 
-The plus menu provides Camera, Photos and Add Files. Camera requires a physical iPhone; the simulator reports that it is unavailable. The system photo picker needs no broad photo-library permission. Draft attachments stay until a send succeeds. Live image sending uses `attachment.begin` and a single-use-ticket `PUT /attachments`; tickets are never logged, and redirects and cookies are disabled. General files can be selected and sent in mock mode. The current live protocol only links general files already on the gateway machine, so it cannot send general iPhone files yet; the app reports this and retains the draft.
+The plus menu provides Camera, Photos and Add Files. Camera requires a physical iPhone; the simulator reports that it is unavailable. The system photo picker needs no broad photo-library permission. Draft attachments stay until a send succeeds. Photos retain their 5 MiB each / 10 MiB combined limits; general files use a 64 MiB message budget. Native uploads use `attachment.begin` and `attachment.write` pieces; the WebSocket verification path uses a single-use-ticket `PUT /attachments`. Tickets are never logged, and HTTP redirects and cookies are disabled. General files send original digest, media type, size and name in `uploads`. The gateway verifies and places their bytes where the selected agent runs before dispatching its prompt. Both phone journals retain those references for exact send/receipt recovery. File tiles show original metadata without inventing a local path. See gateway [#1149](https://github.com/nessalabs/nessa-agent/issues/1149).
 
 The waveform starts Apple speech recognition and fills the message field with text. Stop dictation, review the text, and tap Send. Live mode requests microphone and speech-recognition permission; development mode injects a mocked transcript. Physical-iPhone microphone verification remains outstanding. The menu has no Clear Draft action.
 
@@ -132,3 +132,20 @@ Photos now render as rounded image bubbles and rectangular draft thumbnails, wit
 Long-press text, photo stacks, or file messages for styled Tapback reactions. The chat blurs and dims while the selected message stays highlighted. A wide, horizontally scrollable reaction strip sits above it; the additional-emoji thought-bubble control sits beside it, and Reply, Copy, and More actions sit below. Custom vector pink-heart artwork, native thumbs, and shared HA/!/? lettering match the supplied style. Applied badges sit outside the bubble and reserve clearance from the preceding message. Entry uses a short spring; Reduce Motion uses a fade. Photo stack thumbnails are prepared once off the main actor; the inline stack moves and tilts the front card to reveal the cards beneath, commits selection after the exit animation, and loops in either direction. The full-screen viewer uses native page transitions. Reply adds quoted context to the draft and sends it as text through the current gateway. Reactions persist locally for this gateway/device and use stable message identities; they are not sent to the current Nessa backend. Running agent turns show animated typing dots, respecting Reduce Motion. The custom header preserves UIKit’s interactive back gestures; full-content back swipes yield to inline photo stacks and the full-screen pager.
 
 The independent [basic agent MCP bridge](../nessa-agent-bridge/README.md) implements five chat primitives with SQLite persistence. Its phone transport and push notification delivery remain future integration work; Nessa remains the only live app integration.
+
+### Phone file stress
+
+The `Phone file sending` macOS workflow builds this repository's production
+Swift verifier and checks out public gateway source at an exact reviewed commit.
+It runs the gateway's default conversation stress plan, then raised PDF/ZIP/text
+sending in Chromium and WebKit with background conversations and followers.
+The Swift model sends through both the prepared-command journal and durable
+outbox, including same-identity retries. The gateway driver checks placed bytes,
+original history references, one turn per identity and visible filenames.
+
+To run it locally, build `swift build --product PhoneSyncVerification`, set
+`NESSA_PHONE_FILES_VERIFIER` to the absolute `.build/debug/PhoneSyncVerification`
+path, then run `node scripts/verify-phone-files-stress.mjs <gateway-root> <evidence-directory>`.
+The gateway must have its dependencies, browsers and `nessa`/`nessa-mcp` built.
+This fixture drives the phone model and persistence; it does not operate a physical
+phone's document picker.

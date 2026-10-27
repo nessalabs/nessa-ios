@@ -73,8 +73,91 @@ struct NessaThreadView: View {
     (current?.messages ?? []).reduce(0) { $0 + $1.displayBubbles.count }
   }
   var body: some View {
-    let animateMessages = hasLoadedHistory && !reduceMotion
     let replies = store.replyProjection(in: conversationID)
+    let threadGround = transcript(replies: replies)
+    .messagesAmbientGround()
+    .environment(\.messageContext, messageContext)
+    .blur(
+      radius: composer.reply != nil
+        ? MessagesStyle.replyBackgroundBlur
+        : (messageContext.selection == nil ? 0 : MessagesStyle.contextBackgroundBlur)
+    )
+    .accessibilityHidden(messageContext.selection != nil || composer.reply != nil)
+    let threadOverlays = threadGround
+    .overlay {
+      if composer.reply != nil {
+        ReplyThreadView(
+          replies: replies, conversationID: conversationID, agentName: name,
+          store: store, selection: $composer.reply, draft: $composer.text,
+          attachments: $composer.attachments,
+          dictation: dictation,
+          onSend: send
+        )
+        .blur(radius: messageContext.selection == nil ? 0 : MessagesStyle.contextBackgroundBlur)
+        .accessibilityHidden(messageContext.selection != nil)
+        .transition(.opacity)
+      }
+    }
+    .overlay {
+      // Read where the navigation bar ends before the overlay spreads over the whole screen.
+      GeometryReader { bar in
+        MessageContextOverlay(controller: messageContext, topClearance: bar.safeAreaInsets.top)
+          .ignoresSafeArea()
+      }
+    }
+    // Closing a message's menu fades the menu and the blur behind it out together, instead of
+    // both vanishing in one frame; opening keeps the menu's own spring.
+    let threadFeedback = threadOverlays
+    .animation(
+      .easeOut(duration: MessagesStyle.contextFadeDuration), value: messageContext.selection?.id)
+    .animation(
+      reduceMotion ? nil : MessagesStyle.messageFollowAnimation, value: composer.reply != nil
+    )
+    .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.5), trigger: replyBubbleCount) {
+      old, new in
+      hasLoadedHistory && old > 0 && new > old
+    }
+    // A hold that opens a message's menu taps once as it opens, as the inbox's system menus do.
+    .sensoryFeedback(.impact(weight: .light), trigger: messageContext.selection?.id) { old, new in
+      old == nil && new != nil
+    }
+    // The system's own navigation bar, so its back button and edge swipe are the real ones.
+    // While a reply thread or a message's menu covers the screen, the bar's controls step
+    // aside rather than the bar itself, so the layout under it never moves.
+    threadFeedback
+    .nessaInlineNavigationTitle()
+    .navigationBarBackButtonHidden(overlayOpen)
+    .toolbar {
+      ToolbarItem(placement: .principal) {
+        ThreadTitle(
+          name: name, seed: conversationID, working: working, onDetails: { details = true })
+          .opacity(messageContext.selection == nil ? 1 : 0)
+          .disabled(messageContext.selection != nil)
+      }
+      if composer.reply != nil && messageContext.selection == nil {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Close replies", systemImage: "xmark") { composer.reply = nil }
+        }
+      }
+    }
+    .sheet(isPresented: $details) {
+      AgentDetailsView(name: name, conversationID: conversationID, store: store)
+    }
+    .task(id: store.connectionRevision) { await store.watchConversation(conversationID) }
+    .task { takeFirstMessage() }
+    .onChange(of: store.acknowledgedCommands) { _, ids in
+      composer.accept(ids, scope: store.deliveryScopeRevision)
+    }
+    .onChange(of: store.pendingCommands) { _, commands in
+      if store.connected && store.pendingLoadError == nil {
+        composer.retainPending(Set(commands.map(\.requestID)))
+      }
+    }
+  }
+
+  @ViewBuilder
+  private func transcript(replies: ConversationReplies) -> some View {
+    let animateMessages = hasLoadedHistory && !reduceMotion
     Group {
       ScrollView {
         // Eager, not lazy: a lazy stack guesses the height of rows off screen, so a scroll to
@@ -252,88 +335,15 @@ struct NessaThreadView: View {
           }
         }
     }
-    .messagesAmbientGround()
-    .environment(\.messageContext, messageContext)
-    .blur(
-      radius: composer.reply != nil
-        ? MessagesStyle.replyBackgroundBlur
-        : (messageContext.selection == nil ? 0 : MessagesStyle.contextBackgroundBlur)
-    )
-    .accessibilityHidden(messageContext.selection != nil || composer.reply != nil)
-    .overlay {
-      if composer.reply != nil {
-        ReplyThreadView(
-          replies: replies, conversationID: conversationID, agentName: name,
-          store: store, selection: $composer.reply, draft: $composer.text,
-          attachments: $composer.attachments,
-          dictation: dictation,
-          onSend: send
-        )
-        .blur(radius: messageContext.selection == nil ? 0 : MessagesStyle.contextBackgroundBlur)
-        .accessibilityHidden(messageContext.selection != nil)
-        .transition(.opacity)
-      }
-    }
-    .overlay {
-      // Read where the navigation bar ends before the overlay spreads over the whole screen.
-      GeometryReader { bar in
-        MessageContextOverlay(controller: messageContext, topClearance: bar.safeAreaInsets.top)
-          .ignoresSafeArea()
-      }
-    }
-    // Closing a message's menu fades the menu and the blur behind it out together, instead of
-    // both vanishing in one frame; opening keeps the menu's own spring.
-    .animation(
-      .easeOut(duration: MessagesStyle.contextFadeDuration), value: messageContext.selection?.id)
-    .animation(
-      reduceMotion ? nil : MessagesStyle.messageFollowAnimation, value: composer.reply != nil
-    )
-    .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.5), trigger: replyBubbleCount) {
-      old, new in
-      hasLoadedHistory && old > 0 && new > old
-    }
-    // A hold that opens a message's menu taps once as it opens, as the inbox's system menus do.
-    .sensoryFeedback(.impact(weight: .light), trigger: messageContext.selection?.id) { old, new in
-      old == nil && new != nil
-    }
-    // The system's own navigation bar, so its back button and edge swipe are the real ones.
-    // While a reply thread or a message's menu covers the screen, the bar's controls step
-    // aside rather than the bar itself, so the layout under it never moves.
-    .nessaInlineNavigationTitle()
-    .navigationBarBackButtonHidden(overlayOpen)
-    .toolbar {
-      ToolbarItem(placement: .principal) {
-        ThreadTitle(
-          name: name, seed: conversationID, working: working, onDetails: { details = true })
-          .opacity(messageContext.selection == nil ? 1 : 0)
-          .disabled(messageContext.selection != nil)
-      }
-      if composer.reply != nil && messageContext.selection == nil {
-        ToolbarItem(placement: .cancellationAction) {
-          Button("Close replies", systemImage: "xmark") { composer.reply = nil }
-        }
-      }
-    }
-    .sheet(isPresented: $details) {
-      AgentDetailsView(name: name, conversationID: conversationID, store: store)
-    }
-    .task(id: store.connectionRevision) { await store.watchConversation(conversationID) }
-    .task {
-      // Taken once: the home screen forgets it, so coming back to this chat sends nothing.
-      guard let firstMessage else { return }
-      onFirstMessageTaken()
-      composer.text = firstMessage.text
-      composer.attachments = firstMessage.attachments
-      send()
-    }
-    .onChange(of: store.acknowledgedCommands) { _, ids in
-      composer.accept(ids, scope: store.deliveryScopeRevision)
-    }
-    .onChange(of: store.pendingCommands) { _, commands in
-      if store.connected && store.pendingLoadError == nil {
-        composer.retainPending(Set(commands.map(\.requestID)))
-      }
-    }
+  }
+
+  private func takeFirstMessage() {
+    // Taken once: the home screen forgets it, so coming back to this chat sends nothing.
+    guard let firstMessage else { return }
+    onFirstMessageTaken()
+    composer.text = firstMessage.text
+    composer.attachments = firstMessage.attachments
+    send()
   }
 
   private func send() {

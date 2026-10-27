@@ -9,7 +9,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
 {
   public nonisolated var attachmentPolicy: AttachmentPolicy { .nessa }
   private var imageCache: AttachmentImageCache?
-  public func imageData(for attachment: NessaImageAttachment) async throws -> Data? {
+  public func imageData(for attachment: NessaStoredAttachment) async throws -> Data? {
     return await imageCache?.read(attachment.digest)
   }
   private var uploadURL: URL?
@@ -496,7 +496,8 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
           "conversation.send",
           params: Send(
             conversationId: value.conversationID, requestId: value.requestID,
-            executionId: value.executionID, text: value.text, attachments: value.images, files: []))
+            executionId: value.executionID, text: value.text, attachments: value.images,
+            uploads: value.uploads, files: []))
         acknowledgment = .submitted(result.executionId)
       }
     } catch {
@@ -532,7 +533,8 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
       let operation: String
       let executionId: String?
       let text: String?
-      let attachments: [NessaImageAttachment]?
+      let attachments: [NessaStoredAttachment]?
+      let uploads: [NessaUploadedFile]?
       let files: [String]?
       let agent: String?
       let model: String?
@@ -542,13 +544,14 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     case .create(let value):
       lookup = Lookup(
         conversationId: value.conversationID, requestId: value.requestID,
-        operation: "create", executionId: nil, text: nil, attachments: nil, files: nil,
+        operation: "create", executionId: nil, text: nil, attachments: nil, uploads: nil,
+        files: nil,
         agent: value.agent, model: value.model)
     case .submit(let value):
       lookup = Lookup(
         conversationId: value.conversationID, requestId: value.requestID,
         operation: "submit", executionId: value.executionID, text: value.text,
-        attachments: value.images, files: [], agent: nil, model: nil)
+        attachments: value.images, uploads: value.uploads, files: [], agent: nil, model: nil)
     }
     let result: ConversationCommandReceipt = try await request(
       "conversation.receipt", params: lookup)
@@ -610,9 +613,15 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     guard generation == connectionGeneration, !Task.isCancelled else {
       throw NessaGatewayError.disconnected
     }
-    var images: [NessaImageAttachment] = []
+    var images: [NessaStoredAttachment] = []
+    var uploads: [NessaUploadedFile] = []
     for attachment in attachments {
-      images.append(try await upload(attachment, conversationID: conversationID))
+      let stored = try await upload(attachment, conversationID: conversationID)
+      if attachment.isImage {
+        images.append(stored)
+      } else {
+        uploads.append(NessaUploadedFile(stored, name: attachment.name))
+      }
       guard generation == connectionGeneration, !Task.isCancelled else {
         throw NessaGatewayError.disconnected
       }
@@ -625,7 +634,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
         .init(
           requestID: identity.requestID,
           conversationID: conversationID, executionID: identity.executionID, text: text,
-          images: images, replyTo: replyTo))
+          images: images, uploads: uploads, replyTo: replyTo))
       _ = try await commands.execute(prepared, binding: binding, transport: self)
       return identity.executionID
     }
@@ -634,11 +643,13 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
       params: Send(
         conversationId: conversationID,
         requestId: identity.requestID, executionId: identity.executionID, text: text,
-        attachments: images, files: []))
+        attachments: images, uploads: uploads, files: []))
     return identity.executionID
   }
-  private func upload(_ attachment: DraftAttachment, conversationID: String) async throws
-    -> NessaImageAttachment
+  private func upload(
+    _ attachment: DraftAttachment, conversationID: String, scope: PhoneCacheScope? = nil
+  ) async throws
+    -> NessaStoredAttachment
   {
     struct Begin: Encodable {
       let conversationId: String
@@ -666,13 +677,14 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
       "attachment.begin",
       params: Begin(
         conversationId: conversationID, requestId: UUID().uuidString.lowercased(), digest: digest,
-        mimeType: attachment.mimeType, size: attachment.data.count))
+        mimeType: attachment.mimeType, size: attachment.data.count), expectedScope: scope,
+      expectedGeneration: currentGeneration)
     guard currentGeneration == connectionGeneration else { throw NessaGatewayError.disconnected }
-    let image: NessaImageAttachment
+    let image: NessaStoredAttachment
     if result.state == "stored", let digest = result.digest, let mimeType = result.mimeType,
       let size = result.size
     {
-      image = NessaImageAttachment(digest: digest, mimeType: mimeType, size: size)
+      image = NessaStoredAttachment(digest: digest, mimeType: mimeType, size: size)
     } else if result.state == "upload_required", let ticket = result.ticket,
       let expiry = result.expiresAtMs, expiry > Date().timeIntervalSince1970 * 1000
     {
@@ -688,21 +700,32 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     guard currentGeneration == connectionGeneration, !Task.isCancelled else {
       throw NessaGatewayError.disconnected
     }
-    guard ["image/png", "image/jpeg", "image/gif", "image/webp"].contains(image.mimeType),
-      image.size > 0, image.size <= 5 * 1024 * 1024,
-      image.digest.hasPrefix("sha256:"), image.digest.count == 71
+    guard AttachmentReferences.digest(image.digest), image.size > 0,
+      image.size <= AttachmentReferences.maximumFileBytes,
+      AttachmentReferences.mediaType(image.mimeType)
     else { throw NessaGatewayError.invalidFrame }
-    guard image.digest == digest, image.size == attachment.data.count,
-      image.mimeType == attachment.mimeType
-    else { throw NessaGatewayError.invalidFrame }
-    await imageCache?.store(attachment.data, digest: image.digest)
-    guard currentGeneration == connectionGeneration else { throw NessaGatewayError.disconnected }
+    if attachment.isImage {
+      guard AttachmentReferences.imageTypes.contains(image.mimeType), image.size <= 5 * 1024 * 1024
+      else { throw NessaGatewayError.invalidFrame }
+      if image.digest == digest, image.size == attachment.data.count,
+        image.mimeType == attachment.mimeType
+      {
+        await imageCache?.store(attachment.data, digest: image.digest)
+      }
+    } else {
+      guard image.digest == digest, image.size == attachment.data.count,
+        image.mimeType == attachment.mimeType
+      else { throw NessaGatewayError.invalidFrame }
+    }
+    guard currentGeneration == connectionGeneration, !Task.isCancelled else {
+      throw NessaGatewayError.disconnected
+    }
     return image
   }
   /// `attachment.write`: the bytes in order, one piece at a time, each at most
   /// the gateway's piece size. The last piece answers with the stored file.
   private func writePieces(_ attachment: DraftAttachment, ticket: String, generation: Int)
-    async throws -> NessaImageAttachment
+    async throws -> NessaStoredAttachment
   {
     struct Piece: Encodable {
       let ticket: String
@@ -727,7 +750,8 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
           "attachment.write",
           params: Piece(
             ticket: ticket, offset: offset,
-            data: bytes.subdata(in: offset..<end).base64EncodedString(), last: last))
+            data: bytes.subdata(in: offset..<end).base64EncodedString(), last: last),
+          expectedGeneration: generation)
       } catch let rejection as GatewayProductRejection {
         throw AttachmentPieces.failure(rejection)
       }
@@ -739,7 +763,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
         guard let digest = written.digest, let mimeType = written.mimeType,
           let size = written.size
         else { throw NessaGatewayError.invalidFrame }
-        return NessaImageAttachment(digest: digest, mimeType: mimeType, size: size)
+        return NessaStoredAttachment(digest: digest, mimeType: mimeType, size: size)
       }
       offset = end
     }
@@ -927,8 +951,12 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
   private func request<P: Encodable, R: Decodable>(
     _ method: String, params: P,
     id: String = UUID().uuidString, expectedSocket: URLSessionWebSocketTask? = nil,
-    pairingSource: AuthenticatedGatewaySession? = nil, preserveRefusal: Bool = false
+    pairingSource: AuthenticatedGatewaySession? = nil, preserveRefusal: Bool = false,
+    expectedScope: PhoneCacheScope? = nil, expectedGeneration: Int? = nil
   ) async throws -> R {
+    guard expectedScope == nil || expectedScope == connectionScope,
+      expectedGeneration == nil || expectedGeneration == connectionGeneration
+    else { throw NessaGatewayError.disconnected }
     if let product, expectedSocket == nil, pairingSource == nil {
       let generation = connectionGeneration
       // Native admission and its ticket are the sole response/deadline owners.
@@ -1151,48 +1179,73 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     challengeWaiter = nil
   }
   public func send(_ intent: PhoneSendIntent) async -> PhoneSendAnswer {
+    await send(intent, scope: nil)
+  }
+  fileprivate func send(_ intent: PhoneSendIntent, scope: PhoneCacheScope?) async -> PhoneSendAnswer
+  {
     struct Body: Encodable {
       let conversationId: String
       let requestId: String
       let executionId: String
       let text: String
-      let attachments: [NessaImageAttachment]
+      let attachments: [NessaStoredAttachment]
+      let uploads: [NessaUploadedFile]
       let files: [String]
     }
     let payload = await phoneDecode(
       "conversation.send",
       params: Body(
         conversationId: intent.conversationID, requestId: intent.commandID,
-        executionId: intent.turnID, text: intent.text, attachments: intent.images, files: []),
-      as: PhoneWireReceipt.self)
+        executionId: intent.turnID, text: intent.text, attachments: intent.images,
+        uploads: intent.uploads, files: []),
+      as: PhoneWireReceipt.self, scope: scope)
     return phoneSendAnswer(payload, turnID: intent.turnID)
   }
   public func lookup(_ intent: PhoneSendIntent) async -> PhoneLookupAnswer {
+    await lookup(intent, scope: nil)
+  }
+  fileprivate func lookup(_ intent: PhoneSendIntent, scope: PhoneCacheScope?) async
+    -> PhoneLookupAnswer
+  {
     struct Body: Encodable {
       let conversationId: String
       let requestId: String
       let operation: String
       let executionId: String
       let text: String
-      let attachments: [NessaImageAttachment]
+      let attachments: [NessaStoredAttachment]
+      let uploads: [NessaUploadedFile]
       let files: [String]
     }
     let payload = await phoneDecode(
       "conversation.receipt",
       params: Body(
         conversationId: intent.conversationID, requestId: intent.commandID, operation: "submit",
-        executionId: intent.turnID, text: intent.text, attachments: intent.images, files: []),
-      as: PhoneWireLookup.self)
+        executionId: intent.turnID, text: intent.text, attachments: intent.images,
+        uploads: intent.uploads, files: []),
+      as: PhoneWireLookup.self, scope: scope)
     return phoneLookupAnswer(payload, requestID: intent.commandID)
   }
-  public func uploadPhoneImage(_ attachment: DraftAttachment, conversationID: String) async throws
-    -> NessaImageAttachment
+  public func uploadPhoneAttachment(_ attachment: DraftAttachment, conversationID: String)
+    async throws
+    -> NessaStoredAttachment
   {
     try await upload(attachment, conversationID: conversationID)
+  }
+  fileprivate func uploadPhoneAttachment(
+    _ attachment: DraftAttachment, conversationID: String, scope: PhoneCacheScope
+  ) async throws -> NessaStoredAttachment {
+    return try await upload(attachment, conversationID: conversationID, scope: scope)
   }
   public func phoneStop(conversationID: String, requestID: String, executionID: String) async
     -> PhoneSendAnswer
   {
+    await phoneStop(
+      conversationID: conversationID, requestID: requestID, executionID: executionID, scope: nil)
+  }
+  fileprivate func phoneStop(
+    conversationID: String, requestID: String, executionID: String, scope: PhoneCacheScope?
+  ) async -> PhoneSendAnswer {
     struct Body: Encodable {
       let conversationId: String
       let requestId: String
@@ -1202,12 +1255,18 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
       "conversation.stop",
       params: Body(
         conversationId: conversationID, requestId: requestID, executionId: executionID),
-      as: PhoneWireReceipt.self)
+      as: PhoneWireReceipt.self, scope: scope)
     return phoneSendAnswer(payload, turnID: executionID)
   }
   public func phoneLookupStop(conversationID: String, requestID: String, executionID: String) async
     -> PhoneLookupAnswer
   {
+    await phoneLookupStop(
+      conversationID: conversationID, requestID: requestID, executionID: executionID, scope: nil)
+  }
+  fileprivate func phoneLookupStop(
+    conversationID: String, requestID: String, executionID: String, scope: PhoneCacheScope?
+  ) async -> PhoneLookupAnswer {
     struct Body: Encodable {
       let conversationId: String
       let requestId: String
@@ -1219,7 +1278,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
       params: Body(
         conversationId: conversationID, requestId: requestID, operation: "stop",
         executionId: executionID),
-      as: PhoneWireLookup.self)
+      as: PhoneWireLookup.self, scope: scope)
     return phoneLookupAnswer(payload, requestID: requestID)
   }
   private struct PhoneWireReceipt: Decodable {
@@ -1239,11 +1298,12 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     case broken
   }
   private func phoneDecode<P: Encodable, R: Decodable>(
-    _ method: String, params: P, as type: R.Type
+    _ method: String, params: P, as type: R.Type, scope: PhoneCacheScope? = nil
   ) async -> PhoneDecoded<R> {
     do {
       _ = type
-      return .value(try await request(method, params: params, preserveRefusal: true))
+      return .value(
+        try await request(method, params: params, preserveRefusal: true, expectedScope: scope))
     } catch let rejection as GatewayProductRejection {
       return rejection.code.isEmpty ? .broken : .refused(rejection.code)
     } catch is DecodingError {
@@ -1333,7 +1393,8 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     let requestId: String
     let executionId: String
     let text: String
-    let attachments: [NessaImageAttachment]
+    let attachments: [NessaStoredAttachment]
+    let uploads: [NessaUploadedFile]
     let files: [String]
   }
   private struct Answer: Encodable {
@@ -1346,7 +1407,38 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
   }
 }
 
-extension NessaGatewayClient: PhoneProductTransport {}
+extension NessaGatewayClient: PhoneProductTransportFactory {
+  nonisolated func transport(for scope: PhoneCacheScope) -> any PhoneProductTransport {
+    ScopedPhoneProductTransport(client: self, scope: scope)
+  }
+}
+private struct ScopedPhoneProductTransport: PhoneProductTransport {
+  let client: NessaGatewayClient
+  let scope: PhoneCacheScope
+  func send(_ intent: PhoneSendIntent) async -> PhoneSendAnswer {
+    await client.send(intent, scope: scope)
+  }
+  func lookup(_ intent: PhoneSendIntent) async -> PhoneLookupAnswer {
+    await client.lookup(intent, scope: scope)
+  }
+  func uploadPhoneAttachment(_ attachment: DraftAttachment, conversationID: String) async throws
+    -> NessaStoredAttachment
+  {
+    try await client.uploadPhoneAttachment(attachment, conversationID: conversationID, scope: scope)
+  }
+  func phoneStop(conversationID: String, requestID: String, executionID: String) async
+    -> PhoneSendAnswer
+  {
+    await client.phoneStop(
+      conversationID: conversationID, requestID: requestID, executionID: executionID, scope: scope)
+  }
+  func phoneLookupStop(conversationID: String, requestID: String, executionID: String) async
+    -> PhoneLookupAnswer
+  {
+    await client.phoneLookupStop(
+      conversationID: conversationID, requestID: requestID, executionID: executionID, scope: scope)
+  }
+}
 
 extension NessaGatewayClient: LinkedProductConnecting {
   /// The paired Mac's product session, over its native link. The link carries

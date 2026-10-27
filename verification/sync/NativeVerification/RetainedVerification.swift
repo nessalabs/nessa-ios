@@ -154,6 +154,19 @@ enum RetainedVerification {
       try require(
         view.display.conversationId == conversation && view.revisionEpoch == revision,
         "view target mismatch")
+      if mode != "epoch" {
+        guard
+          let file = view.display.messages.first(where: { $0.executionId == "phone-file" })?
+            .uploads?.first
+        else {
+          throw Failure.assertion("native history lost uploaded file reference")
+        }
+        try require(
+          file.name == "native-report.pdf" && file.mimeType == "application/pdf" && file.size == 12
+            && file.digest == "sha256:" + String(repeating: "07", count: 32),
+          "native file identity changed")
+        print("PASS: \(mode) native physical history retains original uploaded-file metadata")
+      }
       try await session.close()
       do {
         _ = try await session.status()
