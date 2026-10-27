@@ -35,6 +35,10 @@ jobs:
         with:
           node-version: 24
       - uses: ./.github/actions/pnpm-install
+      - name: Install verification tools
+        run: brew install ripgrep
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
       - name: Verify the phone product
         run: ./phone/scripts/verify.sh
       - name: Install the pinned browsers
