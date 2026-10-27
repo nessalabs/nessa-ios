@@ -30,8 +30,8 @@ struct ReplyThreadView: View {
           }
           ForEach(thread) { message($0) }
           if let lastTurn = thread.last?.turnID,
-            store.views[conversationID]?.messages.first(where: { $0.id == lastTurn })?.status
-              == "running"
+            store.views[conversationID]?.messages.first(where: { $0.id == lastTurn })?.awaitsReply
+              == true
           {
             TypingIndicator().transition(MessagesStyle.typingTransition)
           }

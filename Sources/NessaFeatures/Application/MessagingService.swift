@@ -6,9 +6,16 @@ public struct MessagingService: Sendable, GatewayConversationSharingProviding,
 {
   private let repository: any MessagingRepository
   private let directory: (any AgentDirectory)?
+  private let reviews = ReviewDetails()
   public init(repository: any MessagingRepository, directory: (any AgentDirectory)? = nil) {
     self.repository = repository
     self.directory = directory
+  }
+  /// `view` with what each review it lists asks, where the repository reads reviews on
+  /// their own; otherwise as the repository gave it.
+  private func withReviews(_ view: NessaConversationView) async -> NessaConversationView {
+    guard let reader = repository as? any PermissionReviewReading else { return view }
+    return await reviews.resolve(view, with: reader)
   }
   public func imageData(for attachment: NessaStoredAttachment) async throws -> Data? {
     try await repository.imageData(for: attachment)
@@ -146,6 +153,10 @@ public struct MessagingService: Sendable, GatewayConversationSharingProviding,
             }
             cursor = next
           }
+          if case .view(let next, let view) = update {
+            try await apply(.view(next, await withReviews(view)))
+            continue
+          }
           try await apply(update)
         }
         return
@@ -164,7 +175,7 @@ public struct MessagingService: Sendable, GatewayConversationSharingProviding,
     try await repository.setArchived(archived, conversationID: conversationID)
   }
   public func read(_ id: String) async throws -> NessaConversationView {
-    try await repository.read(id)
+    await withReviews(try await repository.read(id))
   }
   public func create(agent: String?, model: String? = nil) async throws -> String {
     try await create(

@@ -63,7 +63,7 @@ public final class MessagesViewModel: ObservableObject {
   /// again (`watchReviews`), which takes a review answered on another device away.
   public var agentsGlance: AgentsGlance {
     let archived = Set(archivedChats)
-    let read = Set(views.filter { !$0.value.permissions.isEmpty }.keys)
+    let read = Set(views.filter { !$0.value.reviews.isEmpty }.keys)
     return AgentsGlance(
       conversations: visibleConversations.filter { !archived.contains($0.id) },
       waiting: read.union(waitingReviews?.conversationIDs ?? []), unread: Set(unreadChats))

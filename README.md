@@ -9,7 +9,9 @@ The app, Swift packages, scheme, and source modules are Nessa-only.
 
 Open conversations from Agents or a channel, start a conversation on the gateway's
 default agent, send text, receive live list and thread updates, and answer pending
-permission reviews with the exact offered options.
+permission reviews with the exact offered options. A chat's view lists each waiting review
+by its key alone; the phone reads what each one asks with `conversation.permissionReview`
+once per review (`ReviewDetails`) and names that key in its answer.
 Credentials are stored in this device's Keychain. The interface matches the supplied dark Messages references with glass controls,
 blue outgoing bubbles, and gray incoming bubbles.
 Debug builds use the injected MockRepository by default; Release builds use the real gateway.

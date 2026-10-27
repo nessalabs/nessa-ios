@@ -598,3 +598,86 @@ func aFileCrossesTheNativeLinkAndBothSendLookupsKeepItsOriginalReference(media: 
   #expect(await replacement.callCount("conversation.receipt") == 0)
   await client.disconnect()
 }
+
+private let waitingChat = "00000000-0000-4000-8000-000000000003"
+private let waitingKey = String(repeating: "c", count: 32)
+/// A view as the gateway sends it while a review waits: the review by its key alone.
+private func waitingView() -> Data {
+  answered(
+    "{\"conversationId\":\"\(waitingChat)\",\"revision\":\"r:1\",\"serverNowMs\":1,\"messages\":[],\"pending\":[],\"permissions\":[{\"review\":\"\(waitingKey)\",\"origin\":\"harness\",\"toolName\":\"Bash\"}],\"tools\":[],\"truncated\":false,\"queueComplete\":true,\"transcriptState\":\"complete\",\"title\":null,\"questions\":[],\"artifacts\":[],\"notes\":[],\"handoffs\":[],\"unreadable\":[],\"unreadableTruncated\":false,\"approvalModes\":[],\"model\":\"m\"}"
+  )
+}
+/// What `conversation.permissionReview` hands out for that review, in two ranges.
+private func reviewPieces() throws -> (answers: [Data], split: Int) {
+  let review = try JSONSerialization.data(withJSONObject: [
+    "review": waitingKey, "executionId": "run-1", "permissionId": "p-1", "toolId": "Bash",
+    "title": "Run ls", "toolName": "Bash", "argumentsJson": "{\"command\":\"ls\"}",
+    "origin": ["kind": "harness"], "ask": "tool",
+    "options": [
+      ["id": "allow_once", "label": "Allow once", "effect": "allow"],
+      ["id": "reject", "label": "Deny", "effect": "deny"],
+    ],
+  ])
+  let half = review.count / 2
+  let answers = [review.prefix(half), review.suffix(from: half)].enumerated().map {
+    index, bytes in
+    answered(
+      "{\"offset\":\(index == 0 ? 0 : half),\"totalBytes\":\(review.count),\"data\":\"\(Data(bytes).base64EncodedString())\"}"
+    )
+  }
+  return (answers, half)
+}
+
+@Test func aChatWaitingOnAReviewReadsAndShowsWhatTheReviewAsks() async throws {
+  // A view lists a waiting review by its key alone: before, the phone read that entry as a
+  // full review, failed with "The data couldn't be read because it is missing", and showed
+  // no card, so the review was denied for want of an answer.
+  let pieces = try reviewPieces()
+  let exchange = ProductExchangeFixture(scripted: [
+    "conversation.read": [waitingView(), waitingView()],
+    "conversation.permissionReview": pieces.answers,
+  ])
+  let client = NessaGatewayClient()
+  try await connectLinked(client, exchange)
+  let service = MessagingService(repository: client)
+  let view = try await service.read(waitingChat)
+  #expect(view.reviews.map(\.review) == [waitingKey])
+  let permission = try #require(view.permissions.first)
+  #expect(permission.review == waitingKey)
+  #expect(permission.title == "Run ls")
+  #expect(permission.argumentsJson == "{\"command\":\"ls\"}")
+  #expect(permission.options.map(\.id) == ["allow_once", "reject"])
+  let ranges = try await exchange.allParameters("conversation.permissionReview").map {
+    try JSONSerialization.jsonObject(with: $0) as? [String: Any]
+  }
+  #expect(ranges.map { $0?["offset"] as? Int } == [0, pieces.split])
+  #expect(ranges.allSatisfy { $0?["review"] as? String == waitingKey })
+  // The chat's next view reuses the review already read.
+  #expect(try await service.read(waitingChat).permissions == [permission])
+  #expect(await exchange.callCount("conversation.permissionReview") == 2)
+  // The answer names the review it answers, which the gateway requires.
+  try await service.answer(permission, option: permission.options[0], conversationID: waitingChat)
+  let answer = try #require(
+    try await exchange.parameters("conversation.answer").flatMap {
+      try JSONSerialization.jsonObject(with: $0) as? [String: Any]
+    })
+  #expect(answer["review"] as? String == waitingKey)
+  #expect(answer["executionId"] as? String == "run-1")
+  #expect(answer["permissionId"] as? String == "p-1")
+  #expect(answer["optionId"] as? String == "allow_once")
+  await client.disconnect()
+}
+
+@Test func aReviewThatCanNoLongerBeReadLeavesTheChatReadable() async throws {
+  // Answered on the Mac between the two reads: the chat still shows, without the card.
+  let exchange = ProductExchangeFixture(scripted: [
+    "conversation.read": [waitingView()],
+    "conversation.permissionReview": [refusedWith("stale_permission")],
+  ])
+  let client = NessaGatewayClient()
+  try await connectLinked(client, exchange)
+  let view = try await MessagingService(repository: client).read(waitingChat)
+  #expect(view.reviews.count == 1)
+  #expect(view.permissions.isEmpty)
+  await client.disconnect()
+}
