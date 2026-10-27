@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: nessalabs/nessa-agent
-          ref: 293c6b99e45024dc62984afb1b82cd1b69461d0a
+          ref: 02024720a96de58578472220a1b00295e35e235e
       - uses: actions/checkout@v4
         with:
           path: phone
