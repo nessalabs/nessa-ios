@@ -130,9 +130,11 @@ public struct NessaHomeLight: View {
     case .eclipse:
       return { p, s in
         let centre = CGPoint(x: s.width / 2, y: s.height * 0.45)
-        let r = hypot(p.x - centre.x, p.y - centre.y)
+        let r: CGFloat = hypot(p.x - centre.x, p.y - centre.y)
         guard r > HomeLightStyle.eclipseRadius else { return 0 }
-        return max(0, 1 - (r - HomeLightStyle.eclipseRadius) / HomeLightStyle.eclipseSpread)
+        let strength: CGFloat =
+          max(0, 1 - (r - HomeLightStyle.eclipseRadius) / HomeLightStyle.eclipseSpread)
+        return Double(strength)
       }
     }
   }
