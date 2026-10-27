@@ -515,7 +515,7 @@ private struct DialingProducts: LinkedProductOpening {
 @Test func onlyAnHttpsOriginInAReachAnswerIsKept() throws {
   func answer(ok: Bool = true, _ tunnel: String?) throws -> Data {
     try JSONSerialization.data(withJSONObject: [
-      "id": "1", "ok": ok, "payload": ["tunnel": tunnel ?? NSNull()],
+      "id": "1", "ok": ok, "payload": ["tunnel": tunnel.map { $0 as Any } ?? NSNull()],
     ])
   }
   let origin = "https://gateway.example.com"
