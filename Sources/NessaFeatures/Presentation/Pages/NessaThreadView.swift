@@ -64,7 +64,7 @@ struct NessaThreadView: View {
       if turn.attachments?.isEmpty == false { ids.append(turn.id + ":photos") }
       if !turn.userText.isEmpty { ids.append(turn.id + ":user") }
       ids += turn.displayBubbles.map { turn.id + ":" + $0.id }
-      if turn.status == "running" { ids.append(turn.id + ":typing") }
+      if turn.awaitsReply { ids.append(turn.id + ":typing") }
       return ids
     }
   }
@@ -105,7 +105,7 @@ struct NessaThreadView: View {
                 .environment(
                   \.messageMorph, grows ? slot.map { MessageMorph(id: $0, namespace: replyMorph) } : nil)
               }
-              if turn.status == "running" {
+              if turn.awaitsReply {
                 // A new typing bubble per reply: the old one becomes the reply that just landed,
                 // and the next one grows in beneath it.
                 let slot = Self.typingSlot(turn.id, incoming.count)
@@ -195,7 +195,7 @@ struct NessaThreadView: View {
           follow(animated: followAnimates)
         }
         .onChange(of: messageStructure, initial: true) { _, _ in
-          for turn in current?.messages ?? [] where turn.status == "running" {
+          for turn in current?.messages ?? [] where turn.awaitsReply {
             let replyCount = replies.messages(in: turn.id).filter { !$0.outgoing }.count
             typingShown.insert(Self.typingSlot(turn.id, replyCount))
           }

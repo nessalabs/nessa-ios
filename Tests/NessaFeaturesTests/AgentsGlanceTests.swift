@@ -171,6 +171,7 @@ private actor ScriptedReviews: MessagingRepository, ReviewNoticeSource {
   await model.connect(address: "mock://one", credential: "", instance: "phone")
   let id = "00000000-0000-4000-8000-000000000002"
   let newer = NessaPermission(
+    review: String(repeating: "8", count: 32),
     executionId: "\(id)-8", permissionId: "newer", title: "Nessa wants to edit a file",
     toolName: "edit", argumentsJson: "{}",
     options: [NessaPermission.Option(id: "allow_once", label: "Allow once", effect: "allow")])

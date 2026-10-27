@@ -3,7 +3,7 @@ import Foundation
 
 /// Native implementation of Nessa's product v1 req/res protocol. Commands are never replayed.
 public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDirectory,
-  ReviewNoticeSource, ConversationFollowing,
+  ReviewNoticeSource, PermissionReviewReading, ConversationFollowing,
   ConnectionLeasing, PreparedCommandTransport, CommandRecoveryProviding,
   AuthenticatedGatewaySessionProviding, GatewayPairingManaging
 {
@@ -382,6 +382,47 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     try requireConnection()
     return try await request("conversation.read", params: ConversationID(conversationId: id))
   }
+  /// Reads the review in ranges, as the gateway hands it out, and decodes the whole.
+  public func permissionReview(_ review: String, conversationID: String) async throws
+    -> NessaPermission
+  {
+    try requireConnection()
+    struct Range: Encodable {
+      let conversationId: String
+      let review: String
+      let offset: Int
+      let maxBytes: Int
+    }
+    struct Piece: Decodable {
+      let offset: Int
+      let totalBytes: Int
+      let data: String
+    }
+    var whole = Data()
+    var total: Int?
+    repeat {
+      let piece: Piece = try await request(
+        "conversation.permissionReview",
+        params: Range(
+          conversationId: conversationID, review: review, offset: whole.count,
+          maxBytes: Self.reviewPieceBytes))
+      guard piece.offset == whole.count, total == nil || total == piece.totalBytes,
+        piece.totalBytes <= Self.reviewMaxBytes, let bytes = Data(base64Encoded: piece.data),
+        bytes.count <= Self.reviewPieceBytes, whole.count + bytes.count <= piece.totalBytes,
+        !bytes.isEmpty || whole.count == piece.totalBytes
+      else { throw NessaGatewayError.invalidFrame }
+      total = piece.totalBytes
+      whole.append(bytes)
+    } while whole.count < total ?? 0
+    let permission = try JSONDecoder().decode(NessaPermission.self, from: whole)
+    guard permission.review == review else { throw NessaGatewayError.invalidFrame }
+    return permission
+  }
+  /// The most one range read asks for, which is the gateway's own limit.
+  private static let reviewPieceBytes = 32 * 1024
+  /// The largest review read in full here. One past it (a tool input of many megabytes)
+  /// shows no card on the phone and is answered on the Mac.
+  private static let reviewMaxBytes = 4 * 1024 * 1024
   public func create(agent: String? = nil, model: String? = nil) async throws -> String {
     try await create(agent: agent, model: model, channel: nil)
   }
@@ -712,7 +753,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
       params: Answer(
         conversationId: conversationID,
         requestId: UUID().uuidString, executionId: permission.executionId,
-        permissionId: permission.permissionId, optionId: option.id))
+        review: permission.review, permissionId: permission.permissionId, optionId: option.id))
   }
   public func follow(_ conversationID: String?, after: ConversationCursor? = nil) async throws
     -> AsyncThrowingStream<ConversationUpdate, Error>
@@ -1299,6 +1340,7 @@ public actor NessaGatewayClient: MessagingRepository, AgentDirectory, ChannelDir
     let conversationId: String
     let requestId: String
     let executionId: String
+    let review: String
     let permissionId: String
     let optionId: String
   }

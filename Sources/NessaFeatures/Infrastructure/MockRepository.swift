@@ -322,6 +322,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
   /// and answered.
   static func fixturePermission(_ id: String) -> NessaPermission {
     NessaPermission(
+      review: String(repeating: "7", count: 32),
       executionId: "\(id)-7", permissionId: "fixture", title: "Nessa wants to run a command",
       toolName: "shell", argumentsJson: "pnpm test:scale -- --only gateway",
       options: [
