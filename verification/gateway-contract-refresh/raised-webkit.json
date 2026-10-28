@@ -1,0 +1,125 @@
+{
+  "check": "conversation-stress",
+  "ok": true,
+  "started": "2026-10-27T23:59:35.793Z",
+  "finished": "2026-10-28T00:01:55.239Z",
+  "target": {
+    "url": "http://127.0.0.1:58631/desktop.html",
+    "mode": "dev"
+  },
+  "results": [
+    {
+      "name": "001 channel",
+      "engine": "webkit",
+      "layout": "columns",
+      "ms": 26366,
+      "seen": {
+        "index": 1,
+        "kind": "channel"
+      },
+      "failures": [],
+      "ok": true
+    },
+    {
+      "name": "002 channel",
+      "engine": "webkit",
+      "layout": "columns",
+      "ms": 28722,
+      "seen": {
+        "index": 2,
+        "kind": "channel"
+      },
+      "failures": [],
+      "ok": true
+    },
+    {
+      "name": "003 inputFiles",
+      "engine": "webkit",
+      "layout": "columns",
+      "ms": 2506,
+      "seen": {
+        "index": 3,
+        "kind": "inputFiles"
+      },
+      "failures": [],
+      "ok": true
+    },
+    {
+      "name": "004 channel",
+      "engine": "webkit",
+      "layout": "columns",
+      "ms": 26523,
+      "seen": {
+        "index": 4,
+        "kind": "channel"
+      },
+      "failures": [],
+      "ok": true
+    },
+    {
+      "name": "005 inputFiles",
+      "engine": "webkit",
+      "layout": "columns",
+      "ms": 3201,
+      "seen": {
+        "index": 5,
+        "kind": "inputFiles"
+      },
+      "failures": [],
+      "ok": true
+    },
+    {
+      "name": "006 inputFiles",
+      "engine": "webkit",
+      "layout": "columns",
+      "ms": 3508,
+      "seen": {
+        "index": 6,
+        "kind": "inputFiles"
+      },
+      "failures": [],
+      "ok": true
+    },
+    {
+      "name": "background",
+      "engine": "webkit",
+      "layout": "columns",
+      "seen": {
+        "conversations": 3,
+        "turns": 2
+      },
+      "failures": [],
+      "ok": true
+    },
+    {
+      "name": "at rest",
+      "engine": "webkit",
+      "layout": "columns",
+      "failures": [],
+      "ok": true
+    },
+    {
+      "name": "followers",
+      "engine": "webkit",
+      "layout": "columns",
+      "seen": [
+        {
+          "conversations": 7,
+          "churned": 99,
+          "resumed": 0,
+          "lagging": 0,
+          "refusedAsExpected": 21
+        },
+        {
+          "conversations": 7,
+          "churned": 108,
+          "resumed": 0,
+          "lagging": 0,
+          "refusedAsExpected": 8
+        }
+      ],
+      "failures": [],
+      "ok": true
+    }
+  ]
+}
