@@ -74,7 +74,9 @@ private actor CommandTransport: PreparedCommandTransport {
   }
 }
 private func entered(_ condition: @Sendable () async -> Bool) async throws {
-  let end = ContinuousClock.now + .seconds(2)
+  // This is a scheduling wait for the blocked store write, not a product
+  // latency budget. Parallel Swift tests may delay the task on a CI runner.
+  let end = ContinuousClock.now + .seconds(15)
   while ContinuousClock.now < end {
     if await condition() { return }
     try await Task.sleep(for: .milliseconds(1))
