@@ -332,7 +332,8 @@ private func channelPage(_ channels: [String], complete: Bool, cursor: String?) 
   let list = channels.map {
     "{\"channelId\":\"\($0)\",\"name\":\"\($0)\",\"folder\":\"/tmp/\($0)\","
       + "\"agent\":null,\"model\":null,\"approvalMode\":\"ask\",\"createdAtMs\":1,"
-      + "\"folderMade\":false}"
+      + "\"folderMade\":false,\"coordinatorPlacement\":\"local\","
+      + "\"threadPlacement\":\"local\",\"coordinatorConversationId\":null}"
   }.joined(separator: ",")
   let next = cursor.map { ",\"cursor\":\"\($0)\"" } ?? ""
   return Data(

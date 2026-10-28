@@ -150,6 +150,15 @@ The gateway must have its dependencies, browsers and `nessa`/`nessa-mcp` built.
 This fixture drives the phone model and persistence; it does not operate a physical
 phone's document picker.
 
+The phone's strict wire grammar is generated from the reviewed gateway revision
+owned by `scripts/generate-gateway-pairing.py`. Keep the phone-file workflow's
+gateway checkout aligned with that source. To refresh the grammar, review the
+canonical gateway schema, update the generator's pin, and run the generator
+against a clean checkout of that exact commit. Use `--check` to verify the output;
+do not edit generated limits by hand. The ready-catalogue boundary tests retain
+both valid-at-limit admission and over-limit refusal. Native package provenance
+remains independent in `Vendor/NessaNative/SOURCE.json`.
+
 ## License
 
 The Nessa iOS source code is licensed under [MIT](LICENSE). The bundled native
