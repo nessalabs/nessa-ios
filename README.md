@@ -149,3 +149,10 @@ path, then run `node scripts/verify-phone-files-stress.mjs <gateway-root> <evide
 The gateway must have its dependencies, browsers and `nessa`/`nessa-mcp` built.
 This fixture drives the phone model and persistence; it does not operate a physical
 phone's document picker.
+
+## License
+
+The Nessa iOS source code is licensed under [MIT](LICENSE). The bundled native
+client has its own [MIT license](Vendor/NessaNative/LICENSE). Historical football
+club logos in Git history are third-party marks, are not covered by either
+license, and are no longer included in the current checkout.
