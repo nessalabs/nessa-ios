@@ -20,12 +20,11 @@ jobs:
       NESSA_PHONE_FILES_VERIFIER: ${{ github.workspace }}/phone/.build/debug/PhoneSyncVerification
       PHONE_STRESS_EVIDENCE: ${{ github.workspace }}/phone-file-stress-evidence
     steps:
-      # The gateway is public. The private phone source uses this repository's
-      # normal token; no credential with access to another private repo is needed.
+      # Both checkouts use the workflow's read-only repository token.
       - uses: actions/checkout@v4
         with:
           repository: nessalabs/nessa-agent
-          ref: afbeb468ba54528835fbf152046472042ac612ff
+          ref: dcb96b622bee3428f667bc5aaa293e0bcdb7519b
       - uses: actions/checkout@v4
         with:
           path: phone
