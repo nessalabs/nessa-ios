@@ -158,3 +158,10 @@ against a clean checkout of that exact commit. Use `--check` to verify the outpu
 do not edit generated limits by hand. The ready-catalogue boundary tests retain
 both valid-at-limit admission and over-limit refusal. Native package provenance
 remains independent in `Vendor/NessaNative/SOURCE.json`.
+
+## License
+
+The Nessa iOS source code is licensed under [MIT](LICENSE). The bundled native
+client has its own [MIT license](Vendor/NessaNative/LICENSE). Historical football
+club logos in Git history are third-party marks, are not covered by either
+license, and are no longer included in the current checkout.
