@@ -1,0 +1,121 @@
+[
+  {
+    "owner": "chat-draft",
+    "name": "draft-clear-after-edit",
+    "to": "/\\ TRUE",
+    "rule": "OnlyOriginalDraft",
+    "from": "/\\ capturedRevision = revision"
+  },
+  {
+    "owner": "chat-draft",
+    "name": "draft-clear-after-scope-change",
+    "to": "/\\ TRUE",
+    "rule": "OnlyOriginalScope",
+    "from": "/\\ capturedScope = scope"
+  },
+  {
+    "owner": "chat-delivery",
+    "name": "outbox-dispatch-before-departure",
+    "to": "/\\ TRUE\n",
+    "rule": "PersistBeforeDispatch",
+    "from": "/\\ durable\n"
+  },
+  {
+    "owner": "chat-delivery",
+    "name": "outbox-recovery-resends",
+    "to": "/\\ sends' = sends + 1 /\\ recoveryBefore' = sends",
+    "rule": "RecoveryDoesNotSend",
+    "from": "/\\ sends' = sends /\\ recoveryBefore' = sends"
+  },
+  {
+    "owner": "chat-journal",
+    "name": "journal-later-refusal-clears",
+    "to": "/\\ attempts > 0 /\\ TRUE",
+    "rule": "FirstRefusalOnly",
+    "from": "/\\ attempts > 0 /\\ attempts = 1"
+  },
+  {
+    "owner": "chat-journal",
+    "name": "journal-foreign-ack-clears",
+    "to": "/\\ ack # \"None\" /\\ TRUE",
+    "rule": "MatchingAckOnly",
+    "from": "/\\ ack # \"None\" /\\ ack = \"Original\""
+  },
+  {
+    "owner": "connection-pairing",
+    "name": "linked-delete-before-readers-drain",
+    "to": "/\\ ~deleted /\\ TRUE",
+    "rule": "DrainBeforeDelete",
+    "from": "/\\ ~deleted /\\ readers = 0"
+  },
+  {
+    "owner": "connection-pairing",
+    "name": "linked-delete-after-unclean-close",
+    "to": "/\\ readers = 0 /\\ TRUE",
+    "rule": "CleanBeforeDelete",
+    "from": "/\\ readers = 0 /\\ ~unclean"
+  },
+  {
+    "owner": "connection-subscriptions",
+    "name": "subscription-activate-cancelled",
+    "to": "\"Live\"",
+    "rule": "NoCancelledActivation",
+    "from": "IF cancelled THEN \"Cleanup\" ELSE \"Live\""
+  },
+  {
+    "owner": "connection-subscriptions",
+    "name": "subscription-discard-late-server-id",
+    "to": "cleanupID' = FALSE",
+    "rule": "LateIDRetainedForCleanup",
+    "from": "cleanupID' = cancelled"
+  },
+  {
+    "owner": "history-retained",
+    "name": "history-mixed-profile",
+    "to": "/\\ phase = \"Candidate\" /\\ TRUE",
+    "rule": "SameProfile",
+    "from": "/\\ phase = \"Candidate\" /\\ profile = 0"
+  },
+  {
+    "owner": "history-retained",
+    "name": "history-mixed-receiver",
+    "to": "/\\ TRUE /\\ generation = 0\n           ",
+    "rule": "SameReceiver",
+    "from": "/\\ receiver = 0 /\\ generation = 0\n           "
+  },
+  {
+    "owner": "history-retained",
+    "name": "history-mixed-generation",
+    "to": "/\\ receiver = 0 /\\ TRUE\n           ",
+    "rule": "SameGeneration",
+    "from": "/\\ receiver = 0 /\\ generation = 0\n           "
+  },
+  {
+    "owner": "history-profiles",
+    "name": "profile-readback-as-durable",
+    "to": "/\\ visible /\\ ~credential /\\ TRUE",
+    "rule": "DurableBeforeCredential",
+    "from": "/\\ visible /\\ ~credential /\\ durable"
+  },
+  {
+    "owner": "history-profiles",
+    "name": "profile-prepared-before-keychain",
+    "to": "/\\ durable /\\ ~prepared /\\ TRUE",
+    "rule": "CredentialBeforePrepared",
+    "from": "/\\ durable /\\ ~prepared /\\ credential"
+  },
+  {
+    "owner": "media-dictation",
+    "name": "dictation-stale-transcript",
+    "to": "/\\ ~accepted /\\ TRUE",
+    "rule": "CurrentTranscriptOnly",
+    "from": "/\\ ~accepted /\\ callback = token"
+  },
+  {
+    "owner": "media-dictation",
+    "name": "dictation-stale-cleanup",
+    "to": "/\\ ~cleaned /\\ TRUE",
+    "rule": "CurrentCleanupOnly",
+    "from": "/\\ ~cleaned /\\ callback = token"
+  }
+]

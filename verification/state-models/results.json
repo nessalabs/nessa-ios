@@ -1,0 +1,666 @@
+{
+  "date": "2026-11-03T08:47:46.854Z",
+  "documents": 29,
+  "baselines": [
+    {
+      "owner": "chat-delivery",
+      "id": "56f14ca6-29bc-4ca7-aa25-0afc7970d5b9",
+      "state": "passed",
+      "message": "Every rule held. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:47:47.460Z",
+        "config": "tla/OutboxRecovery.cfg",
+        "modelDigest": "cbb5dc500a4eac3de97a1e836a83316944ca9e7fd5348c31cb84d23f6871da68",
+        "states": 21,
+        "held": ["PersistBeforeDispatch", "RecoveryDoesNotSend"],
+        "broke": [],
+        "unchecked": []
+      }
+    },
+    {
+      "owner": "chat-draft",
+      "id": "7cb44b7f-4494-4ed4-9c36-cf28bc4a7553",
+      "state": "passed",
+      "message": "Every rule held. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:47:50.571Z",
+        "config": "tla/DraftOwnership.cfg",
+        "modelDigest": "fb98818e4bcd0407f287550aaebdf06a20cf18fe08b1698da00af4c63164c3d0",
+        "states": 9,
+        "held": ["OnlyOriginalDraft", "OnlyOriginalScope"],
+        "broke": [],
+        "unchecked": []
+      }
+    },
+    {
+      "owner": "chat-journal",
+      "id": "dc669790-eca6-4ae2-8884-ec8f7a7a7c31",
+      "state": "passed",
+      "message": "Every rule held. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:47:53.656Z",
+        "config": "tla/JournalRefusal.cfg",
+        "modelDigest": "438219cbb453dc0296e013a33109c47ee3ef59249bedd100577d65b79c5fceaf",
+        "states": 12,
+        "held": ["FirstRefusalOnly", "MatchingAckOnly"],
+        "broke": [],
+        "unchecked": []
+      }
+    },
+    {
+      "owner": "connection-pairing",
+      "id": "7df19e53-7fc2-479c-8355-af32990a840d",
+      "state": "passed",
+      "message": "Every rule held. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:47:56.765Z",
+        "config": "tla/LinkedRetirement.cfg",
+        "modelDigest": "2fecc791a30af2c393fefb13b3cb181dba0e5066126c4c04792913e54d27245c",
+        "states": 13,
+        "held": ["DrainBeforeDelete", "CleanBeforeDelete"],
+        "broke": [],
+        "unchecked": []
+      }
+    },
+    {
+      "owner": "connection-subscriptions",
+      "id": "065854f8-9b3a-43b9-a3d2-df3398782a88",
+      "state": "passed",
+      "message": "Every rule held. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:47:59.870Z",
+        "config": "tla/SubscriptionCancellation.cfg",
+        "modelDigest": "cbad33008579a24c8dcf20fc68a9a0c8b837de3da47585050f31d1deb9551e08",
+        "states": 5,
+        "held": ["NoCancelledActivation", "LateIDRetainedForCleanup"],
+        "broke": [],
+        "unchecked": []
+      }
+    },
+    {
+      "owner": "history-profiles",
+      "id": "ee38b612-e12e-4b81-b50c-adbf129afa36",
+      "state": "passed",
+      "message": "Every rule held. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:48:02.971Z",
+        "config": "tla/ProfilePreparation.cfg",
+        "modelDigest": "efe515e453a1efebfe511625620d8e63dcb17263f2b61879c59cac894ed7e24b",
+        "states": 5,
+        "held": ["DurableBeforeCredential", "CredentialBeforePrepared"],
+        "broke": [],
+        "unchecked": []
+      }
+    },
+    {
+      "owner": "history-retained",
+      "id": "f0c6cdbf-df23-4c57-b9c8-5bbca11bbc38",
+      "state": "passed",
+      "message": "Every rule held. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:48:06.037Z",
+        "config": "tla/HistoryCorrelation.cfg",
+        "modelDigest": "8948650655f051a368412f09d78d9b4506363d1621aac0c3e8399707a6d1ffaf",
+        "states": 17,
+        "held": ["SameProfile", "SameReceiver", "SameGeneration"],
+        "broke": [],
+        "unchecked": []
+      }
+    },
+    {
+      "owner": "media-dictation",
+      "id": "0b7fe8d7-fd1d-43f6-bdec-d7a4e368301a",
+      "state": "passed",
+      "message": "Every rule held. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:48:10.363Z",
+        "config": "tla/DictationGeneration.cfg",
+        "modelDigest": "dbcb0d41b045dc9eae842c5b8adffafa02def4f99c6f681f5938f6c92a875c67",
+        "states": 8,
+        "held": ["CurrentTranscriptOnly", "CurrentCleanupOnly"],
+        "broke": [],
+        "unchecked": []
+      }
+    }
+  ],
+  "controls": [
+    {
+      "name": "outbox-dispatch-before-departure",
+      "owner": "chat-delivery",
+      "expected": "PersistBeforeDispatch",
+      "passed": true,
+      "id": "21199e82-6257-4f1e-9e44-7c9ffe9956be",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:47:48.704Z",
+        "config": "tla/OutboxRecovery.cfg",
+        "modelDigest": "697e7c1e240eea50c20640eaca8b1993dd49933b8f448d908231300fe7cc9c6e",
+        "states": 39,
+        "held": ["RecoveryDoesNotSend"],
+        "broke": [
+          {
+            "rule": "PersistBeforeDispatch",
+            "path": [
+              "Start with recoveryAfter is 0, lookup is None, recoveryBefore is 0, sends is 0, recovery is FALSE, phase is Draft, durable is FALSE, unsafeDispatch is FALSE.",
+              "Save: recoveryAfter is 0, lookup is None, recoveryBefore is 0, sends is 0, recovery is FALSE, phase is Saved, durable is FALSE, unsafeDispatch is FALSE.",
+              "Dispatch: recoveryAfter is 0, lookup is None, recoveryBefore is 0, sends is 1, recovery is FALSE, phase is Unknown, durable is FALSE, unsafeDispatch is TRUE."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "outbox-recovery-resends",
+      "owner": "chat-delivery",
+      "expected": "RecoveryDoesNotSend",
+      "passed": true,
+      "id": "5fefed86-aac1-4fdc-ad17-6eda6c379d3e",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:47:49.946Z",
+        "config": "tla/OutboxRecovery.cfg",
+        "modelDigest": "d1fc797e2376a905e3dd630f454fc8474839e89c608725d4f261b654b70798b7",
+        "states": 16,
+        "held": ["PersistBeforeDispatch"],
+        "broke": [
+          {
+            "rule": "RecoveryDoesNotSend",
+            "path": [
+              "Start with recoveryAfter is 0, lookup is None, recoveryBefore is 0, sends is 0, recovery is FALSE, phase is Draft, durable is FALSE, unsafeDispatch is FALSE.",
+              "Save: recoveryAfter is 0, lookup is None, recoveryBefore is 0, sends is 0, recovery is FALSE, phase is Saved, durable is FALSE, unsafeDispatch is FALSE.",
+              "Depart: recoveryAfter is 0, lookup is None, recoveryBefore is 0, sends is 0, recovery is FALSE, phase is Departed, durable is TRUE, unsafeDispatch is FALSE.",
+              "Dispatch: recoveryAfter is 0, lookup is None, recoveryBefore is 0, sends is 1, recovery is FALSE, phase is Unknown, durable is TRUE, unsafeDispatch is FALSE.",
+              "Restart: recoveryAfter is 0, lookup is None, recoveryBefore is 0, sends is 1, recovery is TRUE, phase is Unknown, durable is TRUE, unsafeDispatch is FALSE.",
+              "Lookup: recoveryAfter is 0, lookup is Absent, recoveryBefore is 0, sends is 1, recovery is TRUE, phase is Unknown, durable is TRUE, unsafeDispatch is FALSE.",
+              "Recover: recoveryAfter is 2, lookup is Absent, recoveryBefore is 1, sends is 2, recovery is TRUE, phase is Unknown, durable is TRUE, unsafeDispatch is FALSE."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "draft-clear-after-edit",
+      "owner": "chat-draft",
+      "expected": "OnlyOriginalDraft",
+      "passed": true,
+      "id": "b8d4f5c9-c90e-4a3f-919c-45231e0d2701",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:47:51.809Z",
+        "config": "tla/DraftOwnership.cfg",
+        "modelDigest": "4d6f86f3dcadf5f763d7a3a781eaca68ae78b534048f3993ffb5574b66347204",
+        "states": 10,
+        "held": ["OnlyOriginalScope"],
+        "broke": [
+          {
+            "rule": "OnlyOriginalDraft",
+            "path": [
+              "Start with revision is 0, owned is FALSE, scope is 0, capturedRevision is 0, clearRevision is 0, clearScope is 0, cleared is FALSE, capturedScope is 0.",
+              "Begin: revision is 0, owned is TRUE, scope is 0, capturedRevision is 0, clearRevision is 0, clearScope is 0, cleared is FALSE, capturedScope is 0.",
+              "Edit: revision is 1, owned is TRUE, scope is 0, capturedRevision is 0, clearRevision is 0, clearScope is 0, cleared is FALSE, capturedScope is 0.",
+              "Accept: revision is 1, owned is FALSE, scope is 0, capturedRevision is 0, clearRevision is 1, clearScope is 0, cleared is TRUE, capturedScope is 0."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "draft-clear-after-scope-change",
+      "owner": "chat-draft",
+      "expected": "OnlyOriginalScope",
+      "passed": true,
+      "id": "89c07144-f748-472a-acfc-b69df047466a",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:47:53.042Z",
+        "config": "tla/DraftOwnership.cfg",
+        "modelDigest": "ee2dbd9447fbb31f816b94d77740561257431260288eee28e96e91e6a3fbbe3e",
+        "states": 10,
+        "held": ["OnlyOriginalDraft"],
+        "broke": [
+          {
+            "rule": "OnlyOriginalScope",
+            "path": [
+              "Start with revision is 0, owned is FALSE, scope is 0, capturedRevision is 0, clearRevision is 0, clearScope is 0, cleared is FALSE, capturedScope is 0.",
+              "Begin: revision is 0, owned is TRUE, scope is 0, capturedRevision is 0, clearRevision is 0, clearScope is 0, cleared is FALSE, capturedScope is 0.",
+              "Switch: revision is 0, owned is TRUE, scope is 1, capturedRevision is 0, clearRevision is 0, clearScope is 0, cleared is FALSE, capturedScope is 0.",
+              "Accept: revision is 0, owned is FALSE, scope is 1, capturedRevision is 0, clearRevision is 0, clearScope is 1, cleared is TRUE, capturedScope is 0."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "journal-later-refusal-clears",
+      "owner": "chat-journal",
+      "expected": "FirstRefusalOnly",
+      "passed": true,
+      "id": "af84db38-7eaa-43d3-b3a4-e60eb089cae0",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:47:54.900Z",
+        "config": "tla/JournalRefusal.cfg",
+        "modelDigest": "d2f61dbaced3aa38d941118f6fd1f1a7cd0d714ccfcb34586657957126646063",
+        "states": 15,
+        "held": ["MatchingAckOnly"],
+        "broke": [
+          {
+            "rule": "FirstRefusalOnly",
+            "path": [
+              "Start with pending is TRUE, attempts is 0, removedAttempts is 0, removedBy is None, ack is None, removedAck is None.",
+              "Attempt: pending is TRUE, attempts is 1, removedAttempts is 0, removedBy is None, ack is None, removedAck is None.",
+              "Attempt: pending is TRUE, attempts is 2, removedAttempts is 0, removedBy is None, ack is None, removedAck is None.",
+              "Reject: pending is FALSE, attempts is 2, removedAttempts is 2, removedBy is Refusal, ack is None, removedAck is None."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "journal-foreign-ack-clears",
+      "owner": "chat-journal",
+      "expected": "MatchingAckOnly",
+      "passed": true,
+      "id": "910a9995-b466-4e39-a8af-754bc4368851",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:47:56.141Z",
+        "config": "tla/JournalRefusal.cfg",
+        "modelDigest": "1f12d753d8a6c2766dd1ff7095a9b5dc1c93f6e8f0c3716edc31ef788bd223c8",
+        "states": 14,
+        "held": ["FirstRefusalOnly"],
+        "broke": [
+          {
+            "rule": "MatchingAckOnly",
+            "path": [
+              "Start with pending is TRUE, attempts is 0, removedAttempts is 0, removedBy is None, ack is None, removedAck is None.",
+              "Attempt: pending is TRUE, attempts is 1, removedAttempts is 0, removedBy is None, ack is None, removedAck is None.",
+              "ObserveAck: pending is TRUE, attempts is 1, removedAttempts is 0, removedBy is None, ack is Foreign, removedAck is None.",
+              "Resolve: pending is FALSE, attempts is 1, removedAttempts is 0, removedBy is Ack, ack is Foreign, removedAck is Foreign."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "linked-delete-before-readers-drain",
+      "owner": "connection-pairing",
+      "expected": "DrainBeforeDelete",
+      "passed": true,
+      "id": "38c42b18-d891-4226-99aa-2a8b414c5bbd",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:47:58.008Z",
+        "config": "tla/LinkedRetirement.cfg",
+        "modelDigest": "494e363f69e5bee130ece9285d7d73950080d9cf58c6aa687986e194ff200421",
+        "states": 21,
+        "held": ["CleanBeforeDelete"],
+        "broke": [
+          {
+            "rule": "DrainBeforeDelete",
+            "path": [
+              "Start with unclean is FALSE, forgotten is FALSE, deletedUnclean is FALSE, deleted is FALSE, readers is 0, deletedReaders is 0.",
+              "Open: unclean is FALSE, forgotten is FALSE, deletedUnclean is FALSE, deleted is FALSE, readers is 1, deletedReaders is 0.",
+              "Forget: unclean is FALSE, forgotten is TRUE, deletedUnclean is FALSE, deleted is FALSE, readers is 1, deletedReaders is 0.",
+              "Delete: unclean is FALSE, forgotten is TRUE, deletedUnclean is FALSE, deleted is TRUE, readers is 1, deletedReaders is 1."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "linked-delete-after-unclean-close",
+      "owner": "connection-pairing",
+      "expected": "CleanBeforeDelete",
+      "passed": true,
+      "id": "88ff6b88-99fb-4886-a0e1-8b227d987445",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:47:59.252Z",
+        "config": "tla/LinkedRetirement.cfg",
+        "modelDigest": "15d180cffcbe51b0e719281913356d99a60ed09d6a1071d985eef4c6b759b00e",
+        "states": 14,
+        "held": ["DrainBeforeDelete"],
+        "broke": [
+          {
+            "rule": "CleanBeforeDelete",
+            "path": [
+              "Start with unclean is FALSE, forgotten is FALSE, deletedUnclean is FALSE, deleted is FALSE, readers is 0, deletedReaders is 0.",
+              "Open: unclean is FALSE, forgotten is FALSE, deletedUnclean is FALSE, deleted is FALSE, readers is 1, deletedReaders is 0.",
+              "Forget: unclean is FALSE, forgotten is TRUE, deletedUnclean is FALSE, deleted is FALSE, readers is 1, deletedReaders is 0.",
+              "CloseUnclean: unclean is TRUE, forgotten is TRUE, deletedUnclean is FALSE, deleted is FALSE, readers is 0, deletedReaders is 0.",
+              "Delete: unclean is TRUE, forgotten is TRUE, deletedUnclean is TRUE, deleted is TRUE, readers is 0, deletedReaders is 0."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "subscription-activate-cancelled",
+      "owner": "connection-subscriptions",
+      "expected": "NoCancelledActivation",
+      "passed": true,
+      "id": "adb4c166-b8b5-41e3-a679-f8ad2e37ba40",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:48:01.111Z",
+        "config": "tla/SubscriptionCancellation.cfg",
+        "modelDigest": "fab53d597174d977c191fc65eaefde7f70be7f805c3001ef6bf417451aff4eba",
+        "states": 6,
+        "held": ["LateIDRetainedForCleanup"],
+        "broke": [
+          {
+            "rule": "NoCancelledActivation",
+            "path": [
+              "Start with cancelled is FALSE, cleanupID is FALSE, activatedCancelled is FALSE, phase is Pending.",
+              "Cancel: cancelled is TRUE, cleanupID is FALSE, activatedCancelled is FALSE, phase is Pending.",
+              "Activate: cancelled is TRUE, cleanupID is TRUE, activatedCancelled is TRUE, phase is Live."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "subscription-discard-late-server-id",
+      "owner": "connection-subscriptions",
+      "expected": "LateIDRetainedForCleanup",
+      "passed": true,
+      "id": "ada8e2bc-d9c8-464f-b66c-a0bfcd650c5f",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:48:02.349Z",
+        "config": "tla/SubscriptionCancellation.cfg",
+        "modelDigest": "d020ad3778399317cde4879a560980f46ae3e8f1cd6a0a8b063774020d8ad206",
+        "states": 5,
+        "held": ["NoCancelledActivation"],
+        "broke": [
+          {
+            "rule": "LateIDRetainedForCleanup",
+            "path": [
+              "Start with cancelled is FALSE, cleanupID is FALSE, activatedCancelled is FALSE, phase is Pending.",
+              "Cancel: cancelled is TRUE, cleanupID is FALSE, activatedCancelled is FALSE, phase is Pending.",
+              "Activate: cancelled is TRUE, cleanupID is FALSE, activatedCancelled is TRUE, phase is Cleanup."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "profile-readback-as-durable",
+      "owner": "history-profiles",
+      "expected": "DurableBeforeCredential",
+      "passed": true,
+      "id": "ebe08700-a244-4594-a6c5-f0e11e719315",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:48:04.185Z",
+        "config": "tla/ProfilePreparation.cfg",
+        "modelDigest": "50b5fc6d1fa3230b0442e65409dcb2c6a0633318184f1f7c16d80e119e298fe0",
+        "states": 8,
+        "held": ["CredentialBeforePrepared"],
+        "broke": [
+          {
+            "rule": "DurableBeforeCredential",
+            "path": [
+              "Start with preparedWithoutCredential is FALSE, prepared is FALSE, credential is FALSE, durable is FALSE, credentialBeforeDurable is FALSE, visible is FALSE.",
+              "PublishPreparing: preparedWithoutCredential is FALSE, prepared is FALSE, credential is FALSE, durable is FALSE, credentialBeforeDurable is FALSE, visible is TRUE.",
+              "SaveCredential: preparedWithoutCredential is FALSE, prepared is FALSE, credential is TRUE, durable is FALSE, credentialBeforeDurable is TRUE, visible is TRUE."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "profile-prepared-before-keychain",
+      "owner": "history-profiles",
+      "expected": "CredentialBeforePrepared",
+      "passed": true,
+      "id": "88c4cc79-2c74-4cd4-a8c3-fb3d67ad2208",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:48:05.427Z",
+        "config": "tla/ProfilePreparation.cfg",
+        "modelDigest": "9a34bd7b46fb8badd9737a3fa431b53b959004cb14b7944c106760c9c3d08fce",
+        "states": 7,
+        "held": ["DurableBeforeCredential"],
+        "broke": [
+          {
+            "rule": "CredentialBeforePrepared",
+            "path": [
+              "Start with preparedWithoutCredential is FALSE, prepared is FALSE, credential is FALSE, durable is FALSE, credentialBeforeDurable is FALSE, visible is FALSE.",
+              "PublishPreparing: preparedWithoutCredential is FALSE, prepared is FALSE, credential is FALSE, durable is TRUE, credentialBeforeDurable is FALSE, visible is TRUE.",
+              "PublishPrepared: preparedWithoutCredential is TRUE, prepared is TRUE, credential is FALSE, durable is TRUE, credentialBeforeDurable is FALSE, visible is TRUE."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "history-mixed-profile",
+      "owner": "history-retained",
+      "expected": "SameProfile",
+      "passed": true,
+      "id": "6ce20c8a-9a08-49aa-b09f-801ef799bcd7",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:48:07.263Z",
+        "config": "tla/HistoryCorrelation.cfg",
+        "modelDigest": "3b5986b2c8705e5e4397ae0c18928869637bfec2493f05e13a95e7fa34180bc9",
+        "states": 18,
+        "held": ["SameReceiver", "SameGeneration"],
+        "broke": [
+          {
+            "rule": "SameProfile",
+            "path": [
+              "Start with generation is 0, receiver is 0, acceptedProfile is 0, phase is FirstPage, profile is 0, acceptedReceiver is 0, acceptedGeneration is 0.",
+              "NextPage: generation is 0, receiver is 0, acceptedProfile is 0, phase is Candidate, profile is 1, acceptedReceiver is 0, acceptedGeneration is 0.",
+              "Publish: generation is 0, receiver is 0, acceptedProfile is 1, phase is Published, profile is 1, acceptedReceiver is 0, acceptedGeneration is 0."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "history-mixed-receiver",
+      "owner": "history-retained",
+      "expected": "SameReceiver",
+      "passed": true,
+      "id": "1f6f9d77-f527-4fd5-96ba-1b3dc46ae456",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:48:08.507Z",
+        "config": "tla/HistoryCorrelation.cfg",
+        "modelDigest": "4821a8621d213f69a497b6a6f323433b6cdc82c6a13d70372721ca5fa61250ad",
+        "states": 18,
+        "held": ["SameProfile", "SameGeneration"],
+        "broke": [
+          {
+            "rule": "SameReceiver",
+            "path": [
+              "Start with generation is 0, receiver is 0, acceptedProfile is 0, phase is FirstPage, profile is 0, acceptedReceiver is 0, acceptedGeneration is 0.",
+              "NextPage: generation is 0, receiver is 1, acceptedProfile is 0, phase is Candidate, profile is 0, acceptedReceiver is 0, acceptedGeneration is 0.",
+              "Publish: generation is 0, receiver is 1, acceptedProfile is 0, phase is Published, profile is 0, acceptedReceiver is 1, acceptedGeneration is 0."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "history-mixed-generation",
+      "owner": "history-retained",
+      "expected": "SameGeneration",
+      "passed": true,
+      "id": "cb418d0f-1375-4f80-973c-4bdd6e2badf9",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:48:09.741Z",
+        "config": "tla/HistoryCorrelation.cfg",
+        "modelDigest": "a491fc2966be9ceca0556c064ccf8779670edb263babed25d6b052c626a210f4",
+        "states": 18,
+        "held": ["SameProfile", "SameReceiver"],
+        "broke": [
+          {
+            "rule": "SameGeneration",
+            "path": [
+              "Start with generation is 0, receiver is 0, acceptedProfile is 0, phase is FirstPage, profile is 0, acceptedReceiver is 0, acceptedGeneration is 0.",
+              "NextPage: generation is 1, receiver is 0, acceptedProfile is 0, phase is Candidate, profile is 0, acceptedReceiver is 0, acceptedGeneration is 0.",
+              "Publish: generation is 1, receiver is 0, acceptedProfile is 0, phase is Published, profile is 0, acceptedReceiver is 0, acceptedGeneration is 1."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "dictation-stale-transcript",
+      "owner": "media-dictation",
+      "expected": "CurrentTranscriptOnly",
+      "passed": true,
+      "id": "7cd004ab-0e53-430d-98ba-78c778a478ba",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:48:11.606Z",
+        "config": "tla/DictationGeneration.cfg",
+        "modelDigest": "453d908042ad0381c58b0f61cb153a24552c709637d32fa88fab6481433257a8",
+        "states": 10,
+        "held": ["CurrentCleanupOnly"],
+        "broke": [
+          {
+            "rule": "CurrentTranscriptOnly",
+            "path": [
+              "Start with state is Listening, cleanupToken is 0, cleanedCurrentToken is 0, token is 0, accepted is FALSE, callback is 0, cleaned is FALSE, acceptedToken is 0, updatedToken is 0.",
+              "Replace: state is Listening, cleanupToken is 0, cleanedCurrentToken is 0, token is 1, accepted is FALSE, callback is 0, cleaned is FALSE, acceptedToken is 0, updatedToken is 0.",
+              "Result: state is Listening, cleanupToken is 0, cleanedCurrentToken is 0, token is 1, accepted is TRUE, callback is 0, cleaned is FALSE, acceptedToken is 0, updatedToken is 1."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    },
+    {
+      "name": "dictation-stale-cleanup",
+      "owner": "media-dictation",
+      "expected": "CurrentCleanupOnly",
+      "passed": true,
+      "id": "c5e4396c-f1e4-4385-b1c6-12a327e7029f",
+      "state": "broke",
+      "message": "A rule broke. This checks the design, not the code.",
+      "result": {
+        "sourceRevision": "8a027f07ecc1b27fb63502852648cb467e308720",
+        "checker": "tlc-1.7.4",
+        "date": "2026-11-03T08:48:12.842Z",
+        "config": "tla/DictationGeneration.cfg",
+        "modelDigest": "36057086eab3bdf68cdd82e4b5ae27e62a9ae8e8bb03f264e2ec19d25af46473",
+        "states": 10,
+        "held": ["CurrentTranscriptOnly"],
+        "broke": [
+          {
+            "rule": "CurrentCleanupOnly",
+            "path": [
+              "Start with state is Listening, cleanupToken is 0, cleanedCurrentToken is 0, token is 0, accepted is FALSE, callback is 0, cleaned is FALSE, acceptedToken is 0, updatedToken is 0.",
+              "Replace: state is Listening, cleanupToken is 0, cleanedCurrentToken is 0, token is 1, accepted is FALSE, callback is 0, cleaned is FALSE, acceptedToken is 0, updatedToken is 0.",
+              "Finish: state is Idle, cleanupToken is 0, cleanedCurrentToken is 1, token is 1, accepted is FALSE, callback is 0, cleaned is TRUE, acceptedToken is 0, updatedToken is 0."
+            ],
+            "states": []
+          }
+        ],
+        "unchecked": []
+      }
+    }
+  ],
+  "ok": true
+}

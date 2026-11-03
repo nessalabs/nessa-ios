@@ -5,6 +5,13 @@ Open `App/Nessa.xcodeproj`, select the `Nessa` scheme, and run on an iPhone
 simulator. The installed application is named **Nessa**, bundle ID `app.nessa.mobile`.
 The app, Swift packages, scheme, and source modules are Nessa-only.
 
+## System and feature map
+
+The [Nessa Docs atlas](docs/state/README.md) follows current screen actions,
+connection ownership, delivery recovery and saved history. Its
+[verification report](docs/state/verification.md) separates executed Swift tests,
+bounded TLA+ models and platform checks that remain unrun.
+
 ## Current behavior
 
 Open conversations from Agents or a channel, start a conversation on the gateway's

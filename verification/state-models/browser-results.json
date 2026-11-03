@@ -1,0 +1,158 @@
+{
+  "ok": true,
+  "browser": "156.0.8078.80",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "pages": 29,
+  "diagrams": 15,
+  "errors": [],
+  "results": [
+    {
+      "id": "nessa-ios",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "development",
+      "figures": 0,
+      "failed": 0
+    },
+    {
+      "id": "gaps",
+      "figures": 0,
+      "failed": 0
+    },
+    {
+      "id": "inventory",
+      "figures": 0,
+      "failed": 0
+    },
+    {
+      "id": "navigation",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "chat",
+      "figures": 0,
+      "failed": 0
+    },
+    {
+      "id": "chat-archive-delete",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "chat-delivery",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "chat-draft",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "chat-journal",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "chat-permissions",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "chat-reading",
+      "figures": 0,
+      "failed": 0
+    },
+    {
+      "id": "chat-stop",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "connection",
+      "figures": 0,
+      "failed": 0
+    },
+    {
+      "id": "connection-native",
+      "figures": 0,
+      "failed": 0
+    },
+    {
+      "id": "connection-pairing",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "connection-session",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "connection-subscriptions",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "history",
+      "figures": 0,
+      "failed": 0
+    },
+    {
+      "id": "history-management",
+      "figures": 0,
+      "failed": 0
+    },
+    {
+      "id": "history-profiles",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "history-retained",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "history-snapshot",
+      "figures": 0,
+      "failed": 0
+    },
+    {
+      "id": "history-storage",
+      "figures": 0,
+      "failed": 0
+    },
+    {
+      "id": "media",
+      "figures": 0,
+      "failed": 0
+    },
+    {
+      "id": "media-attachments",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "media-dictation",
+      "figures": 1,
+      "failed": 0
+    },
+    {
+      "id": "media-display",
+      "figures": 0,
+      "failed": 0
+    },
+    {
+      "id": "verification",
+      "figures": 0,
+      "failed": 0
+    }
+  ]
+}
