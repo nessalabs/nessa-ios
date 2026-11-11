@@ -1,0 +1,6 @@
+test "settings links to the archive"
+  at "/settings"
+  expect tree has "connection"
+  tap "archived"
+  clock settle
+  expect tree has "page-archived"

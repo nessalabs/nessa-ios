@@ -1,0 +1,40 @@
+name: Exact iOS
+on:
+  pull_request:
+    paths:
+      - 'nessa/**'
+      - 'Sources/**'
+      - 'Vendor/**'
+      - '.github/workflows/exact-ios.yml'
+permissions:
+  contents: read
+jobs:
+  simulator:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      EXACT_FEEDBACK: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Install build tools
+        run: |
+          brew install xcodegen
+          cd Vendor/Exact
+          rustup target add aarch64-apple-ios-sim
+          cargo fetch --locked
+          bun install --frozen-lockfile
+          for target in aarch64-apple-darwin aarch64-apple-ios-sim; do
+            cargo run --manifest-path vendor/ibex/crates/hermes-lean-sys-installer/Cargo.toml -- --target "$target"
+          done
+      - name: Build Nessa and run the navigation test
+        run: |
+          NESSA_BUILD_ACTION=build-for-testing nessa/tools/build-ios.sh simulator Debug CODE_SIGN_IDENTITY=-
+          device=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+          xcodebuild -project nessa/Apple/NessaExact.xcodeproj -scheme Nessa \
+            -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO \
+            -derivedDataPath nessa/.exact/xcode CODE_SIGN_IDENTITY=- test-without-building

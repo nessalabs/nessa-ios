@@ -1,0 +1,52 @@
+// All navigation goes through this stack, including events from the iOS pickers and composer.
+routes nav
+  home "/"
+    agents "/agents"
+    channel "/channel/:key"
+    chat "/chat/:key"
+    settings "/settings"
+      connection "/connection"
+      archived "/archived"
+      shared "/shared"
+        transcript "/shared/:key"
+
+shape Phone
+  status: string
+  connected: bool
+  desktop: string
+
+style Page
+  position="absolute" inset=0 background-color="#080808" color="#f5f5f5"
+
+component Nessa
+  resource phone = phoneStatus() as shape Phone else empty()
+  action back
+    nav = back(nav)
+    haptic("selection")
+  action follow(url: string)
+    if url == "/"
+      nav = open(nav, "/")
+    else if url == "back"
+      back()
+    else
+      nav = push(nav, url)
+
+  view
+    main navigationKey=`${top(nav).id}` navigationBack="back" navigate=follow viewport-fit="cover" width="100%" height="100%" color-scheme="dark"
+      nessa-lifecycle message=follow width=0 height=0
+      for e in stack(nav) key=e.id
+        if e.name == "settings"
+          column navigationKey=`${e.id}` class=Page navigationScroll="settings-rows"
+            header
+              text "Settings" role="heading" aria-level=2
+            list id="settings-rows" appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+              section
+                link href="/connection" testId="connection"
+                  text "Connection"
+                  text phone.status color="-exact-secondary-label"
+              section
+                link href="/archived" testId="archived"
+                  text "Archived chats"
+        else
+          column navigationKey=`${e.id}` navigationBar="none" class=Page
+            nessa-page screen=e.name identifier=e.params.key message=follow width="100%" height="100%" testId=`page-${e.name}`

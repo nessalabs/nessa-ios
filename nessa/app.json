@@ -1,0 +1,9 @@
+{
+  "$schema": "../Vendor/Exact/scripts/app.schema.json",
+  "name": "Nessa",
+  "app": { "id": "app.nessa.mobile", "name": "Nessa" },
+  "background_color": "#050505",
+  "modules": ["nessa-page", "nessa-lifecycle"],
+  "host": { "ios": { "minimumOS": "18.0", "deviceFamily": ["iphone", "ipad"] } },
+  "deploy": { "store": { "ios": "0" } }
+}
