@@ -18,8 +18,10 @@ import UIKit
     self.dependencies = dependencies
     messages = dependencies.makeMessagesViewModel()
     desktop = dependencies.makeDesktopLinkViewModel()
-    messages.$connected.combineLatest(messages.$reconnecting, desktop.$linked)
+    messages.objectWillChange.merge(with: desktop.objectWillChange)
       .receive(on: RunLoop.main)
+      .compactMap { [weak self] _ in self?.status as NSDictionary? }
+      .removeDuplicates()
       .sink { _ in changed("connection") }.store(in: &subscriptions)
   }
 
@@ -29,7 +31,18 @@ import UIKit
     let label = connected
       ? (desktop.linked != nil && messages.linkedDesktopID == desktop.linked?.id ? name : "Connected")
       : (messages.reconnecting ? "Reconnecting…" : "Not connected")
-    return ["status": label, "connected": connected, "desktop": name]
+    let channels = messages.channels.map { channel in
+      ["id": channel.id, "name": channel.name,
+       "unread": messages.conversations(inChannel: channel.id).contains { messages.unreadChats.contains($0.id) }] as [String: Any]
+    }
+    return ["status": label, "connected": connected, "desktop": name, "canCreate": messages.canCreateChat,
+      "working": messages.agentsGlance.count(.working), "channels": channels]
+  }
+
+  public func createChat() async -> String? {
+    let id = await messages.create()
+    focusChat = id
+    return id
   }
 
   public func lifecycle(navigate: @escaping (String) -> Void) -> UIViewController {
@@ -61,9 +74,7 @@ private struct ExactPhonePage: View {
   @StateObject private var dictation: DictationViewModel
   @AppStorage("nessaGatewayAddress") private var address = "ws://127.0.0.1:7420/session"
   @AppStorage("nessaSurfaceInstance") private var instance = ""
-  @State private var sidebar = false
   @State private var pairing = false
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   init(session: ExactPhoneSession, screen: String, identifier: String, navigate: @escaping (String) -> Void) {
     self.session = session
@@ -78,15 +89,9 @@ private struct ExactPhonePage: View {
   var body: some View {
     Group {
       if screen == "home" {
-        NessaSideDrawer(isOpen: $sidebar) {
-          NessaSidebar(store: store, onAgents: { show("/agents") }, onChannel: { show(path("channel", $0.id)) },
-            onNewChat: compose, onSettings: { show("/settings") })
-        } content: {
-          NavigationStack {
-            NessaHomeView(store: store, desktop: desktop, dictation: dictation,
-              onMenu: { withAnimation(reduceMotion ? nil : NessaDrawerStyle.motion) { sidebar = true } },
-              onPair: pair, onCompose: compose, onStart: start)
-          }
+        NavigationStack {
+          NessaHomeView(store: store, desktop: desktop, dictation: dictation, externalToolbar: true,
+            onMenu: {}, onPair: pair, onCompose: compose, onStart: start)
         }
       } else {
         NavigationStack {
@@ -142,7 +147,7 @@ private struct ExactPhonePage: View {
     "/\(route)/" + (key.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "")
   }
 
-  private func show(_ route: String) { sidebar = false; navigate(route) }
+  private func show(_ route: String) { navigate(route) }
   private func openChat(_ id: String) { show(path("chat", id)) }
 
   private func compose() {

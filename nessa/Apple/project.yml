@@ -21,11 +21,6 @@ targets:
     sources:
       - PhoneModule.swift
       - ../.exact/apple-module
-      - ../../Vendor/Exact/host/apple/modules/ExactNativeModule.swift
-      - ../../Vendor/Exact/host/apple/modules/ExactNativeViews.swift
-      - ../../Vendor/Exact/host/apple/modules/ExactServices.swift
-      - ../../Vendor/Exact/host/apple/modules/ExactExtensions.swift
-      - ../../Vendor/Exact/host/apple/modules/ExactTamber.swift
     dependencies:
       - package: Nessa
         product: NessaFeatures

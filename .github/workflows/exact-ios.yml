@@ -38,3 +38,15 @@ jobs:
           xcodebuild -project nessa/Apple/NessaExact.xcodeproj -scheme Nessa \
             -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO \
             -derivedDataPath nessa/.exact/xcode CODE_SIGN_IDENTITY=- test-without-building
+      - name: Package the simulator build
+        if: ${{ !cancelled() && hashFiles('nessa/.exact/xcode/Build/Products/Debug-iphonesimulator/Nessa.app/Info.plist') != '' }}
+        run: |
+          cd nessa/.exact/xcode/Build/Products/Debug-iphonesimulator
+          ditto -c -k --keepParent Nessa.app "$RUNNER_TEMP/Nessa-simulator.zip"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: Nessa-simulator
+          path: ${{ runner.temp }}/Nessa-simulator.zip
+          if-no-files-found: ignore
+          retention-days: 3

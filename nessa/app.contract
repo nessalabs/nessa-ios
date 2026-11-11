@@ -10,32 +10,114 @@ routes nav
       shared "/shared"
         transcript "/shared/:key"
 
+shape Channel
+  id: string
+  name: string
+  unread: bool
+shape Created
+  id: string
+shape Viewport
+  width: number
+  prefersReducedMotion: bool
+
 shape Phone
+  channels: Channel[]
+  working: number
+  canCreate: bool
   status: string
   connected: bool
   desktop: string
 
 style Page
-  position="absolute" inset=0 background-color="#080808" color="#f5f5f5"
+  position="absolute" inset=0 background-color="#0A0A0A" color="#FAFAFA"
+
+style GlassButton
+  appearance="auto" buttonStyle="glass" width=44 height=44
+style DrawerRow
+  min-height=44 padding="0px 12px" width="100%" display="flex" align-items="center" gap=12
 
 component Nessa
+  state drawer = false
+  state travel = 0
+  resource viewport = exactViewport() as shape Viewport
+  derive width = max(1, viewport.width - 72)
+  derive offset = min(width, max(0, (drawer ? width : 0) + travel))
+  mutation created as shape Created then afterCreate
+  action afterCreate
+    match created
+      case some(chat)
+        if chat.id != ""
+          follow(path("chat", chat.id))
+      case none
+        travel = 0
+  action compose
+    if phone.canCreate and not pending(created)
+      send created = createChat()
+  action toggle(opened: bool)
+    drawer = opened
+    travel = 0
+    haptic("selection")
+  action drag(dx: number, dy: number)
+    if max(dx, -dx) > max(dy, -dy)
+      travel = travel + dx
+  action settle(vx: number, vy: number)
+    if travel != 0
+      toggle(max(vx, -vx) > 600 ? vx > 0 : (drawer ? offset > width * 0.65 : offset > width * 0.35))
+
   resource phone = phoneStatus() as shape Phone else empty()
   action back
     nav = back(nav)
     haptic("selection")
   action follow(url: string)
+    drawer = false
+    travel = 0
     if url == "/"
       nav = open(nav, "/")
     else if url == "back"
       back()
     else
-      nav = push(nav, url)
+      nav = go(nav, url)
 
   view
     main navigationKey=`${top(nav).id}` navigationBack="back" navigate=follow viewport-fit="cover" width="100%" height="100%" color-scheme="dark"
       nessa-lifecycle message=follow width=0 height=0
       for e in stack(nav) key=e.id
-        if e.name == "settings"
+        if e.name == "home"
+          column navigationKey=`${e.id}` navigationBar="none" class=Page overflow="hidden"
+            if offset > 0
+              column width=width height="100%" box-sizing="border-box" padding-top="env(safe-area-inset-top)" padding-bottom="env(safe-area-inset-bottom)" inert=(not drawer) testId="sidebar"
+                text "Nessa" role="heading" aria-level=1 font-family="serif" font-size=28 margin="20px 24px 12px"
+                scroll flex=1 min-height=0 padding="0px 8px"
+                  button appearance="none" class=DrawerRow press=follow("/agents") testId="agents"
+                    image "symbol:people" aria-hidden=true
+                    text "Agents" flex=1 text-align="left"
+                    if phone.working > 0
+                      text `${phone.working} working` color="-exact-secondary-label"
+                  if phone.channels.length > 0
+                    text "Channels" role="heading" aria-level=2 font-size=14 margin="20px 12px 4px" color="-exact-secondary-label"
+                    for channel in phone.channels key=channel.id
+                      button appearance="none" class=DrawerRow press=follow(path("channel", channel.id)) testId=`channel-${channel.id}`
+                        image "symbol:feeds" aria-hidden=true
+                        text channel.name flex=1 text-align="left"
+                        if channel.unread
+                          text "•" aria-label="Unread"
+                row justify-content="space-between" align-items="center" padding="8px 16px"
+                  button class=GlassButton press=follow("/settings") aria-label="Settings" testId="settings"
+                    image "symbol:person"
+                  button press=compose disabled=(not phone.canCreate or pending(created)) buttonStyle="bordered-prominent" testId="sidebar-compose"
+                    text "New chat"
+            column position="absolute" inset=0 translate=`${offset}px 0px` border-radius=min(40, offset) overflow="hidden" background-color="#0A0A0A" transition=(viewport.prefersReducedMotion or travel != 0 ? "none" : "translate 280ms ease-out") inert=drawer
+              nessa-page screen="home" message=follow width="100%" height="100%" testId="page-home"
+              row position="absolute" left=16 right=16 top="calc(env(safe-area-inset-top) + 8px)" justify-content="space-between"
+                button class=GlassButton press=toggle(true) aria-label="Open sidebar" testId="open-sidebar"
+                  image "symbol:reorder"
+                button class=GlassButton press=compose disabled=(not phone.canCreate or pending(created)) aria-label="New chat" testId="new-chat"
+                  image "symbol:compose"
+            if not drawer
+              box position="absolute" left=0 width=24 top="20%" bottom="20%" pan=drag panrelease=settle touch-action="pan-y" aria-hidden=true
+            else
+              button appearance="none" position="absolute" left=width right=0 top=0 bottom=0 background-color="#00000055" press=toggle(false) pan=drag panrelease=settle aria-label="Close sidebar" testId="close-sidebar"
+        else if e.name == "settings"
           column navigationKey=`${e.id}` class=Page navigationScroll="settings-rows"
             header
               text "Settings" role="heading" aria-level=2

@@ -67,8 +67,7 @@ struct ChannelChatsView: View {
       else { return }
       // The draft moves to the new chat, which sends it; a chat that could not be made keeps
       // it here.
-      draft = ""
-      attachments = []
+      first.consume(from: &draft, attachments: &attachments)
       onStart(id, first)
     }
   }

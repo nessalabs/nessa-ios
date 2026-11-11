@@ -25,6 +25,13 @@ final class PhoneModule: ExactModule {
     ]
   }
 
+  override func later(_ request: [String: Any], reply: ExactReply) {
+    Task { @MainActor in
+      guard request["op"] as? String == "create" else { return reply.fail("Unknown phone command") }
+      reply.send(["id": await phone.createChat() ?? ""])
+    }
+  }
+
   override func call(_ request: [String: Any]) throws -> [String: Any] {
     try MainActor.assumeIsolated {
       guard request["op"] as? String == "status" else { throw ExactNativeRefusal("Unknown phone query") }

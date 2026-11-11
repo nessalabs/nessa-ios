@@ -5,6 +5,12 @@ import SwiftUI
 struct HomeFirstMessage {
   let text: String
   let attachments: [DraftAttachment]
+
+  func consume(from draft: inout String, attachments current: inout [DraftAttachment]) {
+    if draft.utf8.elementsEqual(text.utf8) { draft = "" }
+    let submitted = Set(attachments.map(\.id))
+    current.removeAll { submitted.contains($0.id) }
+  }
 }
 
 /// The screen the app opens on: a greeting and a composer. Sending starts a new chat with
@@ -13,6 +19,7 @@ struct NessaHomeView: View {
   @ObservedObject var store: MessagesViewModel
   @ObservedObject var desktop: DesktopLinkViewModel
   @ObservedObject var dictation: DictationViewModel
+  var externalToolbar = false
   let onMenu: () -> Void
   let onPair: () -> Void
   let onCompose: () -> Void
@@ -49,7 +56,10 @@ struct NessaHomeView: View {
     .contentShape(Rectangle())
     .nessaTapDismissesKeyboard()
     .background { NessaHomeLight() }
-    .safeAreaInset(edge: .top, spacing: 0) { topBar }
+    .safeAreaInset(edge: .top, spacing: 0) {
+      topBar.opacity(externalToolbar ? 0 : 1)
+        .accessibilityHidden(externalToolbar).allowsHitTesting(!externalToolbar)
+    }
     .messagesBar(edge: .bottom) {
       VStack(spacing: NessaSpacing.xs) {
         if waitingForLink {
@@ -169,8 +179,7 @@ struct NessaHomeView: View {
       guard let id = await store.create() else { return }
       // The draft moves to the new chat, which sends it; a chat that could not be made keeps
       // it here.
-      draft = ""
-      attachments = []
+      first.consume(from: &draft, attachments: &attachments)
       onStart(id, first)
     }
   }
