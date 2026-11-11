@@ -11,7 +11,7 @@ export const threadSources: Pick<Sources, 'threadSnapshot' | 'threadCommand' | '
   },
   threadDetailsData: ([chat], _store, _storage, native) => {
     if (chat === '' || !native?.available) {
-      return { chat, name: '', description: '', model: '', working: false, prompt: '',
+      return { chat: '', name: '', description: '', model: '', working: false, prompt: '',
         accessReported: false, access: [], recent: false, loaded: false, error: '', artifacts: [], activity: [] };
     }
     native.watch('thread');
