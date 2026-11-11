@@ -1,3 +1,4 @@
+use ThreadDetails, AgentDetailData from "./details.contract"
 use SharedTranscript, SharedThread from "./shared.contract"
 use ChatThread, ThreadSnapshot from "./thread.contract"
 use AgentsOverview from "./agents.contract"
@@ -10,6 +11,7 @@ routes nav
     agents "/agents"
     channel "/channel/:key"
     chat "/chat/:key"
+      details "/chat/:key/details"
     settings "/settings"
       connection "/connection"
       archived "/archived"
@@ -88,7 +90,8 @@ component Nessa
       toggle(max(vx, -vx) > 600 ? vx > 0 : (drawer ? offset > width * 0.65 : offset > width * 0.35))
 
   resource phone = phoneStatus() as shape Phone else empty()
-  resource threadData = threadSnapshot(top(nav).name == "chat" ? top(nav).params.key : "") as shape ThreadSnapshot else empty()
+  resource threadData = threadSnapshot(top(nav).name == "chat" or top(nav).name == "details" ? top(nav).params.key : "") as shape ThreadSnapshot else empty()
+  resource detailsData = threadDetailsData(top(nav).name == "details" ? top(nav).params.key : "") as shape AgentDetailData else empty()
   mutation threadChanged as shape Completion
   action threadAction(command: string, chat: string, review: string, option: string)
     send threadChanged = threadCommand(command, chat, review, option)
@@ -190,6 +193,8 @@ component Nessa
               box position="absolute" left=0 width=24 top="20%" bottom="20%" pan=drag panrelease=settle touch-action="pan-y" aria-hidden=true
             else
               button appearance="none" position="absolute" left=width right=0 top=0 bottom=0 background-color="#00000055" press=toggle(false) pan=drag panrelease=settle aria-label="Close sidebar" testId="close-sidebar"
+        else if e.name == "details"
+          ThreadDetails(chat=e.params.key, route=`${e.id}`, data=detailsData, goBack=back)
         else if e.name == "chat"
           ChatThread(chat=e.params.key, route=`${e.id}`, data=threadData, goBack=back, command=threadAction)
         else if e.name == "agents"

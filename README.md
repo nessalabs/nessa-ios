@@ -1,14 +1,13 @@
 # Nessa for iPhone
 
-A native SwiftUI Messages-style client (iOS 18 or later) for the current Nessa product gateway.
-Open `App/Nessa.xcodeproj`, select the `Nessa` scheme, and run on an iPhone
-simulator. The installed application is named **Nessa**, bundle ID `app.nessa.mobile`.
-The app, Swift packages, scheme, and source modules are Nessa-only.
+Nessa is a Messages-style client for the Nessa product gateway, for iPhone and iPad
+running iOS 18 or later. Its screens are authored in Expo Exact. Swift handles
+the gateway, Keychain, retained history, and system controls including the camera,
+dictation, secure text input, and attachment pickers. The app's bundle ID is `app.nessa.mobile`.
 
 ## Run the Exact iPhone app
 
-The Exact target lives in `nessa/` and uses the same bundle identifier and native phone services.
-The original Xcode target above is the reference app during migration. To build the Exact
+The Exact target lives in `nessa/`. To build the
 target on an Apple silicon Mac, select Xcode 27.1 or later and install Bun, Rustup, and XcodeGen.
 
 ```sh
@@ -22,6 +21,7 @@ xcrun simctl install booted nessa/.exact/xcode/Build/Products/Debug-iphonesimula
 xcrun simctl launch booted app.nessa.mobile
 ```
 
+The original SwiftUI reference is available in `App/Nessa.xcodeproj` for comparison.
 Boot an iPhone simulator before the last two commands. The simulator Debug configuration
 uses the repository's development adapter. Use `device Release` with the equivalent
 `aarch64-apple-ios` Rust and Hermes targets to build for a signed device.

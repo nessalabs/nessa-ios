@@ -107,8 +107,15 @@ extension ExactPhoneSession {
   }
 
   #if os(iOS)
-  public func control(_ kind: String) -> UIViewController {
-    let host = UIHostingController(rootView: ConnectionInput(owner: self, kind: kind))
+  public func control(_ kind: String, measured: @escaping (CGSize) -> Void) -> UIViewController {
+    let growsWithText = ["credentials", "endpoint", "error", "code"].contains(kind)
+    let input = ConnectionInput(owner: self, kind: kind)
+      .fixedSize(horizontal: false, vertical: growsWithText)
+      .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+        if growsWithText, size.width > 0, size.height > 0 { measured(size) }
+      }
+    let host = UIHostingController(rootView: input)
+    host.safeAreaRegions = []
     host.view.backgroundColor = .clear
     return host
   }

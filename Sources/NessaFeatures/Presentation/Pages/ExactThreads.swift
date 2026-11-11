@@ -28,12 +28,13 @@ import UIKit
     state(for: id).snapshot()
   }
 
+  public func details(_ chat: String) -> [String: Any] { phone.agentDetails(for: chat) }
+
   public func command(_ command: String, chat: String, review: String, option: String) async {
     // A late button from a popped route or a former connection has no authority.
     guard let state = threads.object(forKey: chat as NSString),
       state.scope == phone.messages.deliveryScopeRevision else { return }
     switch command {
-    case "details": state.details = true
     case "closeMenu": state.context.selection = nil
     case "closeReplies": state.composer.reply = nil
     case "answer":
@@ -65,7 +66,6 @@ import UIKit
   let context = MessageContextController()
   let composer = ComposerDraftViewModel()
   let autoFocus: Bool
-  @Published var details = false
   private(set) var sendSequence = 0
   private let changed: () -> Void
   private var subscriptions = Set<AnyCancellable>()
@@ -189,8 +189,13 @@ private struct ExactThreadPart: View {
           replyCount: composer.reply == nil ? replies.count(for: item) : 0,
           arrivesWithTurn: true, onReply: { composer.reply = $0 }, onOpenThread: { composer.reply = $0 })
       }
-    case "avatar":
-      AgentAvatar(seed: state.chat, size: MessagesStyle.titleAvatar,
+    case "artifact":
+      if let artifact = ConversationArtifact.collect(from: store.views[state.chat]?.messages ?? [])
+        .first(where: { $0.id == item }), case .image(let image) = artifact.content {
+        PhotoAttachment(id: artifact.id) { await store.imageData(for: image) }
+      }
+    case "avatar", "hero":
+      AgentAvatar(seed: state.chat, size: part == "hero" ? AgentDetailsStyle.heroAvatar : MessagesStyle.titleAvatar,
         working: store.views[state.chat]?.messages.contains { $0.status == "running" } == true)
     case "typing": TypingIndicator()
     case "composer":
@@ -204,9 +209,6 @@ private struct ExactThreadPart: View {
           if store.connected && store.pendingLoadError == nil {
             composer.retainPending(Set(commands.map(\.requestID)))
           }
-        }
-        .sheet(isPresented: $state.details) {
-          AgentDetailsView(name: store.agentName(for: state.chat), conversationID: state.chat, store: store)
         }
     default: EmptyView()
     }

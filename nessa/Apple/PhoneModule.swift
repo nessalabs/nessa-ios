@@ -24,7 +24,7 @@ final class PhoneModule: ExactModule {
       },
       "nessa-connection-input": ExactNativeFactory(for: PhoneModule.self) { module, props, events in
         MainActor.assumeIsolated {
-          ExactNativeScreen(screen: module.link.control(props["kind"] ?? ""), events: events)
+          ExactNativeScreen(screen: module.link.control(props["kind"] ?? "", measured: events.intrinsicSize), events: events)
         }
       },
       "nessa-artwork": ExactNativeFactory { props, events in
@@ -78,6 +78,7 @@ final class PhoneModule: ExactModule {
   override func call(_ request: [String: Any]) throws -> [String: Any] {
     try MainActor.assumeIsolated {
       switch request["op"] as? String {
+      case "threadDetailsData": return threads.details(request["chat"] as? String ?? "")
       case "threadSnapshot": return threads.snapshot(request["chat"] as? String ?? "")
       case "connectionState": return link.state
       case "agents": return phone.agentsSnapshot

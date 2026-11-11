@@ -1,7 +1,7 @@
 import XCTest
 
 final class PhoneNavigationTests: XCTestCase {
-  func testHomeSettingsArchiveAndCompose() {
+  func testHomeSettingsArchiveAndBack() {
     let app = XCUIApplication()
     app.launch()
     let menu = app.buttons["Open sidebar"]

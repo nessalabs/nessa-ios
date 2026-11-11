@@ -60,7 +60,7 @@ component ChatThread
         row align-items="center" justify-content="space-between" padding="0px 12px" min-height=44
           button id="back" press=backFromChat buttonStyle="glass" width=44 height=44 aria-label=(reply == "" ? "Back" : "Close replies") testId="thread-back"
             image (reply == "" ? "symbol:back" : "symbol:close")
-          button press=command("details", chat, "", "") appearance="none" aria-label=`${data.name} agent details` testId="thread-details" display="flex" align-items="center" gap=6
+          link href=path("details", chat) appearance="none" aria-label=`${data.name} agent details` testId="thread-details" display="flex" align-items="center" gap=6
             nessa-thread-part widget="avatar" chat=chat width=28 height=28 aria-hidden=true
             text (current ? data.name : "") font="-exact-headline" line-clamp=1
             image "symbol:forward-chevron" font-size=12 color="-exact-secondary-label"

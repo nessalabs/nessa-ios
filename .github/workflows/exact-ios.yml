@@ -62,3 +62,10 @@ jobs:
           path: ${{ runner.temp }}/Nessa-simulator.zip
           if-no-files-found: ignore
           retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: simulator-test-results
+          path: nessa/.exact/xcode/Logs/Test/*.xcresult
+          if-no-files-found: ignore
+          retention-days: 3
