@@ -43,13 +43,26 @@ final class ConnectionTests: XCTestCase {
     XCTAssertFalse(app.staticTexts["simulator-only"].exists)
 
     app.navigationBars.buttons.element(boundBy: 0).tap()
-    // AutoFill can offer to save the synthetic credential when the secure field resigns.
+    // AutoFill can arrive after Settings is already hittable on a cold simulator.
+    // Follow the same two visible controls a person uses until the form reappears.
+    let away = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO"), object: credential)
+    XCTAssertEqual(XCTWaiter.wait(for: [away], timeout: 10), .completed)
     let declineSave = app.buttons["Not Now"]
-    if declineSave.waitForExistence(timeout: 2) { declineSave.tap() }
-    let shown = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == YES"), object: connection)
-    XCTAssertEqual(XCTWaiter.wait(for: [shown], timeout: 8), .completed)
-    connection.tap()
-    XCTAssertTrue(credential.waitForExistence(timeout: 5))
+    let deadline = Date().addingTimeInterval(40)
+    while !credential.exists && Date() < deadline {
+      let actionable = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+        declineSave.isHittable || connection.isHittable || credential.exists
+      }, object: nil)
+      guard XCTWaiter.wait(for: [actionable], timeout: max(0, deadline.timeIntervalSinceNow)) == .completed
+      else { break }
+      if declineSave.isHittable {
+        declineSave.tap()
+      } else if !credential.exists && connection.isHittable {
+        connection.tap()
+        _ = credential.waitForExistence(timeout: 2)
+      }
+    }
+    XCTAssertTrue(credential.exists)
     XCTAssertFalse(connect.isEnabled)
   }
 }
