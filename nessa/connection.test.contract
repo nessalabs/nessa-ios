@@ -1,0 +1,17 @@
+test "settings opens the connection form with no device credential"
+  at "/settings"
+  tap "connection"
+  clock settle
+  expect tree has "page-connection"
+  expect disabled "link-connect"
+  expect tree missing "link-disconnect"
+  expect tree missing "link-shared"
+
+test "pairing requires a valid code and closes back to the home screen"
+  at "/pair"
+  clock settle
+  expect tree has "page-pair"
+  expect disabled "pair-submit"
+  tap "pair-close"
+  clock settle
+  expect tree has "open-sidebar"
