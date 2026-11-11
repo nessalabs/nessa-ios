@@ -56,14 +56,24 @@ private func decode(_ value: [String: Any]) throws -> GatewaySessionSnapshot {
     #expect(throws: (any Error).self) { try decode(wire) }
   }
 }
+/// The most methods a ready frame may list, as the vendored contract says: it
+/// grows with the gateway, so the test reads it rather than keeping a copy.
+private func mostMethods() throws -> Int {
+  guard case .object(let fields, _)? = GatewayWireContract.rules["ProductSessionReady"],
+    case .array(_, let maximum?, _)? = fields["methods"]
+  else { throw NessaGatewayError.invalidFrame }
+  return maximum
+}
+
 @Test func readyRejectsInvalidBoundsAndUsesUnicodeScalars() throws {
+  let most = try mostMethods()
   for (key, invalid): (String, Any) in [
     ("version", 2), ("version", true), ("principalId", ""),
     ("principalId", String(repeating: "a", count: 257)),
     ("principalId", String(repeating: "e\u{301}", count: 129)),
     ("expiresAt", -1), ("expiresAt", 1.5), ("expiresAt", UInt64(9_007_199_254_740_992)),
     ("grants", Array(repeating: (ready()["grants"] as! [[String: Any]])[0], count: 17)),
-    ("methods", Array(repeating: "", count: 102)),
+    ("methods", Array(repeating: "", count: most + 1)),
   ] {
     var wire = ready()
     wire[key] = invalid
@@ -72,9 +82,9 @@ private func decode(_ value: [String: Any]) throws -> GatewaySessionSnapshot {
   var wire = ready()
   wire["principalId"] = String(repeating: "e\u{301}", count: 128)
   wire["grants"] = []
-  wire["methods"] = Array(repeating: "", count: 101)
+  wire["methods"] = Array(repeating: "", count: most)
   #expect(try decode(wire).identity.principalID == wire["principalId"] as? String)
-  #expect(try decode(wire).methods.count == 101)
+  #expect(try decode(wire).methods.count == most)
   for field in ["action", "organizationId", "id"] {
     var invalid = ready()
     var grant = (invalid["grants"] as! [[String: Any]])[0]
