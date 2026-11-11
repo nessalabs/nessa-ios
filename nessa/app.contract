@@ -166,7 +166,7 @@ component Nessa
                     text "New chat"
             column position="absolute" inset=0 translate=`${offset}px 0px` border-radius=min(40, offset) overflow="hidden" background-color="#0A0A0A" transition=(viewport.prefersReducedMotion or travel != 0 ? "none" : "translate 280ms ease-out") inert=drawer
               nessa-artwork kind="home" position="absolute" inset=0 pointer-events="none" aria-hidden=true
-              column testId="page-home" flex=1 min-height=0 padding-top="calc(env(safe-area-inset-top) + 52px)" padding-bottom="calc(env(safe-area-inset-bottom) + 8px)"
+              column testId="page-home" position="absolute" inset=0 z-index=1 min-height=0 padding-top="calc(env(safe-area-inset-top) + 52px)" padding-bottom="calc(env(safe-area-inset-bottom) + 8px)"
                 column flex=1 justify-content="center" align-items="center" gap=16
                   text phone.greeting font-family="serif" font-size=30 role="heading" aria-level=1 testId="greeting"
                   if phone.pairingNeeded
@@ -184,7 +184,7 @@ component Nessa
                       text "Reconnecting…"
                 if not phone.pairingNeeded
                   nessa-new-chat-input message=follow width="100%" min-height=48 flex-shrink=0
-              row position="absolute" left=16 right=16 top="calc(env(safe-area-inset-top) + 8px)" justify-content="space-between"
+              row position="absolute" z-index=2 left=16 right=16 top="calc(env(safe-area-inset-top) + 8px)" justify-content="space-between"
                 button class=GlassButton press=toggle(true) aria-label="Open sidebar" testId="open-sidebar"
                   image "symbol:reorder"
                 button class=GlassButton press=compose disabled=(not phone.canCreate or pending(created)) aria-label="New chat" testId="new-chat"

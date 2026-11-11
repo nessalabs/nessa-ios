@@ -10,7 +10,7 @@ final class PhoneNavigationTests: XCTestCase {
     app.buttons["Settings"].tap()
     app.descendants(matching: .any)["Archived chats"].firstMatch.tap()
     XCTAssertTrue(app.staticTexts["No archived chats."].waitForExistence(timeout: 5))
-    app.buttons["Back"].firstMatch.tap()
+    app.navigationBars.buttons.element(boundBy: 0).tap()
     XCTAssertTrue(app.descendants(matching: .any)["Connection"].firstMatch.waitForExistence(timeout: 5))
   }
 }

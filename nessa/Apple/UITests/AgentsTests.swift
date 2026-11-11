@@ -11,7 +11,7 @@ final class AgentsTests: XCTestCase {
     menu.tap()
     app.buttons["agents"].tap()
 
-    let earlier = app.buttons["filter-earlier"]
+    let earlier = app.descendants(matching: .any)["filter-earlier"].firstMatch
     XCTAssertTrue(earlier.waitForExistence(timeout: 10))
     earlier.tap()
     let request = app.descendants(matching: .any)["request-\(waitingChat)"].firstMatch
@@ -19,9 +19,9 @@ final class AgentsTests: XCTestCase {
     let chat = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "chat-")).firstMatch
     XCTAssertTrue(chat.waitForExistence(timeout: 5))
     let chatID = chat.identifier
+    let conversationID = String(chatID.dropFirst("chat-".count))
     chat.swipeLeft()
-    let archive = app.buttons.matching(NSPredicate(
-      format: "label == 'Archive' OR identifier BEGINSWITH 'ask-archive-'")).firstMatch
+    let archive = app.buttons["ask-archive-\(conversationID)"]
     XCTAssertTrue(archive.waitForExistence(timeout: 5))
     archive.tap()
     let alert = app.alerts["Archive this chat?"]
@@ -29,7 +29,7 @@ final class AgentsTests: XCTestCase {
     alert.buttons["Cancel"].tap()
     XCTAssertTrue(app.buttons[chatID].waitForExistence(timeout: 5))
 
-    let needsYou = app.buttons["filter-needsYou"]
+    let needsYou = app.descendants(matching: .any)["filter-needsYou"].firstMatch
     XCTAssertTrue(needsYou.waitForExistence(timeout: 5))
     needsYou.tap()
     let deny = app.buttons["answer-\(waitingChat)-reject"]

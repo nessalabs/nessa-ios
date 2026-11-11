@@ -26,7 +26,8 @@ jobs:
       - name: Read the pinned SDK revision
         id: sdk
         run: echo "revision=$(git -C Vendor/Exact rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: compiler-cache
         with:
           key: exact-ios27-arm64-v1-${{ steps.sdk.outputs.revision }}
           path: |
@@ -43,12 +44,29 @@ jobs:
           for target in aarch64-apple-darwin aarch64-apple-ios-sim; do
             cargo run --manifest-path vendor/ibex/crates/hermes-lean-sys-installer/Cargo.toml -- --target "$target"
           done
-      - name: Build Nessa and run the navigation test
+      - name: Boot an iPhone simulator
         run: |
-          NESSA_BUILD_ACTION=build-for-testing nessa/tools/build-ios.sh simulator Debug CODE_SIGN_IDENTITY=-
           device=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+          echo "NESSA_SIMULATOR=$device" >> "$GITHUB_ENV"
+          xcrun simctl boot "$device"
+      - name: Build the embedded app and UI tests
+        run: NESSA_BUILD_ACTION=build-for-testing nessa/tools/build-ios.sh simulator Debug CODE_SIGN_IDENTITY=-
+      - uses: actions/cache/save@v4
+        if: steps.compiler-cache.outputs.cache-hit != 'true'
+        with:
+          key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
+          path: |
+            Vendor/Exact/target/debug
+            nessa/target/size
+            nessa/target/aarch64-apple-ios-sim/size
+      - name: Exercise the installed app
+        run: |
+          xcrun simctl bootstatus "$NESSA_SIMULATOR" -b
+          xcrun simctl install "$NESSA_SIMULATOR" nessa/.exact/xcode/Build/Products/Debug-iphonesimulator/Nessa.app
+          xcrun simctl launch "$NESSA_SIMULATOR" app.nessa.mobile
+          xcrun simctl terminate "$NESSA_SIMULATOR" app.nessa.mobile
           xcodebuild -project nessa/Apple/NessaExact.xcodeproj -scheme Nessa \
-            -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO \
+            -destination "platform=iOS Simulator,id=$NESSA_SIMULATOR" -parallel-testing-enabled NO \
             -derivedDataPath nessa/.exact/xcode CODE_SIGN_IDENTITY=- test-without-building
       - name: Package the simulator build
         if: ${{ !cancelled() && hashFiles('nessa/.exact/xcode/Build/Products/Debug-iphonesimulator/Nessa.app/Info.plist') != '' }}
