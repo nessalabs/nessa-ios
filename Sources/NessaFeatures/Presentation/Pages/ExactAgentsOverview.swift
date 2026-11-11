@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 /// Projects the live phone session into the Agents screen. Mutations resolve their
@@ -27,7 +26,7 @@ struct ExactAgentsOverview {
         return [
           "id": id, "name": chat.title ?? store.agentName(for: id), "detail": subtitle,
           "channel": chat.channelId.flatMap { channels[$0] } ?? "",
-          "reviewStamp": review.map(Self.stamp) ?? "", "title": review?.title ?? "",
+          "reviewStamp": review.map(ExactPermissionAction.digest) ?? "", "title": review?.title ?? "",
           "arguments": review?.argumentsJson ?? "",
           "options": order.map { ["id": $0.id, "label": $0.label, "primary": $0.id == primary] as [String: Any] },
         ]
@@ -44,15 +43,6 @@ struct ExactAgentsOverview {
       "canAct": store.connected && store.conversationAuthorityReady,
       "scope": store.deliveryScopeRevision, "connection": store.connectionRevision,
     ]
-  }
-
-  /// An answer applies only to the exact request and offered options the person saw.
-  /// This also rejects a changed request that reuses a review key on the same connection.
-  private static func stamp(_ review: NessaPermission) -> String {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.sortedKeys]
-    guard let data = try? encoder.encode(review) else { return "" }
-    return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
   }
 
   func perform(_ request: [String: Any]) async -> String? {
@@ -81,7 +71,7 @@ struct ExactAgentsOverview {
     case "answer":
       guard store.connected, store.conversationAuthorityReady,
             let review = store.waitingPermission(in: id),
-            let stamp = request["stamp"] as? String, !stamp.isEmpty, stamp == Self.stamp(review),
+            let stamp = request["stamp"] as? String, !stamp.isEmpty, stamp == ExactPermissionAction.digest(review),
             let optionID = request["option"] as? String,
             let option = review.options.first(where: { $0.id == optionID }) else { return nil }
       await store.answer(review, option: option, in: id)

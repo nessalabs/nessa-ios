@@ -79,6 +79,10 @@ import UIKit
   public func refresh(_ screen: String) async {
     if screen == "archived" { await messages.loadArchived() }
     if screen == "shared" { await desktop.refreshChats() }
+    if screen == "channel" {
+      do { try await messages.refreshList() }
+      catch { messages.error = error.localizedDescription }
+    }
   }
 
   public func unarchive(_ id: String) async { await messages.setArchived(false, conversationID: id) }

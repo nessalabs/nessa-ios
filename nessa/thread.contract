@@ -12,6 +12,7 @@ shape ThreadOption
   primary: bool
 shape ThreadReview
   id: string
+  stamp: string
   title: string
   arguments: string
   options: ThreadOption[]
@@ -84,7 +85,7 @@ component ChatThread
                   text review.arguments font-family="monospace" white-space="pre-wrap" user-select="text" padding=12 background-color="-exact-tertiary-background" border-radius=10
                   row gap=6 flex-direction=(review.options.length > 2 ? "column" : "row")
                     for option in review.options key=option.id
-                      button buttonStyle=(option.primary ? "bordered-prominent" : "bordered") disabled=(not data.connected) press=command("answer", chat, review.id, option.id) flex=1 min-height=44 testId=`answer-${review.id}-${option.id}`
+                      button buttonStyle=(option.primary ? "bordered-prominent" : "bordered") disabled=(not data.connected) press=command("answer", chat, review.stamp, option.id) flex=1 min-height=44 testId=`answer-${review.id}-${option.id}`
                         text option.label
               if current and data.error != ""
                 text data.error color="-exact-secondary-label" font="-exact-caption1"

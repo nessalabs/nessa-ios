@@ -38,8 +38,12 @@ import UIKit
     case "closeMenu": state.context.selection = nil
     case "closeReplies": state.composer.reply = nil
     case "answer":
-      guard let offered = phone.messages.views[chat]?.permissions.first(where: { $0.review == review }),
-        let choice = offered.options.first(where: { $0.id == option }) else { return }
+      guard phone.messages.connected, phone.messages.conversationAuthorityReady,
+        let offered = phone.messages.views[chat]?.permissions.first(where: {
+          ExactPermissionAction.option(option, stamp: review, review: $0,
+            scope: phone.messages.deliveryScopeRevision, connection: phone.messages.connectionRevision) != nil
+        }), let choice = ExactPermissionAction.option(option, stamp: review, review: offered,
+          scope: phone.messages.deliveryScopeRevision, connection: phone.messages.connectionRevision) else { return }
       await phone.messages.answer(offered, option: choice, in: chat)
     default: break
     }
@@ -138,6 +142,7 @@ import UIKit
       let ordered = review.options.filter { $0.effect != "allow" } + review.options.filter { $0.effect == "allow" }
       let primary = review.options.first { $0.effect == "allow" }?.id
       return ["id": review.review, "title": review.title, "arguments": review.argumentsJson,
+        "stamp": ExactPermissionAction.stamp(review, scope: store.deliveryScopeRevision, connection: store.connectionRevision),
         "options": ordered.map { ["id": $0.id, "label": $0.label, "primary": $0.id == primary] as [String: Any] }]
     }
     return ["chat": chat, "name": store.agentName(for: chat), "rows": rows, "reviews": cards,
