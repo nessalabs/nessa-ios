@@ -17,6 +17,11 @@ final class PhoneModule: ExactModule {
           return ExactNativeScreen(screen: controller, events: events)
         }
       },
+      "nessa-avatar": ExactNativeFactory(for: PhoneModule.self) { module, props, events in
+        MainActor.assumeIsolated {
+          ExactNativeScreen(screen: module.phone.avatar(props["identifier"] ?? ""), events: events)
+        }
+      },
       "nessa-lifecycle": ExactNativeFactory(for: PhoneModule.self) { module, _, events in
         MainActor.assumeIsolated {
           ExactNativeScreen(screen: module.phone.lifecycle(navigate: events.message), events: events)
@@ -27,15 +32,28 @@ final class PhoneModule: ExactModule {
 
   override func later(_ request: [String: Any], reply: ExactReply) {
     Task { @MainActor in
-      guard request["op"] as? String == "create" else { return reply.fail("Unknown phone command") }
-      reply.send(["id": await phone.createChat() ?? ""])
+      switch request["op"] as? String {
+      case "create":
+        reply.send(["id": await phone.createChat() ?? ""])
+      case "refresh":
+        await phone.refresh(request["screen"] as? String ?? "")
+        reply.send(["done": true])
+      case "unarchive":
+        guard let id = request["id"] as? String else { return reply.fail("Missing conversation") }
+        await phone.unarchive(id)
+        reply.send(["done": true])
+      default: reply.fail("Unknown phone command")
+      }
     }
   }
 
   override func call(_ request: [String: Any]) throws -> [String: Any] {
     try MainActor.assumeIsolated {
-      guard request["op"] as? String == "status" else { throw ExactNativeRefusal("Unknown phone query") }
-      return phone.status
+      switch request["op"] as? String {
+      case "status": return phone.status
+      case "list": return phone.list(request["screen"] as? String ?? "")
+      default: throw ExactNativeRefusal("Unknown phone query")
+      }
     }
   }
 }

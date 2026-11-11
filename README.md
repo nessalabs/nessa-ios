@@ -5,6 +5,27 @@ Open `App/Nessa.xcodeproj`, select the `Nessa` scheme, and run on an iPhone
 simulator. The installed application is named **Nessa**, bundle ID `app.nessa.mobile`.
 The app, Swift packages, scheme, and source modules are Nessa-only.
 
+## Run the Exact iPhone app
+
+The Exact target lives in `nessa/` and uses the same bundle identifier and native phone services.
+The original Xcode target above is the reference app during migration. To build the Exact
+target on an Apple silicon Mac, select Xcode 27.1 or later and install Bun, Rustup, and XcodeGen.
+
+```sh
+git submodule update --init Vendor/Exact
+(cd Vendor/Exact && bun install --frozen-lockfile && rustup target add aarch64-apple-ios-sim && \
+  for target in aarch64-apple-darwin aarch64-apple-ios-sim; do
+    cargo run --manifest-path vendor/ibex/crates/hermes-lean-sys-installer/Cargo.toml -- --target "$target" || exit 1
+  done)
+nessa/tools/build-ios.sh simulator Debug CODE_SIGN_IDENTITY=-
+xcrun simctl install booted nessa/.exact/xcode/Build/Products/Debug-iphonesimulator/Nessa.app
+xcrun simctl launch booted app.nessa.mobile
+```
+
+Boot an iPhone simulator before the last two commands. The simulator Debug configuration
+uses the repository's development adapter. Use `device Release` with the equivalent
+`aarch64-apple-ios` Rust and Hermes targets to build for a signed device.
+
 ## System and feature map
 
 The [Nessa Docs atlas](docs/state/README.md) follows current screen actions,

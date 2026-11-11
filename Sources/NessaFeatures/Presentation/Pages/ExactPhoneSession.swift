@@ -18,6 +18,13 @@ import UIKit
     self.dependencies = dependencies
     messages = dependencies.makeMessagesViewModel()
     desktop = dependencies.makeDesktopLinkViewModel()
+    Publishers.MergeMany([
+      messages.$archivedConversations.map { _ in () }.eraseToAnyPublisher(),
+      messages.$agentProfiles.map { _ in () }.eraseToAnyPublisher(),
+      desktop.$chats.map { _ in () }.eraseToAnyPublisher(),
+      desktop.$chatsError.map { _ in () }.eraseToAnyPublisher(),
+      desktop.$linked.map { _ in () }.eraseToAnyPublisher(),
+    ]).receive(on: RunLoop.main).sink { changed("lists") }.store(in: &subscriptions)
     messages.objectWillChange.merge(with: desktop.objectWillChange)
       .receive(on: RunLoop.main)
       .compactMap { [weak self] _ in self?.status as NSDictionary? }
@@ -31,12 +38,41 @@ import UIKit
     let label = connected
       ? (desktop.linked != nil && messages.linkedDesktopID == desktop.linked?.id ? name : "Connected")
       : (messages.reconnecting ? "Reconnecting…" : "Not connected")
+    let unread = Set(messages.unreadChats).subtracting(messages.archivedChats)
+    let unreadChannels = Set(messages.visibleConversations.compactMap { chat in
+      unread.contains(chat.id) ? chat.channelId ?? NessaChannel.defaultID : nil
+    })
     let channels = messages.channels.map { channel in
       ["id": channel.id, "name": channel.name,
-       "unread": messages.conversations(inChannel: channel.id).contains { messages.unreadChats.contains($0.id) }] as [String: Any]
+       "unread": unreadChannels.contains(channel.id)] as [String: Any]
     }
     return ["status": label, "connected": connected, "desktop": name, "canCreate": messages.canCreateChat,
       "working": messages.agentsGlance.count(.working), "channels": channels]
+  }
+
+  public func list(_ screen: String) -> [String: Any] {
+    let archived = screen == "archived"
+    let chats = archived ? messages.archivedConversations : (desktop.linked == nil ? [] : desktop.chats)
+    let rows = chats.map { chat in
+      ["id": chat.id, "title": chat.title ?? (archived ? messages.agentName(for: chat.id) : "Nessa"),
+       "preview": chat.running ? "Nessa is working…" : chat.preview ?? "New conversation",
+       "time": ConversationRow.timestamp(chat.updatedAtMs)]
+    }
+    return ["rows": rows, "error": archived ? "" : desktop.chatsError ?? ""]
+  }
+
+  public func refresh(_ screen: String) async {
+    if screen == "archived" { await messages.loadArchived() }
+    if screen == "shared" { await desktop.refreshChats() }
+  }
+
+  public func unarchive(_ id: String) async { await messages.setArchived(false, conversationID: id) }
+
+  public func avatar(_ id: String) -> UIViewController {
+    let controller = UIHostingController(rootView: AgentAvatar(seed: id, size: MessagesStyle.rowAvatar))
+    controller.view.backgroundColor = .clear
+    controller.view.isUserInteractionEnabled = false
+    return controller
   }
 
   public func createChat() async -> String? {
@@ -122,8 +158,6 @@ private struct ExactPhonePage: View {
       if let channel = store.channels.first(where: { $0.id == identifier }) {
         ChannelChatsView(store: store, channel: channel, dictation: dictation, onOpen: openChat, onStart: start)
       }
-    case "archived":
-      ArchivedChatsView(store: store, onOpen: openChat)
     case "chat":
       NessaThreadView(store: store, conversationID: identifier, dictation: dictation,
         autoFocusComposer: session.focusChat == identifier, firstMessage: session.firstMessages[identifier],
@@ -132,8 +166,6 @@ private struct ExactPhonePage: View {
     case "connection":
       NessaConnectionView(store: store, address: $address, instance: instance, desktop: desktop,
         onPair: pair, onShowChats: { navigate("/shared") })
-    case "shared":
-      LinkedDesktopChatsView(store: desktop) { navigate(path("shared", $0)) }
     case "transcript":
       LinkedDesktopThreadView(store: desktop, conversationID: identifier)
     default:

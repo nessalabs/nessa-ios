@@ -14,6 +14,16 @@ shape Channel
   id: string
   name: string
   unread: bool
+shape ChatRow
+  id: string
+  title: string
+  preview: string
+  time: string
+shape ChatList
+  rows: ChatRow[]
+  error: string
+shape Completion
+  done: bool
 shape Created
   id: string
 shape Viewport
@@ -65,6 +75,16 @@ component Nessa
       toggle(max(vx, -vx) > 600 ? vx > 0 : (drawer ? offset > width * 0.65 : offset > width * 0.35))
 
   resource phone = phoneStatus() as shape Phone else empty()
+  derive screen = top(nav).name
+  resource conversations = chatList(screen) as shape ChatList else empty()
+  mutation updated as shape Completion
+  mutation restored as shape Completion
+  task loadList when screen == "archived" or screen == "shared" key=`${top(nav).id}-${phone.connected}-${phone.desktop}`
+    after(1, refresh)
+  action refresh
+    send updated = refreshList(screen)
+  action restore(id: string)
+    send restored = unarchiveChat(id)
   action back
     nav = back(nav)
     haptic("selection")
@@ -129,6 +149,30 @@ component Nessa
               section
                 link href="/archived" testId="archived"
                   text "Archived chats"
+        else if e.name == "archived" or e.name == "shared"
+          column navigationKey=`${e.id}` class=Page navigationScroll=`list-${e.id}` testId=`page-${e.name}`
+            header
+              text (e.name == "archived" ? "Archived" : phone.desktop) role="heading" aria-level=1
+            list id=`list-${e.id}` flex=1 min-height=0 refresh=refresh refreshing=pending(updated)
+              if e.id == top(nav).id
+                if conversations.error != ""
+                  text conversations.error color="-exact-secondary-label" padding=16
+                else if conversations.rows.length == 0 and not pending(updated)
+                  text (e.name == "archived" ? "No archived chats." : "No chats shared yet. On your Mac, share a chat with this phone from its Share menu.") color="-exact-secondary-label" padding=16
+                for chat in conversations.rows key=chat.id
+                  scroll swipeContent=`open-${chat.id}` swipeTrailing=(e.name == "archived" ? `restore-${chat.id}` : "") height=72 width="100%" overflow-x="scroll" scrollbar-width="none" scroll-snap-type="x mandatory"
+                    row
+                      button id=`open-${chat.id}` appearance="none" press=follow(e.name == "archived" ? path("chat", chat.id) : path("transcript", chat.id)) width="100%" flex-shrink=0 height=72 padding="0px 16px" display="flex" align-items="center" gap=12 scroll-snap-align="start"
+                        nessa-avatar identifier=chat.id width=40 height=40 aria-hidden=true
+                        column flex=1 min-width=0 text-align="left"
+                          row gap=6 align-items="center"
+                            text chat.title font="-exact-headline" line-clamp=1 flex=1
+                            text chat.time font="-exact-caption1" color="-exact-secondary-label"
+                            image "symbol:forward-chevron"
+                          text chat.preview font="-exact-subheadline" color="-exact-secondary-label" line-clamp=2
+                      if e.name == "archived"
+                        button id=`restore-${chat.id}` aria-label="Unarchive" press=restore(chat.id) disabled=(not phone.connected or pending(restored)) width=88 flex-shrink=0 height=72 scroll-snap-align="end"
+                          text "Unarchive"
         else
           column navigationKey=`${e.id}` navigationBar="none" class=Page
             nessa-page screen=e.name identifier=e.params.key message=follow width="100%" height="100%" testId=`page-${e.name}`
