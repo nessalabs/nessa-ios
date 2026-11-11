@@ -1,0 +1,73 @@
+name: NessaExact
+options:
+  deploymentTarget:
+    iOS: '18.0'
+  createIntermediateGroups: true
+packages:
+  Nessa:
+    path: ../..
+  Exact:
+    path: ../../Vendor/Exact/host/apple
+settings:
+  base:
+    DEVELOPMENT_TEAM: 8F64XCDBH8
+    TARGETED_DEVICE_FAMILY: "1,2"
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+targets:
+  ExactModules:
+    type: framework
+    platform: iOS
+    sources:
+      - PhoneModule.swift
+      - PhoneArtwork.swift
+      - ../.exact/apple-module
+    dependencies:
+      - package: Nessa
+        product: NessaFeatures
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.nessa.mobile.exact-modules
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+  Nessa:
+    type: application
+    platform: iOS
+    sources:
+      - NessaExactApp.swift
+      - ../../App/Nessa/Assets.xcassets
+    dependencies:
+      - package: Exact
+        product: ExactKit
+      - package: Exact
+        product: ExactGroupedLists
+      - package: Exact
+        product: ExactMarkdown
+      - target: ExactModules
+        embed: true
+      - framework: ../../Vendor/NessaNative/NessaDeviceClient.xcframework
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.nessa.mobile
+        INFOPLIST_FILE: ../../App/Nessa/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
+  PhoneUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: Nessa
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: app.nessa.mobile.uitests
+        TEST_TARGET_NAME: Nessa
+schemes:
+  Nessa:
+    build:
+      targets:
+        Nessa: all
+    test:
+      targets: [PhoneUITests]

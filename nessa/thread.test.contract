@@ -1,0 +1,4 @@
+test "details without a matching chat projection keeps its close control and withholds metadata" on web
+  at "/chat/unavailable/details"
+  expect tree has "details-close"
+  expect tree missing "details-tabs"

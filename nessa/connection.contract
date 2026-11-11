@@ -1,0 +1,120 @@
+shape PeerChoice
+  id: string
+  name: string
+
+shape ConnectionState
+  connected: bool
+  saved: bool
+  busy: bool
+  setupBusy: bool
+  hasCredential: bool
+  hasError: bool
+  available: bool
+  linked: bool
+  desktop: string
+  desktopID: string
+  phase: string
+  peer: string
+  peers: PeerChoice[]
+  failure: string
+  validCode: bool
+
+style LinkPage
+  position="absolute" inset=0 display="flex" flex-direction="column" background-color="-exact-background" color="-exact-label"
+style LinkAction
+  appearance="auto" buttonStyle="bordered-prominent" min-height=44 width="100%"
+style LinkDetail
+  color="-exact-secondary-label" text-align="center" font="-exact-body"
+
+component ConnectionScreen
+  props
+    visit: string
+    data: ConnectionState
+    perform: action
+    follow: action
+  view
+    column navigationKey=visit navigationScroll="connection-form" class=LinkPage testId="page-connection"
+      header
+        text "Connection" role="heading" aria-level=2
+      scroll id="connection-form" flex=1 keyboardDismissMode="interactive" padding="8px 20px 32px"
+        column gap=16
+          if data.connected or data.saved
+            column background-color="-exact-secondary-grouped-background" border-radius=16 padding="8px 16px"
+              row align-items="center" min-height=44 gap=8
+                text "Status" flex=1 color="-exact-secondary-label"
+                box width=8 height=8 border-radius=4 background-color=(data.connected ? "AccentColor" : "-exact-secondary-label")
+                text (data.connected ? "Connected" : "Disconnected") testId="link-status"
+              text "Gateway" font="-exact-footnote" color="-exact-secondary-label"
+              nessa-connection-input kind="endpoint" width="100%" min-height=40
+            if data.connected
+              button appearance="auto" buttonStyle="bordered" destructive=true min-height=44 press=perform("disconnect", "") testId="link-disconnect"
+                text "Disconnect"
+            else
+              button class=LinkAction disabled=(data.busy or data.setupBusy) press=perform("reconnect", "") testId="link-reconnect"
+                text (data.busy ? "Connecting…" : "Connect")
+          else
+            nessa-connection-input kind="credentials" width="100%" min-height=92
+            button class=LinkAction disabled=(data.busy or not data.hasCredential) press=perform("connect", "") testId="link-connect"
+              text (data.busy ? "Connecting…" : "Connect")
+          if not data.connected and data.hasError
+            nessa-connection-input kind="error" width="100%" min-height=44
+          if data.available
+            if data.linked
+              column gap=8 background-color="-exact-secondary-grouped-background" border-radius=16 padding="8px 16px"
+                row min-height=44 align-items="center" gap=8
+                  text "Mac" flex=1 color="-exact-secondary-label"
+                  text data.desktop line-clamp=1
+                button appearance="none" min-height=44 press=follow("/shared") testId="link-shared"
+                  text "Shared chats" flex=1
+                  image "symbol:forward-chevron"
+                button appearance="auto" buttonStyle="plain" destructive=true min-height=44 press=perform("forget", data.desktopID) testId="link-forget"
+                  text "Forget this Mac"
+            else
+              button appearance="auto" buttonStyle="bordered" min-height=44 press=follow("/pair") testId="link-pair"
+                text "Pair with your Mac"
+
+component PairingScreen
+  props
+    visit: string
+    data: ConnectionState
+    perform: action
+    back: action
+  view
+    column navigationKey=visit navigationPresentation="modal" navigationScroll="pairing-steps" class=LinkPage testId="page-pair"
+      header
+        text "Pair with your Mac" role="heading" aria-level=1
+        button id="back" press=back aria-label="Close pairing" testId="pair-close"
+          image "symbol:close"
+      nessa-connection-input kind="pair-lifetime" position="absolute" top=0 right=0 width=1 height=1 aria-hidden=true
+      scroll id="pairing-steps" flex=1 keyboardDismissMode="interactive" padding="16px 20px"
+        column align-items="center" gap=16 width="100%"
+          if data.phase == "idle" or data.phase == "failed" or data.phase == ""
+            nessa-connection-input kind="camera" width="min(280px, 100%)" height=280
+            text "On your Mac, open Settings › Linked devices › Pair a device, then point your camera at the orb." class=LinkDetail
+            if data.phase == "failed"
+              text data.failure color="-exact-system-red" text-align="center" testId="pair-failure"
+              button press=perform("reset", "") testId="pair-again"
+                text "Scan again"
+            nessa-connection-input kind="code" width="100%" min-height=44
+            button class=LinkAction disabled=(not data.validCode) press=perform("pair", "") testId="pair-submit"
+              text "Pair"
+          else if data.phase == "choosing"
+            text "Which Mac?" role="heading" aria-level=2
+            for choice in data.peers key=choice.id
+              button appearance="auto" buttonStyle="bordered" min-height=44 width="100%" press=perform("choose", choice.id) testId=`peer-${choice.id}`
+                image "symbol:sf/desktopcomputer"
+                text choice.name
+          else if data.phase == "linked"
+            image "symbol:select" color="AccentColor"
+            text `Paired with ${data.peer}` role="heading" aria-level=2 testId="pair-success"
+            text "Chats your Mac shares with this phone appear here. Share one from its Share menu on the Mac." class=LinkDetail
+            button class=LinkAction press=back testId="pair-done"
+              text "Done"
+          else
+            column gap=12 min-height=280 justify-content="center" align-items="center"
+              progress aria-label="Pairing in progress"
+              text (data.phase == "finding" ? "Looking for your Mac…" : data.phase == "enrolling" ? `Pairing with ${data.peer}…` : `Approve on ${data.peer}`) role="status" testId="pair-progress"
+              if data.phase == "approving"
+                text "On your Mac, approve this phone in the Pair a device window." class=LinkDetail
+              button press=perform("reset", "") testId="pair-cancel"
+                text "Cancel"

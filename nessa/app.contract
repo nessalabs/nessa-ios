@@ -1,0 +1,248 @@
+use ThreadDetails, AgentDetailData from "./details.contract"
+use SharedTranscript, SharedThread from "./shared.contract"
+use ChatThread, ThreadSnapshot from "./thread.contract"
+use AgentsOverview from "./agents.contract"
+use ConnectionState, ConnectionScreen, PairingScreen from "./connection.contract"
+
+// All navigation goes through this stack, including events from the iOS pickers and composer.
+routes nav
+  home "/"
+    pair "/pair"
+    agents "/agents"
+    channel "/channel/:key"
+    chat "/chat/:key"
+      details "/chat/:key/details"
+    settings "/settings"
+      connection "/connection"
+      archived "/archived"
+      shared "/shared"
+        transcript "/shared/:key"
+
+shape Channel
+  position: number
+  id: string
+  name: string
+  unread: bool
+shape ChatRow
+  id: string
+  title: string
+  preview: string
+  time: string
+shape ChatList
+  title: string
+  rows: ChatRow[]
+  error: string
+shape Completion
+  done: bool
+shape Created
+  id: string
+shape Viewport
+  width: number
+  prefersReducedMotion: bool
+
+shape Phone
+  greeting: string
+  waiting: bool
+  pairingNeeded: bool
+  desktopID: string
+  channels: Channel[]
+  working: number
+  canCreate: bool
+  status: string
+  connected: bool
+  desktop: string
+
+style Page
+  position="absolute" inset=0 background-color="#0A0A0A" color="#FAFAFA"
+
+style GlassButton
+  appearance="auto" buttonStyle="glass" width=44 height=44
+style DrawerRow
+  min-height=44 padding="0px 12px" width="100%" display="flex" align-items="center" gap=12
+
+component Nessa
+  members "./agent-actions.contract"
+  state drawer = false
+  state travel = 0
+  resource viewport = exactViewport() as shape Viewport
+  derive width = max(1, viewport.width - 72)
+  derive offset = min(width, max(0, (drawer ? width : 0) + travel))
+  mutation created as shape Created then afterCreate
+  action afterCreate
+    match created
+      case some(chat)
+        if chat.id != ""
+          follow(path("chat", chat.id))
+      case none
+        travel = 0
+  action compose
+    if phone.canCreate and not pending(created)
+      send created = createChat()
+  action toggle(opened: bool)
+    drawer = opened
+    travel = 0
+    haptic("selection")
+  action drag(dx: number, dy: number)
+    if max(dx, -dx) > max(dy, -dy)
+      travel = travel + dx
+  action settle(vx: number, vy: number)
+    if travel != 0
+      toggle(max(vx, -vx) > 600 ? vx > 0 : (drawer ? offset > width * 0.65 : offset > width * 0.35))
+
+  resource phone = phoneStatus() as shape Phone else empty()
+  resource threadData = threadSnapshot(top(nav).name == "chat" or top(nav).name == "details" ? top(nav).params.key : "") as shape ThreadSnapshot else empty()
+  resource detailsData = threadDetailsData(top(nav).name == "details" ? top(nav).params.key : "") as shape AgentDetailData else empty()
+  mutation threadChanged as shape Completion
+  action threadAction(command: string, chat: string, review: string, option: string)
+    send threadChanged = threadCommand(command, chat, review, option)
+  resource link = connectionState() as shape ConnectionState else empty()
+  mutation linkAction as shape Completion
+  action manageLink(op: string, key: string)
+    send linkAction = connectionCommand(op, key)
+  action openChat(id: string)
+    follow(path("chat", id))
+  derive screen = top(nav).name
+  resource sharedThread = readShared(screen == "transcript" ? top(nav).params.key : "", phone.desktopID) as shape SharedThread else empty()
+  resource conversations = chatList(screen, top(nav).params.key) as shape ChatList else empty()
+  mutation updated as shape Completion
+  mutation restored as shape Completion
+  task loadList when screen == "archived" or screen == "shared" key=`${top(nav).id}-${phone.connected}-${phone.desktopID}`
+    after(1, refresh)
+  state slow = false
+  task waiting when phone.waiting
+    after(5000, showRetry)
+  task reachable when not phone.waiting
+    after(1, resetRetry)
+  action showRetry
+    slow = true
+  action resetRetry
+    slow = false
+  action retry
+    send updated = retryLink()
+  action refresh
+    send updated = refreshList(screen)
+  action restore(id: string)
+    send restored = unarchiveChat(id)
+  action back
+    nav = back(nav)
+    haptic("selection")
+  action follow(url: string)
+    drawer = false
+    travel = 0
+    if url == "/"
+      nav = open(nav, "/")
+    else if url == "back"
+      back()
+    else
+      nav = go(nav, url)
+
+  view
+    main navigationKey=`${top(nav).id}` navigationBack="back" navigate=follow viewport-fit="cover" interactive-widget="resizes-content" width="100%" height="100%" color-scheme="dark"
+      nessa-lifecycle message=follow width=0 height=0
+      for e in stack(nav) key=e.id
+        if e.name == "home"
+          column navigationKey=`${e.id}` navigationBar="none" class=Page overflow="hidden"
+            if offset > 0
+              column width=width height="100%" box-sizing="border-box" padding-top="env(safe-area-inset-top)" padding-bottom="env(safe-area-inset-bottom)" inert=(not drawer) testId="sidebar"
+                text "Nessa" role="heading" aria-level=1 font-family="serif" font-size=28 margin="20px 24px 12px"
+                scroll flex=1 min-height=0 padding="0px 8px"
+                  button appearance="none" class=DrawerRow press=follow("/agents") testId="agents"
+                    nessa-artwork kind="agents" width=22 height=22 aria-hidden=true
+                    text "Agents" flex=1 text-align="left"
+                    if phone.working > 0
+                      text `${phone.working} working` color="-exact-secondary-label"
+                  if phone.channels.length > 0
+                    text "Channels" role="heading" aria-level=2 font-size=14 margin="20px 12px 4px" color="-exact-secondary-label"
+                    for channel in phone.channels key=channel.id
+                      button appearance="none" class=DrawerRow height=56 press=follow(path("channel", channel.id)) testId=`channel-${channel.id}`
+                        nessa-artwork kind="channel" seed=channel.name tileOrder=channel.position width=38 height=38 aria-hidden=true
+                        text channel.name font-size=21 font-family="serif" flex=1 text-align="left"
+                        if channel.unread
+                          text "•" aria-label="Unread"
+                row justify-content="space-between" align-items="center" padding="8px 16px"
+                  button appearance="none" width=44 height=44 press=follow("/settings") aria-label="Settings" testId="settings"
+                    nessa-artwork kind="profile" width=44 height=44 aria-hidden=true
+                  button press=compose disabled=(not phone.canCreate or pending(created)) buttonStyle="bordered-prominent" testId="sidebar-compose"
+                    text "New chat"
+            column position="absolute" inset=0 translate=`${offset}px 0px` border-radius=min(40, offset) overflow="hidden" background-color="#0A0A0A" transition=(viewport.prefersReducedMotion or travel != 0 ? "none" : "translate 280ms ease-out") inert=drawer
+              nessa-artwork kind="home" position="absolute" inset=0 pointer-events="none" aria-hidden=true
+              column testId="page-home" position="absolute" inset=0 z-index=1 min-height=0 padding-top="calc(env(safe-area-inset-top) + 52px)" padding-bottom="calc(env(safe-area-inset-bottom) + 8px)"
+                column flex=1 justify-content="center" align-items="center" gap=16
+                  text phone.greeting font-family="serif" font-size=30 role="heading" aria-level=1 testId="greeting"
+                  if phone.pairingNeeded
+                    text "Pair with your Mac to start chatting." color="-exact-secondary-label" font-size=15
+                    button press=follow("/pair") buttonStyle="bordered-prominent" testId="home-pair"
+                      text "Pair with your Mac"
+                if phone.waiting
+                  row justify-content="center" align-items="center" gap=8
+                    if slow
+                      text "Can't reach your Mac"
+                      button press=retry
+                        text "Try again"
+                    else
+                      progress aria-label="Reconnecting"
+                      text "Reconnecting…"
+                if not phone.pairingNeeded
+                  nessa-new-chat-input message=follow width="100%" min-height=48 flex-shrink=0
+              row position="absolute" z-index=2 left=16 right=16 top="calc(env(safe-area-inset-top) + 8px)" justify-content="space-between"
+                button class=GlassButton press=toggle(true) aria-label="Open sidebar" testId="open-sidebar"
+                  image "symbol:reorder"
+                button class=GlassButton press=compose disabled=(not phone.canCreate or pending(created)) aria-label="New chat" testId="new-chat"
+                  image "symbol:compose"
+            if not drawer
+              box position="absolute" left=0 width=24 top="20%" bottom="20%" pan=drag panrelease=settle touch-action="pan-y" aria-hidden=true
+            else
+              button appearance="none" position="absolute" left=width right=0 top=0 bottom=0 background-color="#00000055" press=toggle(false) pan=drag panrelease=settle aria-label="Close sidebar" testId="close-sidebar"
+        else if e.name == "details"
+          ThreadDetails(chat=e.params.key, route=`${e.id}`, data=detailsData, goBack=back)
+        else if e.name == "chat"
+          ChatThread(chat=e.params.key, route=`${e.id}`, data=threadData, goBack=back, command=threadAction)
+        else if e.name == "agents"
+          column navigationKey=`${e.id}` class=Page navigationScroll="agents-list" testId="page-agents"
+            header
+              text "Agents" role="heading" aria-level=2
+            AgentsOverview(overview=agentsData, current=agentsCurrent, removing=agentsRemoving, refreshing=pending(agentsReload), pick=pickAgentGroup, ask=askAgentRemoval, cancel=cancelAgentRemoval, remove=removeAgent, refresh=refreshAgents, recover=recoverAgent, answer=answerAgent, openChat=openChat)
+        else if e.name == "connection"
+          ConnectionScreen(visit=`${e.id}`, data=link, perform=manageLink, follow=follow)
+        else if e.name == "pair"
+          PairingScreen(visit=`${e.id}`, data=link, perform=manageLink, back=back)
+        else if e.name == "settings"
+          column navigationKey=`${e.id}` class=Page navigationScroll="settings-rows"
+            header
+              text "Settings" role="heading" aria-level=2
+            list id="settings-rows" appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+              section
+                link href="/connection" testId="connection"
+                  text "Connection"
+                  text phone.status color="-exact-secondary-label"
+              section
+                link href="/archived" testId="archived"
+                  text "Archived chats"
+        else if e.name == "archived" or e.name == "shared" or e.name == "channel"
+          column navigationKey=`${e.id}` class=Page navigationScroll=`list-${e.id}` testId=`page-${e.name}`
+            header
+              text (e.name == "archived" ? "Archived" : (e.name == "shared" ? phone.desktop : conversations.title)) role="heading" aria-level=(e.name == "archived" ? 2 : 1)
+            list id=`list-${e.id}` flex=1 min-height=0 refresh=refresh refreshing=pending(updated)
+              if e.id == top(nav).id
+                if conversations.error != ""
+                  text conversations.error color="-exact-secondary-label" padding=16
+                else if conversations.rows.length == 0 and not pending(updated)
+                  text (e.name == "archived" ? "No archived chats." : (e.name == "channel" ? "No chats in this channel yet." : "No chats shared yet. On your Mac, share a chat with this phone from its Share menu.")) color="-exact-secondary-label" padding=16
+                for chat in conversations.rows key=chat.id
+                  scroll swipeContent=`open-${chat.id}` swipeTrailing=(e.name == "archived" ? `restore-${chat.id}` : "") height=84 width="100%" overflow-x="scroll" scrollbar-width="none" scroll-snap-type="x mandatory"
+                    row
+                      button id=`open-${chat.id}` appearance="none" press=follow(e.name == "shared" ? path("transcript", chat.id) : path("chat", chat.id)) width="100%" flex-shrink=0 height=84 padding="0px 16px" display="flex" align-items="center" gap=12 scroll-snap-align="start"
+                        nessa-artwork kind="avatar" seed=chat.id width=45 height=45 aria-hidden=true
+                        column flex=1 min-width=0 text-align="left"
+                          row gap=6 align-items="center"
+                            text chat.title font="-exact-headline" line-clamp=1 flex=1
+                            text chat.time font="-exact-caption1" color="-exact-secondary-label"
+                            image "symbol:forward-chevron"
+                          text chat.preview font="-exact-subheadline" color="-exact-secondary-label" line-clamp=2
+                      if e.name == "archived"
+                        button id=`restore-${chat.id}` aria-label="Unarchive" press=restore(chat.id) disabled=(not phone.connected or pending(restored)) width=88 flex-shrink=0 height=84 scroll-snap-align="end"
+                          text "Unarchive"
+            if e.name == "channel"
+              nessa-new-chat-input channel=e.params.key message=follow width="100%" min-height=48 flex-shrink=0 margin-bottom="env(safe-area-inset-bottom)"
+        else if e.name == "transcript"
+          SharedTranscript(visit=`${e.id}`, owner=phone.desktopID, chat=e.params.key, data=sharedThread)

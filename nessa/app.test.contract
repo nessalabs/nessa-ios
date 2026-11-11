@@ -1,0 +1,20 @@
+test "settings links to the archive"
+  at "/settings"
+  expect tree has "connection"
+  tap "archived"
+  clock settle
+  expect tree has "page-archived"
+
+test "the drawer opens settings and closes on navigation"
+  size 390x844
+  tap "open-sidebar"
+  clock settle
+  expect tree has "agents"
+  tap "settings"
+  clock settle
+  expect tree has "archived"
+
+test "a shared list without a linked Mac shows the empty state"
+  at "/shared"
+  clock settle
+  expect tree has "page-shared"

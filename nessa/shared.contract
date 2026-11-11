@@ -1,0 +1,30 @@
+shape SharedBubble
+  id: string
+  text: string
+  outgoing: bool
+
+shape SharedThread
+  owner: string
+  chat: string
+  title: string
+  failed: bool
+  bubbles: SharedBubble[]
+
+component SharedTranscript
+  props
+    visit: string
+    owner: string
+    chat: string
+    data: SharedThread
+  derive current = owner != "" and owner == data.owner and chat == data.chat
+  view
+    column navigationKey=visit navigationScroll="shared-messages" position="absolute" inset=0 background-color="-exact-background" testId="page-transcript"
+      header
+        text (current ? data.title : "Chat") role="heading" aria-level=1
+      scroll id="shared-messages" flex=1 min-height=0 scrollFollowEnd=true padding="12px 16px"
+        if current
+          if data.failed
+            text "This chat couldn't be read from your Mac." color="-exact-secondary-label"
+          for bubble in data.bubbles key=bubble.id
+            row justify-content=(bubble.outgoing ? "flex-end" : "flex-start") margin-bottom=5
+              text bubble.text markup="markdown" user-select="text" font="-exact-body" color="-exact-label" background-color=(bubble.outgoing ? "-exact-system-blue" : "-exact-secondary-grouped-background") border-radius=18 padding="8px 12px" max-width="83%" overflow-wrap="anywhere"

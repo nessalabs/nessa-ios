@@ -5,6 +5,12 @@ import SwiftUI
 struct HomeFirstMessage {
   let text: String
   let attachments: [DraftAttachment]
+
+  func consume(from draft: inout String, attachments current: inout [DraftAttachment]) {
+    if draft.utf8.elementsEqual(text.utf8) { draft = "" }
+    let submitted = Set(attachments.map(\.id))
+    current.removeAll { submitted.contains($0.id) }
+  }
 }
 
 /// The screen the app opens on: a greeting and a composer. Sending starts a new chat with
@@ -18,10 +24,6 @@ struct NessaHomeView: View {
   let onCompose: () -> Void
   /// A chat was made for the composer's message; the caller opens it and sends.
   let onStart: (_ conversationID: String, _ first: HomeFirstMessage) -> Void
-  @State private var draft = ""
-  @State private var reply: MessageReply?
-  @State private var attachments: [DraftAttachment] = []
-  @State private var starting = false
   @State private var now = Date()
   /// Reconnecting has run long enough that the pill offers Try again.
   @State private var reconnectSlow = false
@@ -57,15 +59,7 @@ struct NessaHomeView: View {
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
         if !needsPairing {
-          MessageComposer(
-            draft: $draft, reply: $reply, attachments: $attachments,
-            recipient: recipient, dictation: dictation,
-            sending: starting || store.busy, connected: store.connected,
-            attachmentPolicy: store.attachmentPolicy,
-            submissionAllowed: canStart,
-            placeholder: "Message \(recipient) or hold to talk",
-            endsEditingOnSend: true,
-            onSend: start)
+          NewChatComposer(store: store, dictation: dictation, channel: nil, onStart: onStart)
         }
       }
       .padding(.bottom, MessagesStyle.bottomInset)
@@ -124,18 +118,12 @@ struct NessaHomeView: View {
           .messagesGlass()
       }
       .buttonStyle(.nessaPress)
-      .disabled(!canStart)
+      .disabled(!store.canCreateChat)
       .accessibilityLabel("New chat")
     }
     .foregroundStyle(MessagesStyle.foreground)
     .padding(.horizontal, NessaSpacing.md)
     .padding(.top, NessaSpacing.xs)
-  }
-
-  /// Who a new chat talks to: the gateway's one agent when it has one, else Nessa, which
-  /// picks the agent itself.
-  private var recipient: String {
-    store.agentProfiles.count == 1 ? store.agentProfiles[0].displayName : "Nessa"
   }
 
   /// Not connected, not on the way back, and no Mac to connect to.
@@ -154,24 +142,5 @@ struct NessaHomeView: View {
 
   private var waitingForLink: Bool {
     !store.connected && (store.reconnecting || desktop.linked != nil)
-  }
-
-  /// The same conditions the gateway puts on making a chat.
-  private var canStart: Bool {
-    store.canCreateChat && !starting
-  }
-
-  private func start() {
-    let first = HomeFirstMessage(text: draft, attachments: attachments)
-    starting = true
-    Task {
-      defer { starting = false }
-      guard let id = await store.create() else { return }
-      // The draft moves to the new chat, which sends it; a chat that could not be made keeps
-      // it here.
-      draft = ""
-      attachments = []
-      onStart(id, first)
-    }
   }
 }

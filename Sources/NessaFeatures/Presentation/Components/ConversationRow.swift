@@ -11,7 +11,7 @@ struct ConversationRow: View {
         HStack(spacing: NessaSpacing.xxs) {
           Text(conversation.title ?? agentName).font(MessagesStyle.title).lineLimit(1)
           Spacer(minLength: NessaSpacing.xxs)
-          Text(timestamp).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
+          Text(Self.timestamp(conversation.updatedAtMs)).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
             .fixedSize()
           Image(systemName: "chevron.right").font(MessagesStyle.smallIcon).foregroundStyle(
             MessagesStyle.separator)
@@ -29,8 +29,8 @@ struct ConversationRow: View {
         }
     }.foregroundStyle(MessagesStyle.foreground)
   }
-  private var timestamp: String {
-    let date = Date(timeIntervalSince1970: conversation.updatedAtMs / 1000)
+  static func timestamp(_ milliseconds: Double) -> String {
+    let date = Date(timeIntervalSince1970: milliseconds / 1000)
     if Calendar.current.isDateInToday(date) {
       return date.formatted(date: .omitted, time: .shortened)
     }

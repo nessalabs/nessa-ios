@@ -12,13 +12,7 @@ import SwiftUI
 struct PairWithDesktopView: View {
   @ObservedObject var store: DesktopLinkViewModel
   @State private var typed = ""
-  @State private var camera: CameraState = .asking
   @Environment(\.dismiss) private var dismiss
-  #if os(iOS)
-    @State private var reader = CameraOrbReader()
-  #endif
-
-  enum CameraState { case asking, ready, denied }
 
   var body: some View {
     ScrollView {
@@ -51,38 +45,11 @@ struct PairWithDesktopView: View {
     .messagesBar(edge: .top) { header.messagesHeaderGrain() }
     .foregroundStyle(MessagesStyle.foreground)
     .messagesAmbientGround()
-    .task { await startCamera() }
-    .onDisappear {
-      #if os(iOS)
-        reader.stop()
-      #endif
-      if store.busy { store.reset() }
-    }
-    .onChange(of: phaseKey) { _, key in
-      #if os(iOS)
-        // Not on a failure: the Mac still shows the same orb, which would be
-        // read and sent again at once. Scanning resumes from "Scan again".
-        if key == "idle" {
-          if camera == .ready { start() }
-        } else {
-          reader.stop()
-        }
-      #else
-        _ = key
-      #endif
-    }
+    .onDisappear { if store.busy { store.reset() } }
   }
 
   private var phaseKey: String {
-    switch store.phase {
-    case .idle: return "idle"
-    case .finding: return "finding"
-    case .choosing: return "choosing"
-    case .enrolling: return "enrolling"
-    case .approving: return "approving"
-    case .linked: return "linked"
-    case .failed: return "failed"
-    }
+    store.phase.screenKey
   }
 
   private var header: some View {
@@ -105,7 +72,10 @@ struct PairWithDesktopView: View {
 
   @ViewBuilder private var scanning: some View {
     VStack(spacing: NessaSpacing.md) {
-      cameraWindow
+      OrbCameraWindow(store: store) { code in
+        typed = code
+        store.submit(code: code)
+      }
       Text("On your Mac, open Settings › Linked devices › Pair a device, then point your camera at the orb.")
         .font(MessagesStyle.body).foregroundStyle(MessagesStyle.secondary)
         .multilineTextAlignment(.center)
@@ -129,32 +99,6 @@ struct PairWithDesktopView: View {
       }
       .buttonStyle(.nessaPrimary).disabled(OrbCode.parse(typed) == nil)
     }
-  }
-
-  @ViewBuilder private var cameraWindow: some View {
-    ZStack {
-      RoundedRectangle(cornerRadius: PairingStyle.windowRadius).fill(MessagesStyle.control)
-      switch camera {
-      case .ready where phaseKey == "idle":
-        #if os(iOS)
-          CameraPreview(session: reader.session)
-            .clipShape(RoundedRectangle(cornerRadius: PairingStyle.windowRadius))
-        #endif
-      case .ready, .asking:
-        Image(systemName: "camera").font(MessagesStyle.icon)
-          .foregroundStyle(MessagesStyle.secondary)
-      case .denied:
-        Text("Allow the camera in Settings to scan the orb, or type the code below.")
-          .font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
-          .multilineTextAlignment(.center).padding(NessaSpacing.md)
-      }
-    }
-    .frame(width: PairingStyle.window, height: PairingStyle.window)
-    .overlay(
-      RoundedRectangle(cornerRadius: PairingStyle.windowRadius)
-        .strokeBorder(NessaColor.hairline, lineWidth: PairingStyle.windowRim)
-    )
-    .accessibilityLabel("Camera")
   }
 
   private func step(_ title: String, detail: String?) -> some View {
@@ -212,36 +156,93 @@ struct PairWithDesktopView: View {
     guard OrbCode.parse(typed) != nil else { return }
     store.submit(code: typed)
   }
+}
 
-  private func startCamera() async {
+extension DesktopLinkPhase {
+  var screenKey: String {
+    switch self {
+    case .idle: return "idle"
+    case .finding: return "finding"
+    case .choosing: return "choosing"
+    case .enrolling: return "enrolling"
+    case .approving: return "approving"
+    case .linked: return "linked"
+    case .failed: return "failed"
+    }
+  }
+}
+
+/// The camera is the device-owned part of pairing, shared by both presentation hosts.
+struct OrbCameraWindow: View {
+  @ObservedObject var store: DesktopLinkViewModel
+  let onScan: (String) -> Void
+  private enum CameraState { case asking, ready, denied }
+  @State private var camera: CameraState = .asking
+  @State private var visible = false
+  #if os(iOS)
+    @State private var reader = CameraOrbReader()
+  #endif
+
+  var body: some View {
+    ZStack {
+      RoundedRectangle(cornerRadius: PairingStyle.windowRadius).fill(MessagesStyle.control)
+      switch camera {
+      case .ready where store.phase.screenKey == "idle":
+        #if os(iOS)
+          CameraPreview(session: reader.session)
+            .clipShape(RoundedRectangle(cornerRadius: PairingStyle.windowRadius))
+        #endif
+      case .ready, .asking:
+        Image(systemName: "camera").font(MessagesStyle.icon)
+          .foregroundStyle(MessagesStyle.secondary)
+      case .denied:
+        Text("Allow the camera in Settings to scan the orb, or type the code below.")
+          .font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
+          .multilineTextAlignment(.center).padding(NessaSpacing.md)
+      }
+    }
+    .frame(width: PairingStyle.window, height: PairingStyle.window)
+    .overlay(
+      RoundedRectangle(cornerRadius: PairingStyle.windowRadius)
+        .strokeBorder(NessaColor.hairline, lineWidth: PairingStyle.windowRim)
+    )
+    .accessibilityLabel("Camera")
+    .onAppear { visible = true }
+    .task(id: store.phase.screenKey) { await updateCamera() }
+    .onDisappear {
+      visible = false
+      #if os(iOS)
+        reader.stop()
+      #endif
+    }
+  }
+
+  private func updateCamera() async {
     #if os(iOS)
-      let availability = await CameraOrbReader.availability()
-      // Closed while the camera prompt was up: nothing is left to stop it.
-      guard !Task.isCancelled else { return }
-      switch availability {
+      guard store.phase.screenKey == "idle" else {
+        reader.stop()
+        let authorization = AVCaptureDevice.authorizationStatus(for: .video)
+        if authorization == .denied || authorization == .restricted { camera = .denied }
+        return
+      }
+      let available = await CameraOrbReader.availability()
+      guard !Task.isCancelled, visible, store.phase.screenKey == "idle" else { return }
+      switch available {
       case .ready:
         camera = .ready
-        if phaseKey == "idle" { start() }
-      default:
-        camera = .denied
+        reader.start { code in
+          Task { @MainActor in
+            guard visible, store.phase.screenKey == "idle" else { return }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onScan(code)
+          }
+        }
+      default: camera = .denied
       }
     #else
       camera = .denied
     #endif
   }
-
-  #if os(iOS)
-    private func start() {
-      reader.start { code in
-        Task { @MainActor in
-          guard !store.busy else { return }
-          typed = code
-          UIImpactFeedbackGenerator(style: .light).impactOccurred()
-          store.submit(code: code)
-        }
-      }
-    }
-  #endif
 }
 
 /// A plain label that shimmers while something is under way.

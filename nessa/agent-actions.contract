@@ -1,0 +1,51 @@
+use AgentOverviewData, AgentActionResult from "./agents.contract"
+
+members Nessa
+  state agentsSelected = ""
+  state agentsAskID = ""
+  state agentsAskScope = -1
+  state agentsAskConnection = -1
+  state agentsRemoving = ""
+  derive agentsActive = top(nav).name == "agents"
+  resource agentsData = agentsOverview(agentsActive) as shape AgentOverviewData else empty(complete=true)
+  mutation agentsWork as shape AgentActionResult then agentCommandFinished
+  mutation agentsReload as shape AgentActionResult
+  derive agentsCurrent = agentsData.groups.filter(g => g.id == agentsSelected).length > 0 ? agentsSelected : ""
+  task resetAgentFilter when agentsSelected != "" and ((agentsActive and agentsCurrent == "") or stack(nav).filter(e => e.name == "agents").length == 0)
+    after(1, clearAgentFilter)
+  task dismissAgentRemoval when agentsAskID != "" and (not agentsActive or agentsAskScope != agentsData.scope or agentsAskConnection != agentsData.connection)
+    after(1, dismissAgentRemoval)
+  action clearAgentFilter
+    agentsSelected = ""
+  action pickAgentGroup(id: string)
+    agentsSelected = agentsSelected == id ? "" : id
+  action refreshAgents
+    send agentsReload = agentsCommand("refresh", "", "", "", agentsData.scope, agentsData.connection)
+  action recoverAgent(verb: string, id: string)
+    send agentsWork = agentsCommand(verb, id, "", "", agentsData.scope, agentsData.connection)
+  action answerAgent(id: string, stamp: string, option: string)
+    send agentsWork = agentsCommand("answer", id, stamp, option, agentsData.scope, agentsData.connection)
+  action askAgentRemoval(id: string, verb: string)
+    agentsAskID = id
+    agentsAskScope = agentsData.scope
+    agentsAskConnection = agentsData.connection
+    showModal(verb == "archive" ? "agents-archive" : "agents-delete")
+  action dismissAgentRemoval
+    agentsAskID = ""
+    close("agents-archive")
+    close("agents-delete")
+  action cancelAgentRemoval
+    agentsAskID = ""
+  action removeAgent(verb: string)
+    if agentsAskID != "" and agentsAskScope == agentsData.scope and agentsAskConnection == agentsData.connection
+      agentsRemoving = agentsAskID
+      send agentsWork = agentsCommand(verb, agentsAskID, "", "", agentsAskScope, agentsAskConnection)
+    agentsAskID = ""
+  action agentCommandFinished
+    agentsRemoving = ""
+    match agentsWork
+      case some(done)
+        if agentsActive and done.chat != ""
+          openChat(done.chat)
+      case none
+        agentsRemoving = ""

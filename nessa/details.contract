@@ -1,0 +1,122 @@
+shape DetailAccess
+  index: number
+  label: string
+shape DetailArtifact
+  id: string
+  image: bool
+  name: string
+  mime: string
+shape DetailActivity
+  id: string
+  title: string
+  status: string
+  detail: string
+  failed: bool
+shape AgentDetailData
+  chat: string
+  name: string
+  description: string
+  model: string
+  working: bool
+  prompt: string
+  accessReported: bool
+  access: DetailAccess[]
+  recent: bool
+  loaded: bool
+  error: string
+  artifacts: DetailArtifact[]
+  activity: DetailActivity[]
+
+style DetailCard
+  display="flex" flex-direction="column" gap=8 border-radius=16 padding=16 background-color="-exact-secondary-background"
+component DetailInfo
+  props
+    title: string
+    body: string
+  view
+    column class=DetailCard
+      text title role="heading" aria-level=2 font="-exact-headline"
+      text body font="-exact-body" color="-exact-secondary-label"
+
+component ThreadDetails
+  props
+    chat: string
+    route: string
+    data: AgentDetailData
+    goBack: action
+  derive current = data.chat == chat
+  state tab = "Overview"
+  action selectTab(next: string)
+    tab = next
+  view
+    column navigationKey=route navigationPresentation="modal" navigationBar="none" position="absolute" inset=0 display="flex" flex-direction="column" background-color="-exact-background" testId="agent-details"
+      row padding="16px 20px 8px" align-items="center" gap=12
+        nessa-thread-part widget="hero" chat=chat width=36 height=36 aria-hidden=true
+        text (current ? data.name : "") font="-exact-title2" flex=1 line-clamp=1 role="heading" aria-level=1
+        button buttonStyle="glass" aria-label="Close details" id="back" testId="details-close" press=goBack width=44 height=44
+          image "symbol:close"
+      scroll flex=1 min-height=0 padding="0px 20px 28px" keyboardDismissMode="interactive"
+        if current
+          column gap=16
+            if data.description != ""
+              text data.description color="-exact-secondary-label" line-clamp=2
+            if data.working or data.model != ""
+              row gap=8 align-items="center"
+                if data.working
+                  text "Working" font="-exact-caption1"
+                if data.model != ""
+                  text data.model font="-exact-caption1"
+            row role="tablist" aria-label="Agent details" testId="details-tabs"
+              for name in ["Overview", "Artifacts", "Activity"] key=name
+                button role="tab" aria-selected=(tab == name) press=selectTab(name) flex=1 testId=`details-tab-${name}`
+                  text name
+            if data.recent
+              text "Showing the conversation history supplied by Nessa. Earlier items may be missing." font="-exact-caption1" color="-exact-secondary-label"
+            if data.error != ""
+              DetailInfo(title="Conversation unavailable", body=data.error)
+            if tab == "Overview"
+              if data.prompt != ""
+                column class=DetailCard
+                  text "Agent prompt" font="-exact-headline" role="heading" aria-level=2
+                  text data.prompt user-select="text" white-space="pre-wrap"
+              column class=DetailCard
+                text "Access granted" font="-exact-headline" role="heading" aria-level=2
+                if not data.accessReported
+                  text "The connected service hasn’t supplied a granted-access list. Pending requests appear in Activity."
+                else if data.access.length == 0
+                  text "No granted access reported." color="-exact-secondary-label"
+                else
+                  for access in data.access key=access.index
+                    row gap=8
+                      image "symbol:check" aria-hidden=true
+                      text access.label
+            else if tab == "Artifacts"
+              if not data.loaded
+                DetailInfo(title="Artifacts unavailable", body="Conversation history hasn’t loaded yet.")
+              else if data.artifacts.length == 0
+                DetailInfo(title="No artifacts yet", body="Images and files will appear here.")
+              else
+                for artifact in data.artifacts key=artifact.id
+                  if artifact.image
+                    nessa-thread-part widget="artifact" chat=chat item=artifact.id width="100%" min-height=48
+                  else
+                    row gap=12 padding=12 align-items="center" border-radius=16 background-color="-exact-secondary-background"
+                      image "symbol:sf/doc.text"
+                      column gap=4
+                        text artifact.name line-clamp=2
+                        text artifact.mime font="-exact-caption1" color="-exact-secondary-label"
+            else
+              if not data.loaded
+                DetailInfo(title="Activity unavailable", body="Conversation history hasn’t loaded yet.")
+              else if data.activity.length == 0
+                DetailInfo(title="No activity yet", body="Turns and access requests will appear here.")
+              else
+                column class=DetailCard
+                  for item in data.activity key=item.id
+                    column gap=4 padding="8px 0px"
+                      row gap=8 align-items="center"
+                        text "•" color=(item.failed ? "-exact-system-red" : "-exact-secondary-label")
+                        text item.title flex=1 line-clamp=1
+                        text item.status font="-exact-caption1"
+                      if item.detail != ""
+                        text item.detail font="-exact-caption1" color=(item.failed ? "-exact-system-red" : "-exact-secondary-label") line-clamp=(item.failed ? 2 : 1)

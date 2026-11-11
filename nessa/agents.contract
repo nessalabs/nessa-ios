@@ -1,0 +1,145 @@
+shape AgentAnswer
+  id: string
+  label: string
+  primary: bool
+
+shape AgentChat
+  id: string
+  name: string
+  detail: string
+  channel: string
+  reviewStamp: string
+  title: string
+  arguments: string
+  options: AgentAnswer[]
+
+shape AgentGroup
+  id: string
+  title: string
+  rows: AgentChat[]
+
+shape PendingCreation
+  id: string
+  checking: bool
+
+shape AgentOverviewData
+  groups: AgentGroup[]
+  pendingChats: PendingCreation[]
+  complete: bool
+  pendingUnavailable: bool
+  connected: bool
+  canAct: bool
+  scope: number
+  connection: number
+
+shape AgentActionResult
+  chat: string
+
+shape AgentsViewport
+  prefersReducedMotion: bool
+
+keyframes agentActivity
+  from opacity=0.6
+  50% opacity=1
+  to opacity=0.6
+
+style AgentChip
+  appearance="none" height=34 padding="0px 14px" border-radius=17 flex-shrink=0 font="-exact-subheadline"
+
+component AgentReview
+  props
+    chat: AgentChat
+    canAnswer: bool
+    sendAnswer: action
+    openChat: action
+  view
+    column margin="0px 16px" padding=14 gap=10 border-radius=18 background-color="-exact-secondary-background" border="1px solid -exact-separator"
+      button appearance="none" press=openChat(chat.id) aria-label=chat.name testId=`review-chat-${chat.id}` text-align="left" width="100%"
+        column gap=2 width="100%"
+          row gap=8 align-items="center"
+            text chat.name font="-exact-headline" flex=1 min-width=0 line-clamp=1
+            if chat.channel != ""
+              text chat.channel color="-exact-secondary-label" font="-exact-subheadline" line-clamp=1
+          text chat.title color="-exact-secondary-label" font="-exact-subheadline" line-clamp=2
+      text chat.arguments testId=`request-${chat.id}` font-family="monospace" font-size=13 white-space="pre-wrap" overflow-wrap="break-word" user-select="text" line-clamp=4 padding=12 border-radius=12 background-color="-exact-fill"
+      box display="flex" flex-direction=(chat.options.length > 2 ? "column" : "row") gap=8
+        for option in chat.options key=option.id
+          button appearance="none" press=sendAnswer(chat.id, chat.reviewStamp, option.id) disabled=(not canAnswer) aria-label=option.label testId=`answer-${chat.id}-${option.id}` height=46 flex=(chat.options.length > 2 ? "none" : "1") min-width=0 border-radius=24 background-color=(option.primary ? "-exact-label" : "-exact-secondary-fill") color=(option.primary ? "-exact-background" : "-exact-label")
+            text option.label font-weight=(option.primary ? 600 : 500) line-clamp=1
+
+component AgentsOverview
+  props
+    overview: AgentOverviewData
+    current: string
+    removing: string
+    refreshing: bool
+    pick: action
+    ask: action
+    cancel: action
+    remove: action
+    refresh: action
+    recover: action
+    answer: action
+    openChat: action
+  resource viewport = exactViewport() as shape AgentsViewport
+  view
+    column flex=1 min-height=0
+      scroll id="agents-list" overflow-y="scroll" testId="agents-list" refresh=refresh refreshing=refreshing flex=1 min-height=0 overflow-x="hidden" padding-bottom=32
+        scroll overflow-x="scroll" overflow-y="hidden" scrollbar-width="none" height=54 width="100%" testId="agents-filter"
+          row gap=8 align-items="center" height=54 padding="0px 20px"
+            button class=AgentChip press=pick("") aria-pressed=(current == "") testId="agents-all" background-color=(current == "" ? "-exact-label" : "-exact-secondary-fill") color=(current == "" ? "-exact-background" : "-exact-label")
+              text "All"
+            for g in overview.groups key=g.id
+              button class=AgentChip press=pick(g.id) aria-pressed=(current == g.id) testId=`filter-${g.id}` background-color=(current == g.id ? "-exact-label" : "-exact-secondary-fill") color=(current == g.id ? "-exact-background" : "-exact-label")
+                text `${g.title} ${g.rows.length}`
+        if overview.pendingUnavailable
+          row align-items="center" padding="8px 20px" gap=12
+            text "Pending deliveries unavailable" flex=1 font="-exact-caption1" color="-exact-secondary-label"
+            button press=recover("reconnect", "") testId="agents-reconnect"
+              text "Reconnect"
+        for command in overview.pendingChats key=command.id
+          row align-items="center" padding="8px 20px" gap=12 testId=`pending-${command.id}`
+            image "symbol:sf/clock" aria-hidden=true
+            text "Pending chat" flex=1 font="-exact-caption1"
+            if command.checking
+              progress aria-label="Checking delivery"
+            button press=recover("check", command.id) disabled=(not overview.connected or command.checking) testId=`check-${command.id}`
+              text "Check"
+            button press=recover("retry", command.id) disabled=(not overview.canAct or command.checking) testId=`retry-${command.id}`
+              text "Retry"
+        for g in overview.groups key=g.id
+          if current == "" or current == g.id
+            text g.title role="heading" aria-level=2 font="-exact-subheadline" color="-exact-secondary-label" margin="30px 20px 8px" testId=`heading-${g.id}`
+            for chat in g.rows key=chat.id
+              scroll swipeContent=`agent-${chat.id}` swipeTrailing=`delete-${chat.id} archive-${chat.id}` overflow-x="scroll" overflow-y="hidden" scrollbar-width="none" scroll-snap-type="x mandatory" width="100%" testId=`swipe-${chat.id}`
+                row width="100%" align-items="stretch"
+                  column id=`agent-${chat.id}` width="100%" min-width=0 flex-shrink=0 scroll-snap-align="start" opacity=(removing == chat.id ? 0 : 1) transition=(viewport.prefersReducedMotion ? "none" : "opacity 160ms ease-out")
+                    if chat.reviewStamp != ""
+                      AgentReview(chat=chat, canAnswer=overview.canAct, sendAnswer=answer, openChat=openChat)
+                    else
+                      button appearance="none" press=openChat(chat.id) aria-label=`${chat.name}, ${g.title}` testId=`chat-${chat.id}` width="100%" display="flex" align-items="center" padding="13px 20px" gap=14
+                        image "symbol:messages" width=20 height=20 aria-hidden=true
+                        column flex=1 min-width=0 gap=2 text-align="left"
+                          text chat.name font-size=17 font-weight=(g.id == "finished" ? 600 : 400) line-clamp=1
+                          text chat.detail color="-exact-secondary-label" font="-exact-subheadline" line-clamp=1 animation=(g.id == "working" and not viewport.prefersReducedMotion ? "agentActivity 1600ms ease-in-out infinite" : "none")
+                        if g.id == "needsYou" or g.id == "working"
+                          box width=7 height=7 border-radius=4 background-color="AccentColor" aria-hidden=true
+                  row width=160 flex-shrink=0 scroll-snap-align="end"
+                    button id=`archive-${chat.id}` appearance="auto" buttonStyle="filled" accent-color="-exact-secondary-label" press=ask(chat.id, "archive") disabled=(not overview.connected) aria-label="Archive" testId=`ask-archive-${chat.id}` width=80 flex-shrink=0
+                      image "symbol:sf/archivebox"
+                    button id=`delete-${chat.id}` appearance="auto" buttonStyle="filled" destructive=true press=ask(chat.id, "delete") disabled=(not overview.canAct) aria-label="Delete" testId=`ask-delete-${chat.id}` width=80 flex-shrink=0
+                      image "symbol:delete"
+        if not overview.complete
+          text "Some conversations could not be listed." font="-exact-caption1" color="-exact-secondary-label" margin="16px 20px 0px"
+      dialog id="agents-archive" role="alertdialog" aria-label="Archive this chat?" close=cancel
+        text "You can restore this chat from Archived chats in Settings."
+        button press=remove("archive") commandfor="agents-archive" command="close" disabled=(not overview.connected) testId="confirm-agent-archive"
+          text "Archive"
+        button commandfor="agents-archive" command="close"
+          text "Cancel"
+      dialog id="agents-delete" role="alertdialog" aria-label="Delete this chat?" close=cancel
+        text "This can't be undone."
+        button press=remove("delete") destructive=true commandfor="agents-delete" command="close" disabled=(not overview.canAct) testId="confirm-agent-delete"
+          text "Delete"
+        button commandfor="agents-delete" command="close"
+          text "Cancel"

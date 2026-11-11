@@ -1,0 +1,89 @@
+name: Exact iOS
+on:
+  pull_request:
+    paths:
+      - 'nessa/**'
+      - 'Sources/**'
+      - 'Vendor/**'
+      - '.github/workflows/exact-ios.yml'
+permissions:
+  contents: read
+jobs:
+  simulator:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      EXACT_FEEDBACK: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Read the pinned SDK revision
+        id: sdk
+        run: echo "revision=$(git -C Vendor/Exact rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: compiler-cache
+        with:
+          key: exact-ios27-arm64-v1-${{ steps.sdk.outputs.revision }}
+          path: |
+            Vendor/Exact/target/debug
+            nessa/target/size
+            nessa/target/aarch64-apple-ios-sim/size
+      - name: Install build tools
+        run: |
+          brew install xcodegen
+          cd Vendor/Exact
+          rustup target add aarch64-apple-ios-sim
+          cargo fetch --locked
+          bun install --frozen-lockfile
+          for target in aarch64-apple-darwin aarch64-apple-ios-sim; do
+            cargo run --manifest-path vendor/ibex/crates/hermes-lean-sys-installer/Cargo.toml -- --target "$target"
+          done
+      - name: Boot an iPhone simulator
+        run: |
+          device=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+          echo "NESSA_SIMULATOR=$device" >> "$GITHUB_ENV"
+          xcrun simctl boot "$device"
+      - name: Build the embedded app and UI tests
+        run: NESSA_BUILD_ACTION=build-for-testing nessa/tools/build-ios.sh simulator Debug CODE_SIGN_IDENTITY=-
+      - uses: actions/cache/save@v4
+        if: steps.compiler-cache.outputs.cache-hit != 'true'
+        with:
+          key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
+          path: |
+            Vendor/Exact/target/debug
+            nessa/target/size
+            nessa/target/aarch64-apple-ios-sim/size
+      - name: Exercise the installed app
+        run: |
+          xcrun simctl bootstatus "$NESSA_SIMULATOR" -b
+          xcrun simctl install "$NESSA_SIMULATOR" nessa/.exact/xcode/Build/Products/Debug-iphonesimulator/Nessa.app
+          xcrun simctl launch "$NESSA_SIMULATOR" app.nessa.mobile
+          xcrun simctl terminate "$NESSA_SIMULATOR" app.nessa.mobile
+          xcodebuild -project nessa/Apple/NessaExact.xcodeproj -scheme Nessa \
+            -destination "platform=iOS Simulator,id=$NESSA_SIMULATOR" -parallel-testing-enabled NO \
+            -derivedDataPath nessa/.exact/xcode CODE_SIGN_IDENTITY=- test-without-building
+      - name: Package the simulator build
+        if: ${{ !cancelled() && hashFiles('nessa/.exact/xcode/Build/Products/Debug-iphonesimulator/Nessa.app/Info.plist') != '' }}
+        run: |
+          cd nessa/.exact/xcode/Build/Products/Debug-iphonesimulator
+          ditto -c -k --keepParent Nessa.app "$RUNNER_TEMP/Nessa-simulator.zip"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: Nessa-simulator
+          path: ${{ runner.temp }}/Nessa-simulator.zip
+          if-no-files-found: ignore
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: simulator-test-results
+          path: nessa/.exact/xcode/Logs/Test/*.xcresult
+          if-no-files-found: ignore
+          retention-days: 3
