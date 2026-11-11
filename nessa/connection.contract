@@ -35,7 +35,7 @@ component ConnectionScreen
   view
     column navigationKey=visit navigationScroll="connection-form" class=LinkPage testId="page-connection"
       header
-        text "Connection" role="heading" aria-level=1
+        text "Connection" role="heading" aria-level=2
       scroll id="connection-form" flex=1 keyboardDismissMode="interactive" padding="8px 20px 32px"
         column gap=16
           if data.connected or data.saved

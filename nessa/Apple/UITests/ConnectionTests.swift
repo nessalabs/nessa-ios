@@ -43,7 +43,11 @@ final class ConnectionTests: XCTestCase {
     XCTAssertFalse(app.staticTexts["simulator-only"].exists)
 
     app.navigationBars.buttons.element(boundBy: 0).tap()
-    XCTAssertTrue(connection.waitForExistence(timeout: 5))
+    // AutoFill can offer to save the synthetic credential when the secure field resigns.
+    let declineSave = app.buttons["Not Now"]
+    if declineSave.waitForExistence(timeout: 2) { declineSave.tap() }
+    let shown = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == YES"), object: connection)
+    XCTAssertEqual(XCTWaiter.wait(for: [shown], timeout: 8), .completed)
     connection.tap()
     XCTAssertTrue(credential.waitForExistence(timeout: 5))
     XCTAssertFalse(connect.isEnabled)

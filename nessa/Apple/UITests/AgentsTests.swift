@@ -21,7 +21,7 @@ final class AgentsTests: XCTestCase {
     let chatID = chat.identifier
     let conversationID = String(chatID.dropFirst("chat-".count))
     chat.swipeLeft()
-    let archive = app.buttons["ask-archive-\(conversationID)"]
+    let archive = app.buttons["archive-\(conversationID)"]
     XCTAssertTrue(archive.waitForExistence(timeout: 5))
     archive.tap()
     let alert = app.alerts["Archive this chat?"]

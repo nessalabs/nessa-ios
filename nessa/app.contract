@@ -200,7 +200,7 @@ component Nessa
         else if e.name == "agents"
           column navigationKey=`${e.id}` class=Page navigationScroll="agents-list" testId="page-agents"
             header
-              text "Agents" role="heading" aria-level=1
+              text "Agents" role="heading" aria-level=2
             AgentsOverview(overview=agentsData, current=agentsCurrent, removing=agentsRemoving, refreshing=pending(agentsReload), pick=pickAgentGroup, ask=askAgentRemoval, cancel=cancelAgentRemoval, remove=removeAgent, refresh=refreshAgents, recover=recoverAgent, answer=answerAgent, openChat=openChat)
         else if e.name == "connection"
           ConnectionScreen(visit=`${e.id}`, data=link, perform=manageLink, follow=follow)
@@ -221,7 +221,7 @@ component Nessa
         else if e.name == "archived" or e.name == "shared" or e.name == "channel"
           column navigationKey=`${e.id}` class=Page navigationScroll=`list-${e.id}` testId=`page-${e.name}`
             header
-              text (e.name == "archived" ? "Archived" : (e.name == "shared" ? phone.desktop : conversations.title)) role="heading" aria-level=1
+              text (e.name == "archived" ? "Archived" : (e.name == "shared" ? phone.desktop : conversations.title)) role="heading" aria-level=(e.name == "archived" ? 2 : 1)
             list id=`list-${e.id}` flex=1 min-height=0 refresh=refresh refreshing=pending(updated)
               if e.id == top(nav).id
                 if conversations.error != ""

@@ -131,14 +131,15 @@ component AgentsOverview
                       image "symbol:delete"
         if not overview.complete
           text "Some conversations could not be listed." font="-exact-caption1" color="-exact-secondary-label" margin="16px 20px 0px"
-      dialog id="agents-archive" role="alertdialog" aria-label="Archive this chat?"
+      dialog id="agents-archive" role="alertdialog" aria-label="Archive this chat?" close=cancel
+        text "You can restore this chat from Archived chats in Settings."
         button press=remove("archive") commandfor="agents-archive" command="close" disabled=(not overview.connected) testId="confirm-agent-archive"
           text "Archive"
-        button press=cancel commandfor="agents-archive" command="close"
+        button commandfor="agents-archive" command="close"
           text "Cancel"
-      dialog id="agents-delete" role="alertdialog" aria-label="Delete this chat?"
+      dialog id="agents-delete" role="alertdialog" aria-label="Delete this chat?" close=cancel
         text "This can't be undone."
         button press=remove("delete") destructive=true commandfor="agents-delete" command="close" disabled=(not overview.canAct) testId="confirm-agent-delete"
           text "Delete"
-        button press=cancel commandfor="agents-delete" command="close"
+        button commandfor="agents-delete" command="close"
           text "Cancel"
