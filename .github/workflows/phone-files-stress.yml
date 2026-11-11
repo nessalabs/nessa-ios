@@ -47,6 +47,12 @@ jobs:
         timeout-minutes: 15
       - name: Build the gateway and scripted agent host
         run: cargo build --locked -p nessa-server -p nessa-mcp
+      # The stress driver compiles the gateway's library tests itself with a
+      # 10-minute budget (preparePairedCatalogue), which a cold macOS runner
+      # overruns. Compiling them here, under the job's own timeout, leaves
+      # the driver only a freshness check.
+      - name: Build the gateway's library tests for the paired catalogue
+        run: cargo test --locked -p nessa-server --lib --no-run
       - name: Run default and raised phone file stress
         run: node phone/scripts/verify-phone-files-stress.mjs . "$PHONE_STRESS_EVIDENCE"
         timeout-minutes: 40
