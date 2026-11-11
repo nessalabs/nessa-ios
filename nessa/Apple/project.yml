@@ -20,6 +20,7 @@ targets:
     platform: iOS
     sources:
       - PhoneModule.swift
+      - PhoneArtwork.swift
       - ../.exact/apple-module
     dependencies:
       - package: Nessa
@@ -40,6 +41,8 @@ targets:
         product: ExactKit
       - package: Exact
         product: ExactGroupedLists
+      - package: Exact
+        product: ExactMarkdown
       - target: ExactModules
         embed: true
       - framework: ../../Vendor/NessaNative/NessaDeviceClient.xcframework

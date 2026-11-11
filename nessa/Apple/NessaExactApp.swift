@@ -1,10 +1,14 @@
 import ExactGroupedLists
+import ExactMarkdown
 import ExactKit
 import SwiftUI
 
 @main
 struct NessaExactApp: App {
-  init() { ExactGroupedLists.install() }
+  init() {
+    ExactGroupedLists.install()
+    ExactMarkdown.install()
+  }
 
   var body: some Scene {
     WindowGroup {

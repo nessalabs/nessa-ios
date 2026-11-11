@@ -16,7 +16,7 @@ export EXACT_APP_DIR="$PWD"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/target}"
 bun exact.mjs ios --embed --no-install --release ${device[@]+"${device[@]}"}
 embed=$(bun -e 'import { appleArtifacts } from "../Vendor/Exact/host/apple/build.mjs"; import { resolveApp } from "../Vendor/Exact/scripts/app.mjs"; console.log(appleArtifacts(resolveApp("nessa-apple"), {destination:process.argv[1], trust:"production"}).embed)' "$destination")
-export EXACT_LIB_DIR="$embed" EXACT_LIB=nessa_apple EXACT_UPDATE_TRUST=production EXACT_APPLE_LINK=grouped_lists
+export EXACT_LIB_DIR="$embed" EXACT_LIB=nessa_apple EXACT_UPDATE_TRUST=production EXACT_APPLE_LINK=grouped_lists,markdown
 bun tools/prepare-module.mjs
 xcodegen generate --spec Apple/project.yml
 xcodebuild -project Apple/NessaExact.xcodeproj -scheme Nessa -configuration "$configuration" \

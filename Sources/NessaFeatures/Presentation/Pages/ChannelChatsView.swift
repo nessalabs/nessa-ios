@@ -10,10 +10,6 @@ struct ChannelChatsView: View {
   let onOpen: (String) -> Void
   /// A chat was made in this channel for the composer's message; the caller opens it and sends.
   let onStart: (_ conversationID: String, _ first: HomeFirstMessage) -> Void
-  @State private var draft = ""
-  @State private var reply: MessageReply?
-  @State private var attachments: [DraftAttachment] = []
-  @State private var starting = false
   var body: some View {
     let chats = store.conversations(inChannel: channel.id)
     List {
@@ -43,32 +39,9 @@ struct ChannelChatsView: View {
     .scrollDismissesKeyboard(.interactively)
     .messagesAmbientGround()
     .messagesBar(edge: .bottom) {
-      MessageComposer(
-        draft: $draft, reply: $reply, attachments: $attachments,
-        recipient: channel.name, dictation: dictation,
-        sending: starting || store.busy, connected: store.connected,
-        attachmentPolicy: store.attachmentPolicy,
-        submissionAllowed: store.canCreateChat && !starting,
-        placeholder: "Message \(channel.name)",
-        endsEditingOnSend: true,
-        onSend: start)
+      NewChatComposer(store: store, dictation: dictation, channel: channel, onStart: onStart)
         .padding(.bottom, MessagesStyle.bottomInset)
     }
     .navigationTitle(channel.name)
-  }
-
-  private func start() {
-    let first = HomeFirstMessage(text: draft, attachments: attachments)
-    starting = true
-    Task {
-      defer { starting = false }
-      // The default channel is no stored channel: a chat made without one lands there.
-      guard let id = await store.create(channel: channel.isDefault ? nil : channel.channelId)
-      else { return }
-      // The draft moves to the new chat, which sends it; a chat that could not be made keeps
-      // it here.
-      first.consume(from: &draft, attachments: &attachments)
-      onStart(id, first)
-    }
   }
 }

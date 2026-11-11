@@ -7,19 +7,33 @@ final class PhoneModule: ExactModule {
     self?.context.changed(topic)
   }
 
+  @MainActor private lazy var threads = ExactThreads(phone: phone) { [weak self] in
+    self?.context.changed("thread")
+  }
+  @MainActor private lazy var link = phone.connectionBridge { [weak self] in
+    self?.context.changed("link")
+  }
+
   override class var views: [String: ExactNativeFactory] {
     [
-      "nessa-page": ExactNativeFactory(for: PhoneModule.self) { module, props, events in
-        try MainActor.assumeIsolated {
-          guard let screen = props["screen"] else { throw ExactNativeRefusal("Missing phone screen") }
-          let controller = module.phone.page(screen, identifier: props["identifier"] ?? "",
-            navigate: events.message)
-          return ExactNativeScreen(screen: controller, events: events)
+      "nessa-thread-part": ExactNativeFactory(for: PhoneModule.self) { module, props, events in
+        MainActor.assumeIsolated {
+          ExactNativeScreen(screen: module.threads.part(props["widget"] ?? "", chat: props["chat"] ?? "",
+            item: props["item"] ?? "", size: { events.intrinsicSize($0) }), events: events)
         }
       },
-      "nessa-avatar": ExactNativeFactory(for: PhoneModule.self) { module, props, events in
+      "nessa-connection-input": ExactNativeFactory(for: PhoneModule.self) { module, props, events in
         MainActor.assumeIsolated {
-          ExactNativeScreen(screen: module.phone.avatar(props["identifier"] ?? ""), events: events)
+          ExactNativeScreen(screen: module.link.control(props["kind"] ?? ""), events: events)
+        }
+      },
+      "nessa-artwork": ExactNativeFactory { props, events in
+        MainActor.assumeIsolated { PhoneArtwork(props, events: events) }
+      },
+      "nessa-new-chat-input": ExactNativeFactory(for: PhoneModule.self) { module, props, events in
+        MainActor.assumeIsolated {
+          ExactNativeScreen(screen: module.phone.composer(channel: props["channel"] ?? "",
+            navigate: events.message, size: events.intrinsicSize), events: events)
         }
       },
       "nessa-lifecycle": ExactNativeFactory(for: PhoneModule.self) { module, _, events in
@@ -33,10 +47,24 @@ final class PhoneModule: ExactModule {
   override func later(_ request: [String: Any], reply: ExactReply) {
     Task { @MainActor in
       switch request["op"] as? String {
+      case "sharedTranscript":
+        reply.send(await phone.sharedTranscript(request["id"] as? String ?? "", owner: request["owner"] as? String ?? ""))
+      case "threadCommand":
+        await threads.command(request["command"] as? String ?? "", chat: request["chat"] as? String ?? "",
+          review: request["review"] as? String ?? "", option: request["option"] as? String ?? "")
+        reply.send(["done": true])
+      case "connectionCommand":
+        await link.perform(request["action"] as? String ?? "", key: request["key"] as? String ?? "")
+        reply.send(["done": true])
+      case "agentCommand":
+        reply.send(await phone.performAgentCommand(request))
       case "create":
         reply.send(["id": await phone.createChat() ?? ""])
       case "refresh":
         await phone.refresh(request["screen"] as? String ?? "")
+        reply.send(["done": true])
+      case "retryLink":
+        await phone.retryLink()
         reply.send(["done": true])
       case "unarchive":
         guard let id = request["id"] as? String else { return reply.fail("Missing conversation") }
@@ -50,8 +78,11 @@ final class PhoneModule: ExactModule {
   override func call(_ request: [String: Any]) throws -> [String: Any] {
     try MainActor.assumeIsolated {
       switch request["op"] as? String {
+      case "threadSnapshot": return threads.snapshot(request["chat"] as? String ?? "")
+      case "connectionState": return link.state
+      case "agents": return phone.agentsSnapshot
       case "status": return phone.status
-      case "list": return phone.list(request["screen"] as? String ?? "")
+      case "list": return phone.list(request["screen"] as? String ?? "", key: request["key"] as? String ?? "")
       default: throw ExactNativeRefusal("Unknown phone query")
       }
     }
