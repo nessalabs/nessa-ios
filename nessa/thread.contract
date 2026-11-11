@@ -1,0 +1,95 @@
+// The native store supplies live identifiers. Exact owns the transcript, header, reply
+// navigation, permission choices, status messages and scroll position. The rich bubble
+// and editor tags retain the platform's markdown, attachment pickers and speech input.
+shape ThreadItem
+  id: string
+  kind: string
+  text: string
+  first: bool
+shape ThreadOption
+  id: string
+  label: string
+  primary: bool
+shape ThreadReview
+  id: string
+  title: string
+  arguments: string
+  options: ThreadOption[]
+shape ThreadSnapshot
+  chat: string
+  name: string
+  connected: bool
+  working: bool
+  empty: bool
+  recent: bool
+  error: string
+  reply: string
+  menu: bool
+  sent: number
+  rows: ThreadItem[]
+  reviews: ThreadReview[]
+
+component ChatThread
+  props
+    chat: string
+    route: string
+    data: ThreadSnapshot
+    goBack: action
+    command: action
+  derive current = data.chat == chat
+  derive rows = current ? data.rows : []
+  derive reviews = current ? data.reviews : []
+  derive menu = current and data.menu
+  derive reply = current ? data.reply : ""
+  state away = false
+  state jumps = 0
+  action backFromChat
+    if menu
+      command("closeMenu", chat, "", "")
+    else if reply != ""
+      command("closeReplies", chat, "", "")
+    else
+      goBack()
+  action scrolled(x: number, y: number, event: ScrollEvent)
+    away = event.scrollHeight - event.scrollTop - event.clientHeight > 100
+  action jump
+    jumps = jumps + 1
+  view
+    column navigationKey=route navigationBar="none" position="absolute" inset=0 display="flex" flex-direction="column" background-color="-exact-background" testId="page-chat"
+      column display="flex" flex-direction="column" flex=1 min-height=0 padding-top="env(safe-area-inset-top)" padding-bottom="env(safe-area-inset-bottom)" inert=menu filter=(menu ? "blur(6px)" : "none")
+        row align-items="center" justify-content="space-between" padding="0px 12px" min-height=44
+          button id="back" press=backFromChat buttonStyle="glass" width=44 height=44 aria-label=(reply == "" ? "Back" : "Close replies") testId="thread-back"
+            image (reply == "" ? "symbol:back" : "symbol:close")
+          button press=command("details", chat, "", "") appearance="none" aria-label=`${data.name} agent details` testId="thread-details" display="flex" align-items="center" gap=6
+            nessa-thread-part widget="avatar" chat=chat width=28 height=28 aria-hidden=true
+            text (current ? data.name : "") font="-exact-headline" line-clamp=1
+            image "symbol:forward-chevron" font-size=12 color="-exact-secondary-label"
+          box width=44 height=1 aria-hidden=true
+        column position="relative" flex=1 min-height=0
+          scroll id="chat-transcript" testId="thread-scroll" flex=1 min-height=0 overflow-x="hidden" keyboardDismissMode="on-drag" scrollFollowEnd=true scrollTop=(1000000 + jumps + data.sent) scroll=scrolled
+            column gap=8 padding="8px 12px"
+              if current and data.empty
+                text `Message ${data.name} to get started.` color="-exact-secondary-label" font="-exact-caption1" text-align="center" testId="thread-empty"
+              if current and data.recent
+                text "Showing recent messages" color="-exact-secondary-label" font="-exact-caption1" text-align="center"
+              for rowItem in rows key=rowItem.id
+                column margin-top=(rowItem.first ? 20 : 0)
+                  if rowItem.kind == "message" or rowItem.kind == "typing"
+                    nessa-thread-part widget=rowItem.kind chat=chat item=rowItem.id width="100%" min-height=20 testId=`bubble-${rowItem.id}`
+                  else
+                    text rowItem.text color=(rowItem.kind == "error" ? "-exact-system-red" : "-exact-label") font="-exact-body"
+              for review in reviews key=review.id
+                column gap=8 padding=16 border-radius=16 background-color="-exact-secondary-background" testId=`review-${review.id}`
+                  text review.title role="heading" aria-level=2 font="-exact-headline"
+                  text review.arguments font-family="monospace" white-space="pre-wrap" user-select="text" padding=12 background-color="-exact-tertiary-background" border-radius=10
+                  row gap=6 flex-direction=(review.options.length > 2 ? "column" : "row")
+                    for option in review.options key=option.id
+                      button buttonStyle=(option.primary ? "bordered-prominent" : "bordered") disabled=(not data.connected) press=command("answer", chat, review.id, option.id) flex=1 min-height=44 testId=`answer-${review.id}-${option.id}`
+                        text option.label
+              if current and data.error != ""
+                text data.error color="-exact-secondary-label" font="-exact-caption1"
+          if away
+            button buttonStyle="glass" position="absolute" bottom=8 right=20 width=36 height=36 press=jump aria-label="Jump to latest" testId="jump-to-latest"
+              image "symbol:sf/arrow.down"
+        nessa-thread-part widget="composer" chat=chat width="100%" min-height=48 flex-shrink=0 testId="thread-composer"
+      nessa-thread-part widget="context" chat=chat position="absolute" inset=0 pointer-events=(menu ? "auto" : "none") aria-hidden=(not menu) testId="thread-context"
