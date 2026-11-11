@@ -328,12 +328,15 @@ func productReplacementUsesReleaseFactSeparatelyFromHistoricalFault(released: Bo
   await client.disconnect()
 }
 
-private func channelPage(_ channels: [String], complete: Bool, cursor: String?) -> Data {
+private func channelPage(
+  _ channels: [String], complete: Bool, cursor: String?,
+  coordinator: String = "local", threads: String = "local"
+) -> Data {
   let list = channels.map {
     "{\"channelId\":\"\($0)\",\"name\":\"\($0)\",\"folder\":\"/tmp/\($0)\","
       + "\"agent\":null,\"model\":null,\"approvalMode\":\"ask\",\"createdAtMs\":1,"
-      + "\"folderMade\":false,\"coordinatorPlacement\":\"local\","
-      + "\"threadPlacement\":\"local\",\"coordinatorConversationId\":null}"
+      + "\"folderMade\":false,\"coordinatorPlacement\":\"\(coordinator)\","
+      + "\"threadPlacement\":\"\(threads)\",\"coordinatorConversationId\":null}"
   }.joined(separator: ",")
   let next = cursor.map { ",\"cursor\":\"\($0)\"" } ?? ""
   return Data(
@@ -350,6 +353,21 @@ private func channelPage(_ channels: [String], complete: Bool, cursor: String?) 
   _ = try await connect(client, exchange)
   #expect(try await client.channels().map(\.channelId) == ["ch_aaaaaaaaaa", "ch_bbbbbbbbbb"])
   #expect(await exchange.callCount("channel.list") == 2)
+  await client.disconnect()
+}
+
+// A channel may run its agents on any computer the gateway serves: Any
+// computer (the pool) or one computer named by its place, here a paired one.
+@Test func aChannelOnAnyComputerOrOneNamedComputerIsListed() async throws {
+  let paired = "peer:" + String(repeating: "ab", count: 32)
+  let exchange = ProductExchangeFixture(channelPages: [
+    channelPage(
+      ["ch_aaaaaaaaaa"], complete: true, cursor: nil, coordinator: "pool", threads: paired)
+  ])
+  let client = NessaGatewayClient()
+  _ = try await connect(client, exchange)
+  // The wire contract is what used to refuse these values; the phone keeps no placement.
+  #expect(try await client.channels().map(\.channelId) == ["ch_aaaaaaaaaa"])
   await client.disconnect()
 }
 
