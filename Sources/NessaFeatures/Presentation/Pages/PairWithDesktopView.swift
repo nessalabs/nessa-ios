@@ -219,7 +219,12 @@ struct OrbCameraWindow: View {
 
   private func updateCamera() async {
     #if os(iOS)
-      guard store.phase.screenKey == "idle" else { reader.stop(); return }
+      guard store.phase.screenKey == "idle" else {
+        reader.stop()
+        let authorization = AVCaptureDevice.authorizationStatus(for: .video)
+        if authorization == .denied || authorization == .restricted { camera = .denied }
+        return
+      }
       let available = await CameraOrbReader.availability()
       guard !Task.isCancelled, visible, store.phase.screenKey == "idle" else { return }
       switch available {

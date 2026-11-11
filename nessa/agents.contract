@@ -84,7 +84,7 @@ component AgentsOverview
   resource viewport = exactViewport() as shape AgentsViewport
   view
     column flex=1 min-height=0
-      list id="agents-list" testId="agents-list" refresh=refresh refreshing=refreshing flex=1 min-height=0 overflow-x="hidden" padding-bottom=32
+      scroll id="agents-list" overflow-y="scroll" testId="agents-list" refresh=refresh refreshing=refreshing flex=1 min-height=0 overflow-x="hidden" padding-bottom=32
         scroll overflow-x="scroll" overflow-y="hidden" scrollbar-width="none" height=54 width="100%" testId="agents-filter"
           row gap=8 align-items="center" height=54 padding="0px 20px"
             button class=AgentChip press=pick("") aria-pressed=(current == "") testId="agents-all" background-color=(current == "" ? "-exact-label" : "-exact-secondary-fill") color=(current == "" ? "-exact-background" : "-exact-label")
@@ -124,10 +124,11 @@ component AgentsOverview
                           text chat.detail color="-exact-secondary-label" font="-exact-subheadline" line-clamp=1 animation=(g.id == "working" and not viewport.prefersReducedMotion ? "agentActivity 1600ms ease-in-out infinite" : "none")
                         if g.id == "needsYou" or g.id == "working"
                           box width=7 height=7 border-radius=4 background-color="AccentColor" aria-hidden=true
-                  button id=`archive-${chat.id}` appearance="auto" buttonStyle="filled" accent-color="-exact-secondary-label" press=ask(chat.id, "archive") disabled=(not overview.connected) aria-label="Archive" testId=`ask-archive-${chat.id}` width=80 flex-shrink=0
-                    image "symbol:sf/archivebox"
-                  button id=`delete-${chat.id}` appearance="auto" buttonStyle="filled" destructive=true press=ask(chat.id, "delete") disabled=(not overview.canAct) aria-label="Delete" testId=`ask-delete-${chat.id}` width=80 flex-shrink=0
-                    image "symbol:delete"
+                  row width=160 flex-shrink=0 scroll-snap-align="end"
+                    button id=`archive-${chat.id}` appearance="auto" buttonStyle="filled" accent-color="-exact-secondary-label" press=ask(chat.id, "archive") disabled=(not overview.connected) aria-label="Archive" testId=`ask-archive-${chat.id}` width=80 flex-shrink=0
+                      image "symbol:sf/archivebox"
+                    button id=`delete-${chat.id}` appearance="auto" buttonStyle="filled" destructive=true press=ask(chat.id, "delete") disabled=(not overview.canAct) aria-label="Delete" testId=`ask-delete-${chat.id}` width=80 flex-shrink=0
+                      image "symbol:delete"
         if not overview.complete
           text "Some conversations could not be listed." font="-exact-caption1" color="-exact-secondary-label" margin="16px 20px 0px"
       dialog id="agents-archive" role="alertdialog" aria-label="Archive this chat?"
