@@ -1,0 +1,43 @@
+members ChatThread
+  state menuID = ""
+  state menuScope = -1
+  state menuX = 0
+  state menuY = 0
+  state menuWidth = 0
+  state menuHeight = 0
+  derive menuRows = active ? rows.filter(item => item.id == menuID and item.scope == menuScope) : []
+  derive menu = menuRows.length > 0
+  action openMenu(id: string)
+    match rows.filter(item => item.id == id).at(0)
+      case some(item)
+        let rect = frame(`context-bubble-${id}`)
+        menuID = id
+        menuScope = item.scope
+        menuX = rect.x
+        menuY = rect.y
+        menuWidth = rect.width
+        menuHeight = rect.height
+        blur(`input-field-${route}`)
+        haptic("selection")
+        focus("reaction-reply")
+      case none
+        dismissMenu()
+  action dismissMenu
+    if menuID != ""
+      focus(`context-bubble-${menuID}`)
+    menuID = ""
+    menuScope = -1
+  action menuOperation(op: string, value: string)
+    match menuRows.at(0)
+      case some(item)
+        if op == "react" or op == "remove"
+          command(op == "react" ? "reactMessage" : "removeReaction", chat, item.id, `${item.scope}:${value}`)
+        else if op == "reply"
+          command("openReplies", chat, item.id, `${item.scope}`)
+        else if op == "copy" and item.kind == "text"
+          copyText(item.text)
+        else if op == "share" and item.kind == "text"
+          share(text=item.text)
+        dismissMenu()
+      case none
+        dismissMenu()

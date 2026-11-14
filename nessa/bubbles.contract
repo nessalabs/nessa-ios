@@ -1,0 +1,225 @@
+use bubbleFill, bubbleGradient, bubbleBorderWidth, bubbleBorderInk, bubbleBackground, bubbleControl, bubbleInset, bubbleGutter, quoteFill, photoWidth, photoStackHeight, photoStackTilt, photoRadius, gallerySpacing, reactionClearance, tapbackInk, typingCycleMS, typingStepMS from "./bubble-style.contract"
+use BubbleTextSurface, BubbleInk, FileBubbleSurface, QuoteBubbleSurface, QuoteInk, QuoteConnector, BubbleMessageSpacing, BubbleQuoteSpacing, BubbleReplyCount, BubbleTypingSurface, TypingTailLarge, TypingTailSmall, TypingDot, TapbackCircle, typingPulse from "./bubble-style.contract"
+
+shape BubblePhotoID
+  id: string
+  index: number
+
+shape ThreadItem
+  id: string
+  kind: string
+  text: string
+  first: bool
+  scope: number
+  outgoing: bool
+  reaction: string
+  photos: BubblePhotoID[]
+  parentID: string
+  parentText: string
+  parentAuthor: string
+  parentOutgoing: bool
+  replyCount: number
+
+shape BubbleViewport
+  width: number
+  prefersReducedMotion: bool
+
+// The image provider only decodes an occurrence in the live conversation. Loading, fallback,
+// composition and the image's gestures are authored here and follow the Contract node.
+component PhotoPixels
+  props
+    chat: string
+    item: string
+    scope: number
+    detail: bool
+    contain: bool
+  state status = "loading"
+  action update(value: string)
+    status = value
+  view
+    box position="relative" width="100%" height="100%" overflow="hidden" testId=`photo-${status}-${item}` background-color=(detail ? bubbleBackground() : bubbleControl())
+      nessa-photo chat=chat item=item deliveryRevision=scope highResolution=detail imageFit=(contain ? "contain" : "cover") width="100%" height="100%" pointer-events="none" aria-hidden=true message=update
+      if status != "ready"
+        column position="absolute" inset=0 align-items="center" justify-content="center" class=BubbleMessageSpacing pointer-events="none"
+          if status == "unavailable"
+            image "symbol:photo" aria-hidden=true
+            text "Photo unavailable on this device" font="-exact-caption1" color="-exact-secondary-label" text-align="center"
+          else
+            progress aria-label="Loading photo"
+
+component PhotoGalleryControl
+  props
+    chat: string
+    scope: number
+    photos: BubblePhotoID[]
+    identifier: string
+    tile: bool
+  state front = 0
+  state showing = false
+  state grid = false
+  state scale = 1
+  state dx = 0
+  state dy = 0
+  state portWidth = 0
+  state portHeight = 0
+  derive count = photos.length
+  derive index = min(front, max(0, count - 1))
+  derive photo = match photos.at(index) { case some(p) => p.id, case none => "" }
+  derive behind = match photos.at((index + 1) % max(1, count)) { case some(p) => p.id, case none => "" }
+  derive viewer = `viewer-${identifier}`
+  action resetZoom
+    scale = 1
+    dx = 0
+    dy = 0
+  action step(delta: number)
+    if count > 1 and scale == 1
+      front = (index + count + delta) % count
+      resetZoom()
+  action openGallery(all: bool)
+    if count > 0
+      showing = true
+      grid = all
+      resetZoom()
+      showModal(viewer)
+  action closed
+    showing = false
+    resetZoom()
+  action display(i: number)
+    front = i
+    grid = false
+    resetZoom()
+  action showGrid
+    grid = true
+    resetZoom()
+  action doubleZoom
+    scale = scale == 1 ? 2 : 1
+    dx = 0
+    dy = 0
+  action measurePort(bw: number, bh: number, pw: number, ph: number)
+    portWidth = pw
+    portHeight = ph
+  action settle(x: number, y: number, zoom: number, vx: number, vy: number, vz: number)
+    let z = min(4, max(1, zoom))
+    let ex = max(0, portWidth * (z - 1) / 2)
+    let ey = max(0, portHeight * (z - 1) / 2)
+    if scale == 1 and z == 1 and count > 1 and max(x, -x) > max(45, max(y, -y))
+      step(x < 0 ? 1 : -1)
+    else
+      scale = z
+      dx = min(ex, max(-ex, x))
+      dy = min(ey, max(-ey, y))
+  view
+    column class=BubbleMessageSpacing align-items="flex-end" max-width="100%"
+      if count > 0
+        box position="relative" width=photoWidth() max-width="100%" height=(tile ? 208 : photoStackHeight()) margin-top=(not tile and count > 1 ? 10 : 0)
+          if not tile and count > 1
+            box position="absolute" inset=0 rotate=photoStackTilt() overflow="hidden" border-radius=photoRadius() pointer-events="none" aria-hidden=true
+              PhotoPixels(chat=chat, item=behind, scope=scope, detail=false, contain=false)
+          button appearance="none" width="100%" height="100%" overflow="hidden" border-radius=photoRadius() press=openGallery(false) swipeleft=step(1) swiperight=step(-1) touch-action="pan-y" aria-label="Photo attachment. Open full screen" testId=`open-photo-${identifier}`
+            PhotoPixels(chat=chat, item=photo, scope=scope, detail=false, contain=tile)
+        if count > 1
+          button appearance="none" press=openGallery(true) aria-label="View all photos" testId=`photo-grid-${identifier}` font="-exact-caption1" color="-exact-secondary-label"
+            text "View all"
+      dialog id=viewer close=closed aria-label=(grid ? "All photos" : "Photos") padding=0 width="100%" height="100%"
+        if showing
+          column width="100%" height="100%" background-color=bubbleBackground() padding-top="env(safe-area-inset-top)" padding-bottom="env(safe-area-inset-bottom)"
+            row align-items="center" min-height=48 padding="0px 16px" gap=8
+              if not grid and count > 1
+                button press=showGrid aria-label="View all" testId=`view-all-${identifier}`
+                  image "symbol:sf/square.grid.2x2"
+              text (grid ? "All photos" : (count == 1 ? "Photo" : "Photos")) role="heading" aria-level=2 flex=1
+              button command="close" commandfor=viewer testId=`done-${identifier}`
+                text "Done"
+            if grid
+              scroll flex=1 min-height=0
+                row flex-wrap="wrap" gap=gallerySpacing() padding=8
+                  for p in photos key=p.id
+                    button appearance="none" press=display(p.index) aria-label=`Open photo ${p.index + 1}` width="31%" height=96 border-radius=12 overflow="hidden"
+                      PhotoPixels(chat=chat, item=p.id, scope=scope, detail=false, contain=false)
+            else if count > 0
+              box position="relative" flex=1 min-height=0 overflow="hidden"
+                box id=`zoom-${identifier}` position="absolute" inset=0 scale=scale translate=`${dx}px ${dy}px`
+                  PhotoPixels(chat=chat, item=photo, scope=scope, detail=true, contain=true)
+                box transformDragFor=`zoom-${identifier}` transformgeometry=measurePort transformrelease=settle dblclick=doubleZoom touch-action="none" position="absolute" inset=0 aria-label="Zoom or pan photo"
+              if count > 1
+                row justify-content="center" align-items="center" gap=20 height=44
+                  button press=step(-1) disabled=(scale != 1) aria-label="Previous photo"
+                    image "symbol:back"
+                  text `${index + 1} of ${count}` font="-exact-caption1"
+                  button press=step(1) disabled=(scale != 1) aria-label="Next photo"
+                    image "symbol:forward-chevron"
+
+component BubbleContent
+  props
+    item: ThreadItem
+  view
+    if item.kind == "file"
+      row align-items="center" class=FileBubbleSurface
+        image "symbol:document" aria-hidden=true
+        text item.text font="-exact-body" overflow-wrap="anywhere" class=BubbleInk
+    else
+      box class=BubbleTextSurface background-color=bubbleFill(item.outgoing) background-image=bubbleGradient(item.outgoing) border-style="solid" border-width=bubbleBorderWidth(item.outgoing) border-color=bubbleBorderInk()
+        text item.text markup="markdown" font="-exact-body" class=BubbleInk overflow-wrap="anywhere" white-space="pre-wrap" text-align="left"
+
+component BubblePreview
+  props
+    item: ThreadItem
+    chat: string
+  derive firstPhoto = match item.photos.at(0) { case some(p) => p.id, case none => "" }
+  view
+    column max-width="100%" pointer-events="none"
+      if item.kind == "photo" and item.photos.length > 0
+        box width=photoWidth() max-width="100%" height=photoStackHeight() border-radius=photoRadius() overflow="hidden"
+          PhotoPixels(chat=chat, item=firstPhoto, scope=item.scope, detail=false, contain=false)
+      else
+        BubbleContent(item=item)
+
+component ReactionBadge
+  props
+    value: string
+    outgoing: bool
+  derive symbol = value == "😂" ? "HA" : (value == "‼️" ? "!!" : (value == "❓" ? "?" : value))
+  view
+    box position="absolute" class=TapbackCircle left=(outgoing ? "0px" : "auto") right=(outgoing ? "auto" : "0px") display="flex" align-items="center" justify-content="center" aria-label=`Reaction ${value}`
+      box position="absolute" width=8 height=8 border-radius=4 background-color=tapbackInk() bottom=-3 right=1
+      box position="absolute" width=4 height=4 border-radius=2 background-color=tapbackInk() bottom=-7 right=-2
+      text symbol font-weight=700 font-size=21 class=BubbleInk aria-hidden=true
+
+component BubbleTyping
+  resource viewport = exactViewport() as shape BubbleViewport
+  view
+    row role="status" aria-label="Agent is typing" testId="agent-typing"
+      row position="relative" align-items="center" class=BubbleTypingSurface
+        box position="absolute" class=TypingTailLarge
+        box position="absolute" class=TypingTailSmall
+        for i in [0, 1, 2] key=i
+          box class=TypingDot aria-hidden=true animation=(viewport.prefersReducedMotion ? "none" : `typingPulse ${typingCycleMS()}ms ease-in-out ${i * typingStepMS()}ms infinite`)
+
+component ChatBubble
+  props
+    item: ThreadItem
+    chat: string
+    lifted: bool
+    openMenu: action
+    openReplies: action
+  resource viewport = exactViewport() as shape BubbleViewport
+  derive maxSize = max(96, viewport.width - bubbleGutter() - bubbleInset() * 2)
+  view
+    column width="100%" align-items=(item.outgoing ? "flex-end" : "flex-start") class=BubbleMessageSpacing testId=`bubble-${item.id}`
+      if item.parentID != ""
+        column width="100%" align-items=(item.parentOutgoing ? "flex-end" : "flex-start")
+          button appearance="none" press=openReplies(item.parentID, item.scope) aria-label=`Reply to ${item.parentAuthor}: ${item.parentText}` max-width=maxSize text-align="left" class=QuoteBubbleSurface background-color=quoteFill(item.parentOutgoing) testId=`quote-${item.id}`
+            column class=BubbleQuoteSpacing
+              text item.parentAuthor font="-exact-caption1" class=QuoteInk
+              text item.parentText font="-exact-subheadline" line-clamp=2 class=QuoteInk
+          box class=QuoteConnector
+      box id=`context-bubble-${item.id}` position="relative" max-width=maxSize box-sizing="border-box" opacity=(lifted ? 0 : 1) margin-top=(item.reaction == "" ? 0 : reactionClearance()) tabindex=0 retainFocus=true contextmenu=openMenu(item.id) dblclick=openMenu(item.id) user-select="none" testId=`message-actions-${item.id}`
+        if item.kind == "photo"
+          PhotoGalleryControl(chat=chat, scope=item.scope, photos=item.photos, identifier=item.id, tile=false)
+        else
+          BubbleContent(item=item)
+        if item.reaction != ""
+          ReactionBadge(value=item.reaction, outgoing=item.outgoing)
+      if item.replyCount > 0
+        button appearance="none" press=openReplies(item.id, item.scope) class=BubbleReplyCount font="-exact-caption1" testId=`reply-count-${item.id}`
+          text (item.replyCount == 1 ? "1 Reply" : `${item.replyCount} Replies`)
