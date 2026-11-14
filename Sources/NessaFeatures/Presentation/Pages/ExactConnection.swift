@@ -213,6 +213,13 @@ extension ExactPhoneSession {
     if reader != nil {
       observer = owner.desktop.$phase.map(\.screenKey).removeDuplicates().receive(on: RunLoop.main)
         .sink { [weak self] _ in self?.updateCamera() }
+    } else if kind == "code" {
+      // A scanned code and a typed code share the same private field. Preserve the
+      // cursor when the update originated from this field's editingChanged event.
+      observer = owner.$code.removeDuplicates().sink { [weak self] code in
+        guard let field = self?.field, field.text != code else { return }
+        field.text = code
+      }
     } else if label != nil {
       updateLabel()
       observer = owner.messages.objectWillChange.receive(on: RunLoop.main)
@@ -225,6 +232,10 @@ extension ExactPhoneSession {
     reader?.stop()
     preview?.isHidden = true
     guard owner.desktop.phase.screenKey == "idle", let reader else { return }
+    guard AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) != nil else {
+      owner.camera("unavailable")
+      return
+    }
     owner.camera("asking")
     permission = Task { [weak self] in
       let access = await CameraOrbReader.availability()

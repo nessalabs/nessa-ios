@@ -1,7 +1,7 @@
 // The reference design's halftone equations, recorded by Exact's Canvas 2D host.
 // All dimensions are in points; the host selects the backing scale for its screen.
 import type { Ctx2D, Frame } from './app.contract.d.ts';
-export const surfaces = { horizon: 1, channelTile: 2, profile: 0, avatar: 2, gridGlyph: 0 };
+export const surfaces = { horizon: 1, channelTile: 2, profile: 0, avatar: 3, gridGlyph: 0 };
 const tau = Math.PI * 2;
 const ink = 'rgba(214,210,206,0.9)';
 
@@ -37,12 +37,60 @@ function blooms(seed: string) {
   return Array.from({ length: 3 }, () => [unit()*1.2-0.1, unit()*1.2-0.1, unit()*0.4+0.45, unit()*0.45+0.55]);
 }
 
+// Exact retains the bitmap and the recorder for each canvas generation. A frame with
+// no commands keeps the previous pixels, so the inner horizon pattern can run at 24 Hz.
+const horizonFrame = new WeakMap<Ctx2D, number>();
+const rimStates = new WeakMap<Ctx2D, {
+  active: boolean; turnedOn: number; changed: number; from: number;
+}>();
+const rimStops = [[0, 0.02], [0.25, 0.08], [0.5, 0.18], [0.72, 0.32],
+  [0.89, 0.55], [0.989, 1], [1, 0]];
+
+function workingRim(c: Ctx2D, f: Frame, active: boolean, reduceMotion: boolean) {
+  let state = rimStates.get(c);
+  if (!state && !active) return false;
+  function opacity(s: NonNullable<typeof state>) {
+    const progress = Math.min(1, Math.max(0, (f.time - s.changed) / 300));
+    return s.from + ((s.active ? 1 : 0) - s.from) * (1 - (1 - progress) ** 3);
+  }
+  if (!state) {
+    state = { active, turnedOn: f.time, changed: f.time, from: 0 };
+    rimStates.set(c, state);
+  } else if (state.active !== active) {
+    const from = opacity(state);
+    if (active && from === 0) state.turnedOn = f.time;
+    state.active = active;
+    state.changed = f.time;
+    state.from = from;
+  }
+  const lit = reduceMotion ? Number(active) : opacity(state);
+  if (lit > 0) {
+    const cx = f.width / 2, cy = f.height / 2;
+    const angle = reduceMotion ? -Math.PI / 2 : tau * ((f.time - state.turnedOn) % 3200) / 3200;
+    const trail = c.createConicGradient(angle, cx, cy);
+    for (const [stop, alpha] of rimStops) trail.addColorStop(stop, `rgba(255,255,255,${alpha})`);
+    c.strokeStyle = trail;
+    // Soft glow towards the centre, with the crisp 1.25-point band at the edge.
+    for (const [width, alpha] of [[6, 0.08], [4, 0.16], [2.5, 0.24], [1.25, 1]]) {
+      c.lineWidth = width;
+      c.globalAlpha = alpha * lit;
+      c.beginPath();
+      c.ellipse(cx, cy, cx - width / 2, cy - width / 2, 0, 0, tau);
+      c.stroke();
+    }
+  }
+  return !reduceMotion && (active || lit > 0);
+}
+
 export function draw(surface: string, args: unknown[], c: Ctx2D, f: Frame): boolean {
   const w = f.width, h = f.height;
   if (!w || !h) return false;
-  c.reset();
   if (surface === 'horizon') {
     const animate = args[0] === true, age = Math.max(0, f.time - f.mounted);
+    const tick = Math.floor(age * 24 / 1000);
+    if (animate && f.cause === 'frame' && f.causes.length === 1 && horizonFrame.get(c) === tick) return true;
+    horizonFrame.set(c, tick);
+    c.reset();
     c.fillStyle = '#000'; c.fillRect(0, 0, w, h);
     const rise = animate ? 1 - Math.pow(1 - Math.min(1, age / 1100), 3) : 1;
     c.save(); c.translate(0, 120 * (1 - rise)); c.globalAlpha = rise;
@@ -59,6 +107,7 @@ export function draw(surface: string, args: unknown[], c: Ctx2D, f: Frame): bool
     c.restore();
     return animate;
   }
+  c.reset();
   if (surface === 'gridGlyph') {
     c.scale(w/24,h/24); c.lineWidth = 1.4*24/22; c.strokeStyle = '#fafafa'; c.beginPath();
     for (const x of [3.5,13.5]) for (const y of [3.5,13.5]) c.roundRect(x,y,7,7,2);
@@ -87,7 +136,10 @@ export function draw(surface: string, args: unknown[], c: Ctx2D, f: Frame): bool
       sum+s*Math.max(0,1-Math.hypot(x/w-a,y/h-b)/r)**2,0)));
   }
   c.beginPath(); c.lineWidth = 1;
-  c.strokeStyle = surface === 'avatar' && args[1] ? '#8ba7ea' : 'rgba(255,255,255,0.1)';
+  c.strokeStyle = 'rgba(255,255,255,0.1)';
   if (tile) c.roundRect(0,0,w,h,9); else c.ellipse(w/2,h/2,w/2,h/2,0,0,tau);
-  c.stroke(); c.restore(); return false;
+  c.stroke();
+  const moving = surface === 'avatar' && workingRim(c, f, args[1] === true, args[2] === true);
+  c.restore();
+  return moving;
 }

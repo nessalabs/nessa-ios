@@ -123,7 +123,6 @@ component ComposerError
     clear: action
   view
     dialog id="composer-error" role="alertdialog" aria-label=data.errorTitle close=clear
-      text data.errorTitle role="heading" aria-level=2
       text data.error
       button command="close" commandfor="composer-error"
         text "OK"

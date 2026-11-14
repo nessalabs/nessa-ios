@@ -49,7 +49,7 @@ component ReactionMenu
   derive paletteControls = (picker ? favorites.concat(extras) : favorites).map(emoji => `reaction-glyph-${emoji}`)
   derive textButtons = item.kind == "text" ? [more ? "reaction-share" : "reaction-copy"] : []
   derive moreButtons = more ? (item.reaction == "" ? [] : ["reaction-remove"]) : (hasMore ? ["reaction-more"] : [])
-  derive controls = picker ? ["back", "reaction-done"].concat(paletteControls) : ["back"].concat(paletteControls).concat(["reaction-picker", more ? "reaction-menu-back" : "reaction-reply"]).concat(textButtons).concat(moreButtons)
+  derive controls = picker ? ["reaction-done"].concat(paletteControls) : ["back"].concat(paletteControls).concat(["reaction-picker", more ? "reaction-menu-back" : "reaction-reply"]).concat(textButtons).concat(moreButtons)
   derive width = min(max(1, viewport.width - 32), max(44, rectWidth))
   derive hasMore = item.kind == "text" or item.reaction != ""
   derive buttons = more ? (1 + (item.kind == "text" ? 1 : 0) + (item.reaction == "" ? 0 : 1)) : (1 + (item.kind == "text" ? 1 : 0) + (hasMore ? 1 : 0))
@@ -139,7 +139,7 @@ component ReactionMenu
               button id="reaction-more" focus=track("reaction-more") class=ReactionAction press=openMore testId="reaction-more"
                 image "symbol:more"
                 text "More…"
-      dialog id="reaction-sheet" aria-label="Choose a reaction" close=dismiss padding=0 width="100%" max-width=600 background-color="-exact-secondary-background"
+      dialog id="reaction-sheet" aria-label="Choose a reaction" close=dismiss padding=0 width="100%" max-width="37.5rem" background-color="-exact-secondary-background"
         if picker
           column max-height="80vh" padding="16px 16px calc(16px + env(safe-area-inset-bottom))"
             row min-height=44 align-items="center"

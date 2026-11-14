@@ -18,7 +18,9 @@ final class ReactionTests: XCTestCase {
     selected.press(forDuration: 0.8)
     XCTAssertTrue(app.buttons["reaction-copy"].waitForExistence(timeout: 5))
     app.buttons["reaction-picker"].tap()
-    app.buttons["reaction-🚀"].tap()
+    let rocket = app.descendants(matching: .any)["reaction-🚀"].firstMatch
+    XCTAssertTrue(rocket.waitForExistence(timeout: 5))
+    rocket.tap()
 
     selected.press(forDuration: 0.8)
     app.buttons["reaction-more"].tap()

@@ -42,6 +42,7 @@ component DetailInfo
 
 component ThreadDetails
   props
+    reduceMotion: bool
     chat: string
     route: string
     data: AgentDetailData
@@ -53,7 +54,7 @@ component ThreadDetails
   view
     column navigationKey=route navigationPresentation="modal" navigationBar="none" position="absolute" inset=0 display="flex" flex-direction="column" background-color="-exact-background" testId="agent-details"
       row padding="16px 20px 8px" align-items="center" gap=12
-        canvas surface=avatar(chat, current and data.working) width=36 height=36 aria-hidden=true
+        canvas surface=avatar(chat, current and data.working, reduceMotion) width=36 height=36 aria-hidden=true
         text (current ? data.name : "") font="-exact-title2" flex=1 line-clamp=1 role="heading" aria-level=1
         button buttonStyle="glass" aria-label="Close details" id="back" testId="details-close" press=goBack width=44 height=44
           image "symbol:close"

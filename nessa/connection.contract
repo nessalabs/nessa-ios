@@ -97,6 +97,8 @@ component PairingScreen
               nessa-connection-input kind="camera" position="absolute" inset=0
               if data.cameraState == "denied"
                 text "Allow the camera in Settings to scan the orb, or type the code below." class=LinkDetail padding=16
+              else if data.cameraState == "unavailable"
+                text "Camera unavailable. Type the code below to pair." class=LinkDetail padding=16
               else if data.cameraState != "ready" or data.phase != "idle"
                 image "symbol:sf/camera" color="-exact-secondary-label"
             text "On your Mac, open Settings › Linked devices › Pair a device, then point your camera at the orb." class=LinkDetail

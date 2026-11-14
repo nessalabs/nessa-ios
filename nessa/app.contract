@@ -197,9 +197,9 @@ component Nessa
             else
               button appearance="none" position="absolute" left=width right=0 top=0 bottom=0 background-color="#00000055" press=toggle(false) pan=drag panrelease=settle aria-label="Close sidebar" testId="close-sidebar"
         else if e.name == "details"
-          ThreadDetails(chat=e.params.key, route=`${e.id}`, data=detailsData, goBack=back)
+          ThreadDetails(reduceMotion=viewport.prefersReducedMotion, chat=e.params.key, route=`${e.id}`, data=detailsData, goBack=back)
         else if e.name == "chat"
-          ChatThread(active=(e.id == top(nav).id), chat=e.params.key, route=`${e.id}`, data=threadData, composition=composerData, inputText=composerText, editInput=composerEdit, inputCommand=composerAction, navigate=follow, goBack=back, command=threadAction)
+          ChatThread(reduceMotion=viewport.prefersReducedMotion, active=(e.id == top(nav).id), chat=e.params.key, route=`${e.id}`, data=threadData, composition=composerData, inputText=composerText, editInput=composerEdit, inputCommand=composerAction, navigate=follow, goBack=back, command=threadAction)
         else if e.name == "agents"
           column navigationKey=`${e.id}` class=Page navigationScroll="agents-list" testId="page-agents"
             header
@@ -235,7 +235,7 @@ component Nessa
                   scroll swipeContent=`open-${chat.id}` swipeTrailing=(e.name == "archived" ? `restore-${chat.id}` : "") height=84 width="100%" overflow-x="scroll" scrollbar-width="none" scroll-snap-type="x mandatory"
                     row
                       button id=`open-${chat.id}` appearance="none" press=follow(e.name == "shared" ? path("transcript", chat.id) : path("chat", chat.id)) width="100%" flex-shrink=0 height=84 padding="0px 16px" display="flex" align-items="center" gap=12 scroll-snap-align="start"
-                        canvas surface=avatar(chat.id, false) width=45 height=45 aria-hidden=true
+                        canvas surface=avatar(chat.id, false, viewport.prefersReducedMotion) width=45 height=45 aria-hidden=true
                         column flex=1 min-width=0 text-align="left"
                           row gap=6 align-items="center"
                             text chat.title font="-exact-headline" line-clamp=1 flex=1

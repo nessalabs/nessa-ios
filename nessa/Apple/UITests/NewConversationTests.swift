@@ -30,12 +30,13 @@ final class NewConversationTests: XCTestCase {
     let input = fields.firstMatch
     XCTAssertTrue(input.waitForExistence(timeout: 15))
     input.tap()
-    input.typeText(message)
+    app.typeOnComposerKeyboard(message)
+    let entered = input.composerValue(matching: message)
     let send = app.buttons["Send message"]
     let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == YES"), object: send)
     XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
     send.tap()
     XCTAssertTrue(app.buttons["thread-back"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts[message].firstMatch.waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts[entered].firstMatch.waitForExistence(timeout: 10))
   }
 }

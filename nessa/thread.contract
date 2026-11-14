@@ -27,6 +27,7 @@ shape ThreadSnapshot
 
 component ChatThread
   props
+    reduceMotion: bool
     active: bool
     chat: string
     route: string
@@ -65,7 +66,7 @@ component ChatThread
           button id=(menu ? "chat-back-behind-menu" : "back") press=backFromChat buttonStyle="glass" width=44 height=44 aria-label=(reply == "" ? "Back" : "Close replies") testId="thread-back"
             image (reply == "" ? "symbol:back" : "symbol:close")
           link href=path("details", chat) appearance="none" aria-label=`${data.name} agent details` testId="thread-details" display="flex" align-items="center" gap=6
-            canvas surface=avatar(chat, current and data.working) width=28 height=28 aria-hidden=true
+            canvas surface=avatar(chat, current and data.working, reduceMotion) width=28 height=28 aria-hidden=true
             text (current ? data.name : "") font="-exact-headline" line-clamp=1
             image "symbol:forward-chevron" font-size=12 color="-exact-secondary-label"
           box width=44 height=1 aria-hidden=true
