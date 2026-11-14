@@ -121,8 +121,9 @@ public enum MessagesStyle {
   public static let incomingBorder = NessaColor.hairline
   public static let outgoing = NessaColor.accent
   /// The sent bubble lit from above: the accent settling into a deeper step at its foot.
+  public static let outgoingFillColors = [outgoing, NessaColor.accentDeep]
   public static let outgoingFill = LinearGradient(
-    colors: [NessaColor.accent, NessaColor.accentDeep], startPoint: .top, endPoint: .bottom)
+    colors: outgoingFillColors, startPoint: .top, endPoint: .bottom)
   public static let link = NessaColor.accentInk
   public static let secondary = NessaColor.mutedForeground
   public static let separator = NessaColor.muted
@@ -204,6 +205,7 @@ public enum MessagesStyle {
   public static let replyConnectorHeight: CGFloat = 28
   public static let replyConnectorStroke: CGFloat = 2
   public static let rowHeight: CGFloat = 84
+  public static let bubbleBorderWidth: CGFloat = 0.5
   public static let bubbleRadius: CGFloat = 25
   public static let bubbleInset: CGFloat = 12
   public static let bubbleHorizontalInset: CGFloat = 16
@@ -381,7 +383,7 @@ public struct MessageBubbleSurface: ViewModifier {
             shape.fill(MessagesStyle.outgoingFill)
           } else {
             shape.fill(MessagesStyle.incoming)
-              .overlay(shape.strokeBorder(MessagesStyle.incomingBorder, lineWidth: 0.5))
+              .overlay(shape.strokeBorder(MessagesStyle.incomingBorder, lineWidth: MessagesStyle.bubbleBorderWidth))
           }
         }
         .modifier(MorphFrame(morph: morph))

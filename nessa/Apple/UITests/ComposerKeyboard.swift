@@ -1,6 +1,15 @@
 import XCTest
 
 extension XCUIApplication {
+  /// The host and its UITextView expose the same identifier. Use the editor's on-screen
+  /// geometry so XCTest delivers an actual keyboard-opening touch inside that nested control.
+  func tapComposer(_ field: XCUIElement, at normalized: CGVector = CGVector(dx: 0.45, dy: 0.5)) {
+    let rect = field.frame
+    coordinate(withNormalizedOffset: .zero)
+      .withOffset(CGVector(dx: rect.minX - frame.minX + rect.width * normalized.dx,
+                           dy: rect.minY - frame.minY + rect.height * normalized.dy)).tap()
+  }
+
   /// Exact exposes both a host accessibility element and the editing UITextView. XCTest's
   /// typeText can reject that composite even while its caret and software keyboard are active.
   /// Tap the same visible keys as a person, including Shift and punctuation.

@@ -1,3 +1,6 @@
+use bubbleFill, bubbleGradient, bubbleBorderWidth, bubbleBorderInk, bubbleBackground, bubbleControl, bubbleInset, bubbleGutter, quoteFill, photoWidth, photoStackHeight, photoStackTilt, photoRadius, gallerySpacing, reactionClearance, tapbackInk, typingCycleMS, typingStepMS from "./bubble-style.contract"
+use BubbleTextSurface, BubbleInk, FileBubbleSurface, QuoteBubbleSurface, QuoteInk, QuoteConnector, BubbleMessageSpacing, BubbleQuoteSpacing, BubbleReplyCount, BubbleTypingSurface, TypingTailLarge, TypingTailSmall, TypingDot, TapbackCircle, typingPulse from "./bubble-style.contract"
+
 shape BubblePhotoID
   id: string
   index: number
@@ -34,10 +37,10 @@ component PhotoPixels
   action update(value: string)
     status = value
   view
-    box position="relative" width="100%" height="100%" overflow="hidden" testId=`photo-${status}-${item}` background-color=(detail ? "#0A0A0A" : "#262626")
+    box position="relative" width="100%" height="100%" overflow="hidden" testId=`photo-${status}-${item}` background-color=(detail ? bubbleBackground() : bubbleControl())
       nessa-photo chat=chat item=item deliveryRevision=scope highResolution=detail imageFit=(contain ? "contain" : "cover") width="100%" height="100%" pointer-events="none" aria-hidden=true message=update
       if status != "ready"
-        column position="absolute" inset=0 align-items="center" justify-content="center" gap=6 pointer-events="none"
+        column position="absolute" inset=0 align-items="center" justify-content="center" class=BubbleMessageSpacing pointer-events="none"
           if status == "unavailable"
             image "symbol:photo" aria-hidden=true
             text "Photo unavailable on this device" font="-exact-caption1" color="-exact-secondary-label" text-align="center"
@@ -106,20 +109,20 @@ component PhotoGalleryControl
       dx = min(ex, max(-ex, x))
       dy = min(ey, max(-ey, y))
   view
-    column gap=5 align-items="flex-end" max-width="100%"
+    column class=BubbleMessageSpacing align-items="flex-end" max-width="100%"
       if count > 0
-        box position="relative" width=270 max-width="100%" height=(tile ? 208 : 240) margin-top=(not tile and count > 1 ? 10 : 0)
+        box position="relative" width=photoWidth() max-width="100%" height=(tile ? 208 : photoStackHeight()) margin-top=(not tile and count > 1 ? 10 : 0)
           if not tile and count > 1
-            box position="absolute" inset=0 rotate="-2.5deg" overflow="hidden" border-radius=20 pointer-events="none" aria-hidden=true
+            box position="absolute" inset=0 rotate=photoStackTilt() overflow="hidden" border-radius=photoRadius() pointer-events="none" aria-hidden=true
               PhotoPixels(chat=chat, item=behind, scope=scope, detail=false, contain=false)
-          button appearance="none" width="100%" height="100%" overflow="hidden" border-radius=20 press=openGallery(false) swipeleft=step(1) swiperight=step(-1) touch-action="pan-y" aria-label="Photo attachment. Open full screen" testId=`open-photo-${identifier}`
+          button appearance="none" width="100%" height="100%" overflow="hidden" border-radius=photoRadius() press=openGallery(false) swipeleft=step(1) swiperight=step(-1) touch-action="pan-y" aria-label="Photo attachment. Open full screen" testId=`open-photo-${identifier}`
             PhotoPixels(chat=chat, item=photo, scope=scope, detail=false, contain=tile)
         if count > 1
           button appearance="none" press=openGallery(true) aria-label="View all photos" testId=`photo-grid-${identifier}` font="-exact-caption1" color="-exact-secondary-label"
             text "View all"
       dialog id=viewer close=closed aria-label=(grid ? "All photos" : "Photos") padding=0 width="100%" height="100%"
         if showing
-          column width="100%" height="100%" background-color="#0A0A0A" padding-top="env(safe-area-inset-top)" padding-bottom="env(safe-area-inset-bottom)"
+          column width="100%" height="100%" background-color=bubbleBackground() padding-top="env(safe-area-inset-top)" padding-bottom="env(safe-area-inset-bottom)"
             row align-items="center" min-height=48 padding="0px 16px" gap=8
               if not grid and count > 1
                 button press=showGrid aria-label="View all" testId=`view-all-${identifier}`
@@ -129,7 +132,7 @@ component PhotoGalleryControl
                 text "Done"
             if grid
               scroll flex=1 min-height=0
-                row flex-wrap="wrap" gap=4 padding=8
+                row flex-wrap="wrap" gap=gallerySpacing() padding=8
                   for p in photos key=p.id
                     button appearance="none" press=display(p.index) aria-label=`Open photo ${p.index + 1}` width="31%" height=96 border-radius=12 overflow="hidden"
                       PhotoPixels(chat=chat, item=p.id, scope=scope, detail=false, contain=false)
@@ -151,12 +154,12 @@ component BubbleContent
     item: ThreadItem
   view
     if item.kind == "file"
-      row align-items="center" gap=8 padding=12 border-radius=18 background-color="#262626"
+      row align-items="center" class=FileBubbleSurface
         image "symbol:document" aria-hidden=true
-        text item.text font="-exact-body" overflow-wrap="anywhere" color="#FAFAFA"
+        text item.text font="-exact-body" overflow-wrap="anywhere" class=BubbleInk
     else
-      box padding="12px 16px" border-radius=25 background-color=(item.outgoing ? "#0071E3" : "#171717") background-image=(item.outgoing ? "linear-gradient(180deg, #0071E3, #0058C4)" : "none") border=(item.outgoing ? "0px solid transparent" : "0.5px solid #FFFFFF1A")
-        text item.text markup="markdown" font="-exact-body" color="#FAFAFA" overflow-wrap="anywhere" white-space="pre-wrap" text-align="left"
+      box class=BubbleTextSurface background-color=bubbleFill(item.outgoing) background-image=bubbleGradient(item.outgoing) border-style="solid" border-width=bubbleBorderWidth(item.outgoing) border-color=bubbleBorderInk()
+        text item.text markup="markdown" font="-exact-body" class=BubbleInk overflow-wrap="anywhere" white-space="pre-wrap" text-align="left"
 
 component BubblePreview
   props
@@ -166,7 +169,7 @@ component BubblePreview
   view
     column max-width="100%" pointer-events="none"
       if item.kind == "photo" and item.photos.length > 0
-        box width=270 max-width="100%" height=240 border-radius=20 overflow="hidden"
+        box width=photoWidth() max-width="100%" height=photoStackHeight() border-radius=photoRadius() overflow="hidden"
           PhotoPixels(chat=chat, item=firstPhoto, scope=item.scope, detail=false, contain=false)
       else
         BubbleContent(item=item)
@@ -177,26 +180,20 @@ component ReactionBadge
     outgoing: bool
   derive symbol = value == "😂" ? "HA" : (value == "‼️" ? "!!" : (value == "❓" ? "?" : value))
   view
-    box position="absolute" top=-28 left=(outgoing ? "0px" : "auto") right=(outgoing ? "auto" : "0px") width=34 height=34 border-radius=18 background-color="#18A4ED" display="flex" align-items="center" justify-content="center" aria-label=`Reaction ${value}`
-      box position="absolute" width=8 height=8 border-radius=4 background-color="#18A4ED" bottom=-3 right=1
-      box position="absolute" width=4 height=4 border-radius=2 background-color="#18A4ED" bottom=-7 right=-2
-      text symbol font-weight=700 font-size=21 color="#FFFFFF" aria-hidden=true
-
-keyframes typingPulse
-  from opacity=0.35 scale=1
-  16% opacity=1 scale=1.15
-  34% opacity=0.35 scale=1
-  to opacity=0.35 scale=1
+    box position="absolute" class=TapbackCircle left=(outgoing ? "0px" : "auto") right=(outgoing ? "auto" : "0px") display="flex" align-items="center" justify-content="center" aria-label=`Reaction ${value}`
+      box position="absolute" width=8 height=8 border-radius=4 background-color=tapbackInk() bottom=-3 right=1
+      box position="absolute" width=4 height=4 border-radius=2 background-color=tapbackInk() bottom=-7 right=-2
+      text symbol font-weight=700 font-size=21 class=BubbleInk aria-hidden=true
 
 component BubbleTyping
   resource viewport = exactViewport() as shape BubbleViewport
   view
     row role="status" aria-label="Agent is typing" testId="agent-typing"
-      row position="relative" gap=5 align-items="center" padding="13px 14px" border-radius=25 background-color="#171717" border="0.5px solid #FFFFFF1A"
-        box position="absolute" left=-3 bottom=-3 width=12 height=12 border-radius=6 background-color="#171717"
-        box position="absolute" left=-6 bottom=-9 width=6 height=6 border-radius=3 background-color="#171717"
+      row position="relative" align-items="center" class=BubbleTypingSurface
+        box position="absolute" class=TypingTailLarge
+        box position="absolute" class=TypingTailSmall
         for i in [0, 1, 2] key=i
-          box width=8 height=8 border-radius=4 background-color="#A1A1A1" aria-hidden=true opacity=0.35 animation=(viewport.prefersReducedMotion ? "none" : `typingPulse 1300ms ease-in-out ${i * 150}ms infinite`)
+          box class=TypingDot aria-hidden=true animation=(viewport.prefersReducedMotion ? "none" : `typingPulse ${typingCycleMS()}ms ease-in-out ${i * typingStepMS()}ms infinite`)
 
 component ChatBubble
   props
@@ -206,17 +203,17 @@ component ChatBubble
     openMenu: action
     openReplies: action
   resource viewport = exactViewport() as shape BubbleViewport
-  derive maxSize = max(96, viewport.width - 94)
+  derive maxSize = max(96, viewport.width - bubbleGutter() - bubbleInset() * 2)
   view
-    column width="100%" align-items=(item.outgoing ? "flex-end" : "flex-start") gap=5 testId=`bubble-${item.id}`
+    column width="100%" align-items=(item.outgoing ? "flex-end" : "flex-start") class=BubbleMessageSpacing testId=`bubble-${item.id}`
       if item.parentID != ""
         column width="100%" align-items=(item.parentOutgoing ? "flex-end" : "flex-start")
-          button appearance="none" press=openReplies(item.parentID, item.scope) aria-label=`Reply to ${item.parentAuthor}: ${item.parentText}` max-width=maxSize text-align="left" padding=12 border-radius=18 background-color=(item.parentOutgoing ? "#0071E38C" : "#1717178C") testId=`quote-${item.id}`
-            column gap=2
-              text item.parentAuthor font="-exact-caption1" color="-exact-secondary-label"
-              text item.parentText font="-exact-subheadline" line-clamp=2 color="-exact-secondary-label"
-          box width=32 height=15 margin="0px 12px" border-left="2px solid #777777" border-bottom="2px solid #777777" border-bottom-left-radius=14
-      box id=`context-bubble-${item.id}` position="relative" max-width=maxSize box-sizing="border-box" opacity=(lifted ? 0 : 1) margin-top=(item.reaction == "" ? 0 : 34) tabindex=0 retainFocus=true contextmenu=openMenu(item.id) dblclick=openMenu(item.id) user-select="none" testId=`message-actions-${item.id}`
+          button appearance="none" press=openReplies(item.parentID, item.scope) aria-label=`Reply to ${item.parentAuthor}: ${item.parentText}` max-width=maxSize text-align="left" class=QuoteBubbleSurface background-color=quoteFill(item.parentOutgoing) testId=`quote-${item.id}`
+            column class=BubbleQuoteSpacing
+              text item.parentAuthor font="-exact-caption1" class=QuoteInk
+              text item.parentText font="-exact-subheadline" line-clamp=2 class=QuoteInk
+          box class=QuoteConnector
+      box id=`context-bubble-${item.id}` position="relative" max-width=maxSize box-sizing="border-box" opacity=(lifted ? 0 : 1) margin-top=(item.reaction == "" ? 0 : reactionClearance()) tabindex=0 retainFocus=true contextmenu=openMenu(item.id) dblclick=openMenu(item.id) user-select="none" testId=`message-actions-${item.id}`
         if item.kind == "photo"
           PhotoGalleryControl(chat=chat, scope=item.scope, photos=item.photos, identifier=item.id, tile=false)
         else
@@ -224,5 +221,5 @@ component ChatBubble
         if item.reaction != ""
           ReactionBadge(value=item.reaction, outgoing=item.outgoing)
       if item.replyCount > 0
-        button appearance="none" press=openReplies(item.id, item.scope) padding="0px 12px" font="-exact-caption1" color="#18A4ED" testId=`reply-count-${item.id}`
+        button appearance="none" press=openReplies(item.id, item.scope) class=BubbleReplyCount font="-exact-caption1" testId=`reply-count-${item.id}`
           text (item.replyCount == 1 ? "1 Reply" : `${item.replyCount} Replies`)

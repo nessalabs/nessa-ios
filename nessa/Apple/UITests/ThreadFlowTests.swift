@@ -14,7 +14,7 @@ final class ThreadFlowTests: XCTestCase {
       XCUIElement.ElementType.textField.rawValue, XCUIElement.ElementType.textView.rawValue
     )).firstMatch
     XCTAssertTrue(input.waitForExistence(timeout: 10))
-    input.tap()
+    app.tapComposer(input)
     let message = "hello there"
     app.typeOnComposerKeyboard(message)
     let entered = input.composerValue(matching: message)

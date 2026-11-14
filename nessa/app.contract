@@ -169,6 +169,8 @@ component Nessa
                     text "New chat"
             column position="absolute" inset=0 translate=`${offset}px 0px` border-radius=min(40, offset) overflow="hidden" background-color="#0A0A0A" transition=(viewport.prefersReducedMotion or travel != 0 ? "none" : "translate 280ms ease-out") inert=drawer
               canvas surface=horizon(screen == "home" and not viewport.prefersReducedMotion) position="absolute" inset=0 width="100%" height="100%" pointer-events="none" aria-hidden=true
+              if not phone.pairingNeeded
+                box position="absolute" left=0 right=0 bottom=0 height="calc(98px + env(safe-area-inset-bottom))" background-image="linear-gradient(180deg, rgba(10,10,10,0) 0%, rgba(10,10,10,0.85) 45%, #0A0A0A 100%)" aria-hidden=true pointer-events="none"
               column testId="page-home" position="absolute" inset=0 z-index=1 min-height=0 padding-top="calc(env(safe-area-inset-top) + 52px)" padding-bottom="calc(env(safe-area-inset-bottom) + 8px)"
                 column flex=1 justify-content="center" align-items="center" gap=16
                   text phone.greeting font-family="serif" font-size=30 role="heading" aria-level=1 testId="greeting"
@@ -186,9 +188,7 @@ component Nessa
                       progress aria-label="Reconnecting"
                       text "Reconnecting…"
                 if not phone.pairingNeeded
-                  column width="100%" position="relative" flex-shrink=0
-                    box position="absolute" top=-40 left=0 right=0 bottom="calc(-8px - env(safe-area-inset-bottom))" background-image="linear-gradient(180deg, rgba(10,10,10,0) 0%, rgba(10,10,10,0.85) 45%, #0A0A0A 100%)" aria-hidden=true pointer-events="none"
-                    PhoneComposer(visit=`${e.id}`, screen="home", target="", data=composerData, textValue=composerText, edit=composerEdit, command=composerAction, navigate=follow)
+                  PhoneComposer(visit=`${e.id}`, screen="home", target="", data=composerData, textValue=composerText, edit=composerEdit, command=composerAction, navigate=follow)
               row position="absolute" z-index=2 left=16 right=16 top="calc(env(safe-area-inset-top) + 8px)" justify-content="space-between"
                 button class=GlassButton press=toggle(true) aria-label="Open sidebar" testId="open-sidebar"
                   image "symbol:reorder"

@@ -29,7 +29,7 @@ final class NewConversationTests: XCTestCase {
       XCUIElement.ElementType.textField.rawValue, XCUIElement.ElementType.textView.rawValue))
     let input = fields.firstMatch
     XCTAssertTrue(input.waitForExistence(timeout: 15))
-    input.tap()
+    app.tapComposer(input)
     app.typeOnComposerKeyboard(message)
     let entered = input.composerValue(matching: message)
     let send = app.buttons["Send message"]

@@ -9,7 +9,7 @@ final class ComposerControlsTests: XCTestCase {
     XCTAssertTrue(input.waitForExistence(timeout: 20))
     let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == YES"), object: input)
     XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 15), .completed)
-    input.tap()
+    app.tapComposer(input)
     let first = "hello friend"
     app.typeOnComposerKeyboard(first)
     let entered = input.composerValue(matching: first)
@@ -21,7 +21,7 @@ final class ComposerControlsTests: XCTestCase {
     let transcribed = XCTNSPredicateExpectation(
       predicate: NSPredicate(format: "value == %@", "This is a mocked voice message."), object: input)
     XCTAssertEqual(XCTWaiter.wait(for: [transcribed], timeout: 10), .completed)
-    input.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.82)).tap()
+    app.tapComposer(input, at: CGVector(dx: 0.98, dy: 0.82))
     app.typeOnComposerKeyboard(" Edited.")
     let edited = input.composerValue(matching: "This is a mocked voice message. Edited.")
     app.buttons["Send message"].firstMatch.tap()
@@ -36,7 +36,7 @@ final class ComposerControlsTests: XCTestCase {
     let actions = app.buttons["Message actions"].firstMatch
     let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == YES"), object: actions)
     XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 15), .completed)
-    input.tap()
+    app.tapComposer(input)
     app.typeOnComposerKeyboard("Keep this draft")
     let draft = input.composerValue(matching: "Keep this draft")
     actions.tap()
