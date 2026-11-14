@@ -70,7 +70,6 @@ import UIKit
   let phone: ExactPhoneSession
   let chat: String
   let scope: Int
-  let dictation: DictationViewModel
   let composer = ComposerDraftViewModel()
   let autoFocus: Bool
   private(set) var sendSequence = 0
@@ -82,7 +81,6 @@ import UIKit
     chat = id
     scope = phone.messages.deliveryScopeRevision
     autoFocus = phone.focusChat == id
-    dictation = phone.dependencies.makeDictationViewModel()
     self.changed = changed
     phone.messages.objectWillChange.map { _ in () }
       .merge(with: composer.$reply.removeDuplicates().dropFirst().map { _ in () })

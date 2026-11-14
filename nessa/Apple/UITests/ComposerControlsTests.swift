@@ -10,7 +10,7 @@ final class ComposerControlsTests: XCTestCase {
     let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == YES"), object: input)
     XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 15), .completed)
     input.tap()
-    let first = "Exact composer first message"
+    let first = "hello friend"
     app.typeOnComposerKeyboard(first)
     let entered = input.composerValue(matching: first)
     app.buttons["Send message"].firstMatch.tap()

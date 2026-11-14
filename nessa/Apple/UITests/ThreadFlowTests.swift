@@ -15,7 +15,7 @@ final class ThreadFlowTests: XCTestCase {
     )).firstMatch
     XCTAssertTrue(input.waitForExistence(timeout: 10))
     input.tap()
-    let message = "Exact simulator delivery"
+    let message = "hello there"
     app.typeOnComposerKeyboard(message)
     let entered = input.composerValue(matching: message)
     app.buttons["Send message"].tap()

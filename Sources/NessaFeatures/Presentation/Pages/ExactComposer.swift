@@ -29,13 +29,15 @@ private struct ComposerAddress: Hashable {
     self.phone = phone
     self.threads = threads
     self.changed = changed
-    scopeObserver = phone.messages.$deliveryScopeRevision.removeDuplicates().dropFirst()
+    scopeObserver = phone.messages.$deliveryScopeRevision.removeDuplicates().dropFirst().receive(on: RunLoop.main)
       .sink { [weak self] _ in self?.invalidate() }
   }
 
   private func invalidate() {
-    for editor in editors.values { editor.finish() }
-    editors.removeAll()
+    for (address, editor) in editors where !editor.valid {
+      editor.finish()
+      editors.removeValue(forKey: address)
+    }
     changed()
   }
 
@@ -60,7 +62,7 @@ private struct ComposerAddress: Hashable {
 
   public func snapshot(visit: String, screen: String, key: String) -> [String: Any]? {
     guard let editor = editors[ComposerAddress(visit: visit, screen: screen, key: key)],
-      editor.valid else { return nil }
+      editor.valid else { return ["scope": String(phone.messages.deliveryScopeRevision)] }
     return editor.snapshot
   }
 
@@ -228,7 +230,7 @@ private struct ComposerAddress: Hashable {
     let files = draft.attachments.map { attachment in
       ["id": attachment.id.uuidString, "name": attachment.name, "image": attachment.isImage] as [String: Any]
     }
-    return ["token": token, "visit": visit, "screen": screen, "key": key, "text": draft.text, "seq": sequence,
+    return ["token": token, "scope": String(scope), "visit": visit, "screen": screen, "key": key, "text": draft.text, "seq": sequence,
       "placeholder": replying ? "Reply" : "Message " + name + (screen == "home" ? " or hold to talk" : ""),
       "reason": thread != nil ? store.submissionUnavailableReason(in: key) ?? "" : "",
       "role": draft.reply?.id ?? "", "autoFocus": replying || thread?.autoFocus == true,

@@ -48,6 +48,26 @@ import Testing
     #expect(phone.firstMessages[newChat] == nil)
   }
 
+  @Test func replacementScopeRemountsTheEditorAndRejectsThePreviousToken() async throws {
+    let phone = await connectedPhone()
+    let threads = ExactThreads(phone: phone, changed: {})
+    let composers = ExactComposers(phone: phone, threads: threads, changed: {})
+    let before = composers.present(visit: "0", screen: "home", key: "", navigate: { _ in })
+    let initial = try #require(composers.snapshot(visit: "0", screen: "home", key: ""))
+    let token = try #require(initial["token"] as? String)
+    let old: [String: Any] = ["visit": "0", "screen": "home", "key": "", "token": token,
+      "value": "previous gateway", "sequence": 1]
+    composers.edit(old)
+    await phone.messages.connect(address: "mock://development", credential: "replacement", instance: "composer-tests")
+    let replacement = try #require(composers.snapshot(visit: "0", screen: "home", key: ""))
+    #expect(replacement["scope"] as? String != initial["scope"] as? String)
+    #expect(replacement["token"] == nil)
+    let after = composers.present(visit: "0", screen: "home", key: "", navigate: { _ in })
+    composers.edit(old)
+    #expect(composers.snapshot(visit: "0", screen: "home", key: "")?["text"] as? String == "")
+    withExtendedLifetime((before, after)) {}
+  }
+
   @Test func filePolicyRemovalAndUnmountKeepStaleControlsFromChangingTheDraft() async throws {
     let phone = await connectedPhone()
     let editor = ExactComposerDraft(phone: phone, visit: "1", screen: "home", key: "",
