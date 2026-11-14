@@ -1,31 +1,47 @@
 import ExactGroupedLists
-import ExactMarkdown
 import ExactKit
-import SwiftUI
+import ExactMarkdown
+import ExactSurfaces
+import UIKit
 
 @main
-struct NessaExactApp: App {
-  init() {
+final class NessaExactApp: UIResponder, UIApplicationDelegate {
+  func application(_ application: UIApplication,
+    didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
     ExactGroupedLists.install()
     ExactMarkdown.install()
+    ExactSurfaces.install()
+    return true
   }
 
-  var body: some Scene {
-    WindowGroup {
-      PhoneView().ignoresSafeArea().preferredColorScheme(.dark)
-    }
+  func application(_ application: UIApplication, configurationForConnecting session: UISceneSession,
+    options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+    let configuration = UISceneConfiguration(name: nil, sessionRole: session.role)
+    configuration.delegateClass = PhoneScene.self
+    return configuration
   }
 }
 
-private struct PhoneView: UIViewRepresentable {
-  func makeUIView(context: Context) -> ExactView {
-    let session = ExactApp.shared.makeSession(label: "Nessa")
-    return ExactView(session: session)
+final class PhoneScene: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+  private var content: ExactView?
+
+  func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options: UIScene.ConnectionOptions) {
+    guard let scene = scene as? UIWindowScene else { return }
+    let window = UIWindow(windowScene: scene)
+    window.overrideUserInterfaceStyle = .dark
+    let content = ExactView(session: ExactApp.shared.makeSession(label: "Nessa"))
+    let controller = UIViewController()
+    controller.view = content
+    window.rootViewController = controller
+    self.content = content
+    self.window = window
+    window.makeKeyAndVisible()
   }
 
-  func updateUIView(_ view: ExactView, context: Context) {}
-
-  static func dismantleUIView(_ view: ExactView, coordinator: ()) {
-    view.session.destroy()
+  func sceneDidDisconnect(_ scene: UIScene) {
+    content?.session.destroy()
+    content = nil
+    window = nil
   }
 }

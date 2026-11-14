@@ -20,7 +20,8 @@ targets:
     platform: iOS
     sources:
       - PhoneModule.swift
-      - PhoneArtwork.swift
+      - ExactBubblePhoto.swift
+      - ExactComposerPhoto.swift
       - ../.exact/apple-module
     dependencies:
       - package: Nessa
@@ -43,6 +44,8 @@ targets:
         product: ExactGroupedLists
       - package: Exact
         product: ExactMarkdown
+      - package: Exact
+        product: ExactSurfaces
       - target: ExactModules
         embed: true
       - framework: ../../Vendor/NessaNative/NessaDeviceClient.xcframework
@@ -50,7 +53,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.nessa.mobile
-        INFOPLIST_FILE: ../../App/Nessa/Info.plist
+        INFOPLIST_FILE: Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
   PhoneUITests:

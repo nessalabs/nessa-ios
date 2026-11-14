@@ -1,0 +1,179 @@
+shape ComposerResult
+  done: bool
+shape ComposerFile
+  id: string
+  name: string
+  image: bool
+shape ComposerRecovery
+  id: string
+  key: string
+  title: string
+  check: bool
+  retry: bool
+  reconnect: bool
+  busy: bool
+  enabled: bool
+shape ComposerData
+  token: string
+  visit: string
+  screen: string
+  key: string
+  text: string
+  seq: number
+  placeholder: string
+  reason: string
+  role: string
+  autoFocus: bool
+  sendable: bool
+  attachable: bool
+  sending: bool
+  preparing: bool
+  listening: bool
+  finishing: bool
+  running: string
+  canStop: bool
+  errorTitle: string
+  error: string
+  files: ComposerFile[]
+  recovery: ComposerRecovery[]
+
+component PhoneComposer
+  props
+    visit: string
+    screen: string
+    target: string
+    data: ComposerData
+    textValue: string
+    edit: action
+    command: action
+    navigate: action
+  derive current = data.visit == visit and data.screen == screen and data.key == target and data.token != ""
+  derive value = current ? textValue : ""
+  derive hasDraft = value.trim() != "" or data.files.length > 0
+  action choose(kind: string)
+    hidePopover(`input-menu-${visit}`)
+    command(visit, data.token, kind, "")
+  action submit
+    if screen != "chat"
+      blur(`input-field-${visit}`)
+    command(visit, data.token, "send", value)
+  view
+    column width="100%" flex-shrink=0 min-height=48 gap=6 padding="0px 20px 6px" box-sizing="border-box" testId=`compose-${visit}`
+      nessa-composer-session visit=visit screen=screen targetKey=target message=navigate aria-hidden=true position="absolute" width=1 height=1 pointer-events="none"
+      if current
+        for row in data.recovery key=row.id
+          row gap=8 align-items="center" min-height=32
+            image "symbol:sf/clock" aria-hidden=true
+            text row.title font="-exact-caption1" flex=1
+            if row.busy
+              progress aria-label="Checking delivery"
+            if row.reconnect
+              button press=command(visit, data.token, "reconnect", "") disabled=(not row.enabled)
+                text "Reconnect"
+            if row.check
+              button press=command(visit, data.token, "check", row.key) disabled=(not row.enabled)
+                text "Check"
+            if row.retry
+              button press=command(visit, data.token, row.check ? "retry" : "retryDelivery", row.key) disabled=(not row.enabled)
+                text "Retry"
+        if data.reason != ""
+          text data.reason font="-exact-caption1" color="-exact-secondary-label"
+        if data.files.length > 0
+          scroll overflow-x="auto" overflow-y="hidden" width="100%" testId="draft-attachments"
+            row gap=10
+              for attachment in data.files key=attachment.id
+                row align-items="center" gap=6 padding=4 border-radius=12 background-color="-exact-secondary-background"
+                  if attachment.image
+                    DraftPhoto(token=data.token, item=attachment.id)
+                  else
+                    image "symbol:document" aria-hidden=true
+                    text attachment.name line-clamp=1 max-width=160 font="-exact-caption1"
+                  button buttonStyle="glass" width=32 height=32 aria-label=`Remove ${attachment.name}` press=command(visit, data.token, "remove", attachment.id) disabled=data.sending testId=`remove-${attachment.id}`
+                    image "symbol:close"
+      row align-items="flex-end" gap=10
+        button buttonStyle="glass" popovertarget=`input-menu-${visit}` aria-label="Message actions" disabled=(not current or not data.attachable) width=44 height=44 testId=`input-actions-${visit}`
+          image "symbol:add"
+        column popover="auto" id=`input-menu-${visit}` role="menu" aria-label="Message actions"
+          button role="menuitem" press=choose("camera")
+            image "symbol:camera"
+            text "Camera"
+          button role="menuitem" press=choose("photos")
+            image "symbol:photo"
+            text "Photos"
+          button role="menuitem" press=choose("files")
+            image "symbol:document"
+            text "Add Files"
+        row flex=1 min-width=0 min-height=44 padding="0px 8px 0px 14px" box-sizing="border-box" align-items="flex-end" gap=6 border-radius=23 background-color="-exact-secondary-background" border-width=1 border-style="solid" border-color=(current and data.running != "" ? "-exact-system-blue" : "-exact-separator")
+          textarea appearance="none" id=`input-field-${visit}` testId="message-input" aria-label=(current ? data.placeholder : "Message") placeholder=(current ? data.placeholder : "Message") value=value input=edit(visit, data.token) disabled=(not current or data.listening) field-sizing="content" min-height=42 max-height=152 flex=1 min-width=0 padding="10px 0px" box-sizing="border-box" border-width=0 background-color="transparent" font="-exact-body"
+          if current and (data.preparing or data.finishing)
+            progress aria-label=(data.preparing ? "Preparing photos" : "Finishing dictation") width=36 height=42
+          else if current and not data.listening and hasDraft
+            button buttonStyle="bordered-prominent" press=submit disabled=(not data.sendable) aria-label="Send message" width=36 height=36 margin-bottom=3 testId="composer-send"
+              image "symbol:send"
+          else if current and not data.listening and data.running != ""
+            button buttonStyle="bordered" press=command(visit, data.token, "stop", data.running) disabled=(not data.canStop) aria-label="Stop" width=36 height=36 margin-bottom=3 testId="composer-stop"
+              image "symbol:stop-fill"
+          else
+            button appearance="none" press=command(visit, data.token, "dictate", "") disabled=(not current or data.sending) aria-label=(current and data.listening ? "Stop dictation" : "Dictate message") width=36 height=42 testId="composer-dictate"
+              image (current and data.listening ? "symbol:sf/stop.circle.fill" : "symbol:waveform")
+
+component ComposerError
+  props
+    data: ComposerData
+    clear: action
+  view
+    dialog id="composer-error" role="alertdialog" aria-label=data.errorTitle close=clear
+      text data.errorTitle role="heading" aria-level=2
+      text data.error
+      button command="close" commandfor="composer-error"
+        text "OK"
+
+
+component DraftPhoto
+  props
+    token: string
+    item: string
+  state opened = false
+  state zoom = 1
+  state dx = 0
+  state dy = 0
+  state portW = 0
+  state portH = 0
+  derive viewer = `draft-photo-${item}`
+  action present
+    opened = true
+    zoom = 1
+    dx = 0
+    dy = 0
+    showModal(viewer)
+  action dismissed
+    opened = false
+  action doubleZoom
+    zoom = zoom == 1 ? 2 : 1
+    dx = 0
+    dy = 0
+  action measurePort(bw: number, bh: number, pw: number, ph: number)
+    portW = pw
+    portH = ph
+  action settle(x: number, y: number, factor: number, vx: number, vy: number, vz: number)
+    let z = min(4, max(1, factor))
+    let ex = portW * (z - 1) / 2
+    let ey = portH * (z - 1) / 2
+    zoom = z
+    dx = min(ex, max(-ex, x))
+    dy = min(ey, max(-ey, y))
+  view
+    box width=96 height=76
+      button appearance="none" width="100%" height="100%" overflow="hidden" border-radius=12 press=present aria-label="Photo attachment. Open full screen"
+        nessa-draft-photo editorKey=token attachmentID=item photoMode="tile" width="100%" height="100%" pointer-events="none" aria-hidden=true
+      dialog id=viewer aria-label="Photo" close=dismissed padding=0 width="100%" height="100%"
+        if opened
+          column width="100%" height="100%" padding-top="env(safe-area-inset-top)" padding-bottom="env(safe-area-inset-bottom)" background-color="-exact-background"
+            row align-items="center" padding="0px 16px" min-height=44
+              text "Photo" font="-exact-headline" flex=1
+              button command="close" commandfor=viewer aria-label="Done"
+                text "Done"
+            box position="relative" flex=1 min-height=0 overflow="hidden"
+              box id=`draft-zoom-${item}` position="absolute" inset=0 scale=zoom translate=`${dx}px ${dy}px`
+                nessa-draft-photo editorKey=token attachmentID=item photoMode="preview" width="100%" height="100%" aria-label="Photo"
+              box transformDragFor=`draft-zoom-${item}` transformgeometry=measurePort transformrelease=settle dblclick=doubleZoom touch-action="none" position="absolute" inset=0 aria-label="Zoom or pan photo"

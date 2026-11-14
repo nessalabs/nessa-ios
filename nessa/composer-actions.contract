@@ -1,0 +1,35 @@
+use ComposerResult, ComposerData from "./composer.contract"
+
+members Nessa
+  derive composerVisit = `${top(nav).id}`
+  resource composerData = composerSnapshot(composerVisit, top(nav).name, top(nav).params.key) as shape ComposerData else empty()
+  state editSequence = 0
+  state editToken = ""
+  state editedText = ""
+  derive composerText = editToken == composerData.token and editSequence > composerData.seq ? editedText : composerData.text
+  mutation composerChange as shape ComposerResult
+  action composerEdit(visit: string, token: string, value: string)
+    if visit == composerVisit and token != "" and token == composerData.token
+      let next = max(editSequence, composerData.seq) + 1
+      editSequence = next
+      editToken = token
+      editedText = value
+      send composerChange = composerCommand(visit, composerData.screen, composerData.key, token, "edit", value, next)
+  action composerAction(visit: string, token: string, op: string, value: string)
+    if visit == composerVisit and token != "" and token == composerData.token
+      let next = max(editSequence, composerData.seq) + (op == "send" ? 1 : 0)
+      if op == "send"
+        editSequence = next
+        editToken = token
+        editedText = value
+      send composerChange = composerCommand(visit, composerData.screen, composerData.key, token, op, value, next)
+  task focusInput when composerData.visit == composerVisit and composerData.autoFocus key=`${composerData.token}-${composerData.role}`
+    after(1, focusActiveInput)
+  action focusActiveInput
+    focus(`input-field-${composerVisit}`)
+  task showInputError when composerData.visit == composerVisit and composerData.error != "" key=`${composerData.token}-${composerData.error}`
+    after(1, openInputError)
+  action openInputError
+    showModal("composer-error")
+  action clearInputError
+    composerAction(composerVisit, composerData.token, "clearError", "")

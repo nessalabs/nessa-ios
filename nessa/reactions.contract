@@ -1,0 +1,152 @@
+use ThreadItem, BubblePreview from "./bubbles.contract"
+
+shape ReactionViewport
+  width: number
+  height: number
+  prefersReducedMotion: bool
+
+keyframes reactionReveal
+  from opacity=0 scale=0.88
+  to opacity=1 scale=1
+
+style ReactionAction
+  appearance="none" display="flex" flex-direction="row" align-items="center" gap=14 padding="0px 16px" width="100%" height=52 text-align="left" font="-exact-body"
+
+component ReactionButton
+  props
+    emoji: string
+    reaction: string
+    choose: action
+    track: action
+  view
+    button id=`reaction-glyph-${emoji}` focus=track(`reaction-glyph-${emoji}`) appearance="none" press=choose("react", emoji) aria-pressed=(emoji == reaction) aria-label=(emoji == reaction ? `Remove ${emoji} reaction` : `React ${emoji}`) testId=`reaction-${emoji}` width=44 height=44 flex-shrink=0 border-radius=22 background-color=(emoji == reaction ? "AccentColor" : "transparent") display="flex" align-items="center" justify-content="center"
+      if emoji == "❤️"
+        image "symbol:heart-fill" font-size=28 color="light-dark(#FA3A96, #FA3A96)" aria-hidden=true
+      else if emoji == "😂"
+        text "HA\nHA" font-size=13 line-height="12px" font-weight=900 white-space="pre" text-align="center" color="light-dark(#009DEB, #79E8FF)" aria-hidden=true
+      else if emoji == "‼️" or emoji == "❓"
+        text (emoji == "‼️" ? "!!" : "?") font-weight=900 font-size=27 color=(emoji == "‼️" ? "light-dark(#FF4138, #FFAD96)" : "light-dark(#9761D8, #D8B1FF)") aria-hidden=true
+      else
+        text emoji font-size=26 aria-hidden=true
+
+component ReactionMenu
+  props
+    item: ThreadItem
+    chat: string
+    rectX: number
+    rectY: number
+    rectWidth: number
+    rectHeight: number
+    dismiss: action
+    perform: action
+  resource viewport = exactViewport() as shape ReactionViewport
+  state picker = false
+  state placed = false
+  state focused = "reaction-reply"
+  state more = false
+  derive favorites = ["❤️", "👍", "👎", "😂", "‼️", "❓", "💀", "😁"]
+  derive extras = ["😊", "🎉", "🔥", "👀", "🙏", "✅", "🤔", "🥰", "😮", "😢", "🙌", "💯", "💙", "⭐️", "🚀", "🤝", "😅", "💪", "😭", "😎", "✨", "🫶", "🤯"]
+  derive paletteControls = (picker ? favorites.concat(extras) : favorites).map(emoji => `reaction-glyph-${emoji}`)
+  derive textButtons = item.kind == "text" ? [more ? "reaction-share" : "reaction-copy"] : []
+  derive moreButtons = more ? (item.reaction == "" ? [] : ["reaction-remove"]) : (hasMore ? ["reaction-more"] : [])
+  derive controls = picker ? ["back", "reaction-done"].concat(paletteControls) : ["back"].concat(paletteControls).concat(["reaction-picker", more ? "reaction-menu-back" : "reaction-reply"]).concat(textButtons).concat(moreButtons)
+  derive width = min(max(1, viewport.width - 32), max(44, rectWidth))
+  derive hasMore = item.kind == "text" or item.reaction != ""
+  derive buttons = more ? (1 + (item.kind == "text" ? 1 : 0) + (item.reaction == "" ? 0 : 1)) : (1 + (item.kind == "text" ? 1 : 0) + (hasMore ? 1 : 0))
+  derive height = min(max(40, rectHeight), min(640, max(44, viewport.height - 112 - 76 - 52 * buttons)))
+  derive top = max(12, min(max(rectY, 144), viewport.height - 36 - height - 16 - 52 * buttons))
+  derive left = min(max(16, rectX), max(16, viewport.width - 16 - width))
+  derive paletteWidth = min(400, max(54, 50 * floor((viewport.width - 36) / 50) + 4))
+  derive aligned = item.outgoing ? max(16, viewport.width - 16 - 240) : 16
+  derive selector = item.outgoing ? max(8, left - 52) : min(viewport.width - 52, left + width + 8)
+  derive shifting = max(top - rectY, rectY - top) > 2
+  derive reveal = viewport.prefersReducedMotion ? "none" : (shifting ? "reactionReveal 200ms ease-out 200ms backwards" : "reactionReveal 200ms ease-out")
+  action place(w: number, h: number)
+    if w > 0 and h > 0
+      placed = true
+  action track(id: string)
+    focused = id
+  action showPicker
+    picker = true
+    more = false
+    showModal("reaction-sheet")
+    focus("reaction-done")
+  action openMore
+    more = true
+    focus("reaction-menu-back")
+  action completePicker
+    close("reaction-sheet")
+    dismiss()
+  action pickEmoji(op: string, glyph: string)
+    perform(op, glyph)
+    close("reaction-sheet")
+  action back
+    if picker
+      completePicker()
+    else if more
+      more = false
+      focus("reaction-more")
+    else
+      dismiss()
+  action escape(key: string, event: KeyboardEvent)
+    if key == "Tab"
+      if controls.length > 0
+        let index = controls.indexOf(focused)
+        let next = event.shiftKey ? (index <= 0 ? controls.length - 1 : index - 1) : (index + 1) % controls.length
+        match controls.at(next)
+          case some(target)
+            focus(target)
+            preventDefault()
+          case none
+            preventDefault()
+    if key == "Escape"
+      back()
+      preventDefault()
+  view
+    column id="reaction-dialog" role="dialog" aria-modal=true aria-label=(picker ? "Choose a reaction" : "Message actions") testId="thread-context" position="absolute" inset=0 z-index=5 keycapture=escape resize=place
+      button id="back" focus=track("back") appearance="none" aria-label="Dismiss message actions" testId="reaction-dismiss" press=back position="absolute" inset=0 width="100%" height="100%" background-color="light-dark(#0000008c, #0000008c)"
+      if not picker
+        box position="absolute" left=left top=top width=width height=height translate=(placed or viewport.prefersReducedMotion ? "0px 0px" : `0px ${rectY - top}px`) transition=(viewport.prefersReducedMotion ? "none" : "translate 200ms ease-out") pointer-events="none" aria-hidden=true overflow="hidden"
+          BubblePreview(item=item, chat=chat)
+        scroll position="absolute" top=max(0, top - 72) left=(item.outgoing ? viewport.width - 16 - paletteWidth : 16) width=paletteWidth height=64 overflow-x="scroll" overflow-y="hidden" scrollbar-width="none" border-radius=32 background-color="-exact-secondary-background" backgroundMaterial="glass" animation=reveal
+          row height=64 padding="0px 8px" align-items="center" gap=6
+            for emoji in favorites key=emoji
+              ReactionButton(emoji=emoji, reaction=item.reaction, choose=perform, track=track)
+        button appearance="none" press=showPicker aria-label="More emoji reactions" id="reaction-picker" focus=track("reaction-picker") testId="reaction-picker" position="absolute" left=selector top=top width=44 height=44 border-radius=22 background-color="-exact-secondary-background" animation=reveal
+          image "symbol:sf/face.smiling.fill" color="-exact-secondary-label" font-size=25
+        column position="absolute" left=aligned top=(top + height + 16) width=min(240, viewport.width - 32) max-height=max(52, viewport.height - top - height - 20) overflow-y="scroll" border-radius=24 background-color="-exact-secondary-background" backgroundMaterial="regular" animation=reveal
+          if more
+            button id="reaction-menu-back" focus=track("reaction-menu-back") class=ReactionAction press=back aria-label="Back to message actions"
+              image "symbol:back"
+              text "Back"
+            if item.kind == "text"
+              button class=ReactionAction press=perform("share", "") id="reaction-share" focus=track("reaction-share") testId="reaction-share"
+                image "symbol:share"
+                text "Share"
+            if item.reaction != ""
+              button class=ReactionAction press=perform("remove", item.reaction) id="reaction-remove" focus=track("reaction-remove") testId="reaction-remove"
+                image "symbol:minus-circle"
+                text "Remove reaction"
+          else
+            button id="reaction-reply" focus=track("reaction-reply") class=ReactionAction press=perform("reply", "") testId="reaction-reply"
+              image "symbol:sf/arrowshape.turn.up.left"
+              text "Reply"
+            if item.kind == "text"
+              button class=ReactionAction press=perform("copy", "") id="reaction-copy" focus=track("reaction-copy") testId="reaction-copy"
+                image "symbol:copy"
+                text "Copy"
+            if hasMore
+              button id="reaction-more" focus=track("reaction-more") class=ReactionAction press=openMore testId="reaction-more"
+                image "symbol:more"
+                text "More…"
+      dialog id="reaction-sheet" aria-label="Choose a reaction" close=dismiss padding=0 width="100%" max-width=600 background-color="-exact-secondary-background"
+        if picker
+          column max-height="80vh" padding="16px 16px calc(16px + env(safe-area-inset-bottom))"
+            row min-height=44 align-items="center"
+              text "Choose a reaction" role="heading" aria-level=2 font="-exact-headline" flex=1
+              button id="reaction-done" focus=track("reaction-done") press=completePicker testId="reaction-done" min-width=50 min-height=44
+                text "Done"
+            scroll min-height=0 overflow-y="scroll"
+              box display="grid" grid-template-columns="repeat(6, minmax(0, 1fr))" gap=4
+                for emoji in favorites.concat(extras) key=emoji
+                  ReactionButton(emoji=emoji, reaction=item.reaction, choose=pickEmoji, track=track)
