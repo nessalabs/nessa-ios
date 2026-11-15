@@ -4,7 +4,9 @@ cd "$(dirname "$0")/.."
 case "${1:---check}" in --check|--write) ;; *) echo "Use --check or --write" >&2; exit 2 ;; esac
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-xcrun swiftc -parse-as-library Sources/NessaDesignSystem/*.swift nessa/tools/export-bubble-style.swift -o "$tmp/export"
+xcrun swiftc -parse-as-library \
+  Sources/NessaDesignSystem/DesignTokens.swift Sources/NessaDesignSystem/MessageBubbleTokens.swift \
+  nessa/tools/export-bubble-style.swift -o "$tmp/export"
 "$tmp/export" > "$tmp/bubble-style.contract"
 if [[ "${1:---check}" == --write ]]; then
   cp "$tmp/bubble-style.contract" nessa/bubble-style.contract

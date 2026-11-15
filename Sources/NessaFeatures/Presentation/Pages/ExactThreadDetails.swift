@@ -34,4 +34,30 @@ extension ExactPhoneSession {
       "loaded": view != nil, "error": view?.interactionViewError ?? "", "artifacts": artifacts, "activity": activity]
   }
 }
+
+/// What a row in the activity timeline is doing, in words a person reads.
+private enum AgentActivityState: Equatable {
+  case working, done, failed, requested, other(String)
+  init(status: String, failed: Bool) {
+    if failed {
+      self = .failed
+    } else {
+      switch status {
+      case "running": self = .working
+      case "completed", "complete", "done", "succeeded": self = .done
+      case "failed", "error", "errored": self = .failed
+      default: self = .other(status.capitalized)
+      }
+    }
+  }
+  var label: String {
+    switch self {
+    case .working: "Working"
+    case .done: "Done"
+    case .failed: "Failed"
+    case .requested: "Access requested"
+    case .other(let text): text
+    }
+  }
+}
 #endif

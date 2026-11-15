@@ -13,7 +13,7 @@ let package = Package(
     targets: [
         .target(name: "NessaDesignSystem"),
         .target(name: "NessaFeatures", dependencies: [
-            "NessaDesignSystem", .product(name: "NessaNative", package: "NessaNative")
+            .product(name: "NessaNative", package: "NessaNative")
         ]),
         .testTarget(name: "NessaFeaturesTests", dependencies: ["NessaFeatures"]),
         .executableTarget(name: "PhoneSyncVerification", dependencies: ["NessaFeatures"],

@@ -19,8 +19,8 @@ diagramLinks: {}
 
 # Run the app and understand its adapters
 
-Open `App/Nessa.xcodeproj`, choose the Nessa scheme and an iPhone simulator for
-an app build. The Swift package also builds on macOS for local tests and the
+For current setup and launch instructions, see [Run the Exact iPhone app](../../README.md#run-the-exact-iphone-app).
+The SwiftUI project named in this page's source checkpoint has been retired. The Swift package also builds on macOS for local tests and the
 PhoneSyncVerification executable. These are different targets; macOS tests do
 not render the iPhone app.
 
