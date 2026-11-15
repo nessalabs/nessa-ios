@@ -148,3 +148,17 @@ import Foundation
     }
   }
 }
+
+extension DesktopLinkPhase {
+  var screenKey: String {
+    switch self {
+    case .idle: return "idle"
+    case .finding: return "finding"
+    case .choosing: return "choosing"
+    case .enrolling: return "enrolling"
+    case .approving: return "approving"
+    case .linked: return "linked"
+    case .failed: return "failed"
+    }
+  }
+}

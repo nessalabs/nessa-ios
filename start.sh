@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT="$ROOT/App/Nessa.xcodeproj"
 SCHEME="Nessa"
 APP_BUNDLE_ID="app.nessa.mobile"
+DERIVED_DATA="$ROOT/DerivedData"
 
 find_xcode_developer_dir() {
   local candidates=()
@@ -86,30 +86,12 @@ xcrun simctl boot "$destination_id" >/dev/null 2>&1 || true
 open "$DEVELOPER_DIR/Applications/Simulator.app"
 xcrun simctl bootstatus "$destination_id" -b
 
-xcodebuild \
-  -project "$PROJECT" \
-  -scheme "$SCHEME" \
-  -resolvePackageDependencies
+NESSA_DERIVED_DATA="$DERIVED_DATA" NESSA_XCODE_DESTINATION="id=$destination_id" \
+  "$ROOT/nessa/tools/build-ios.sh" simulator Debug
 
-xcodebuild \
-  -project "$PROJECT" \
-  -scheme "$SCHEME" \
-  -destination "id=$destination_id" \
-  -configuration Debug \
-  -derivedDataPath "$ROOT/DerivedData" \
-  build
-
-app_path="$(
-  find "$ROOT/DerivedData/Build/Products/Debug-iphonesimulator" \
-    -maxdepth 1 \
-    -name "$SCHEME.app" \
-    -type d \
-    -print \
-    -quit
-)"
-
-if [[ -z "$app_path" ]]; then
-  echo "Built app was not found under DerivedData." >&2
+app_path="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/$SCHEME.app"
+if [[ ! -d "$app_path" ]]; then
+  echo "Built app was not found at $app_path." >&2
   exit 1
 fi
 

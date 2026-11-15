@@ -65,8 +65,13 @@ are external boundaries; this atlas does not claim to execute or prove them.
 
 ## Which app is being described?
 
-The source checkpoint is this repository's exact revision, not the vendored Rust
-package's source revision. Debug launches use sample data unless `NESSA_MODE=live`
+The source paths and verification results in this atlas are pinned to the
+[`sourceRevision` checkpoint](https://github.com/nessalabs/nessa-ios/tree/8a027f07ecc1b27fb63502852648cb467e308720).
+Paths to the former SwiftUI screens refer to that revision. For the current Exact
+app and its launch commands, see the [project README](../../README.md). Current
+navigation lives in [app.contract](../../nessa/app.contract), message composition in
+[composer.contract](../../nessa/composer.contract), and transcript interactions in
+[thread.contract](../../nessa/thread.contract). Debug launches use sample data unless `NESSA_MODE=live`
 is set. Release uses live adapters. [Composition and development](development.md)
 explains those choices and the native package pin.
 
