@@ -30,7 +30,7 @@ extension ExactPhoneSession {
     return ["chat": chat, "name": messages.agentName(for: chat), "description": profile?.description ?? "",
       "model": model ?? "", "working": view?.messages.contains { $0.status == "running" } == true,
       "prompt": prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : prompt,
-      "accessReported": profile?.grantedAccess != nil, "access": access, "recent": view?.truncated ?? false,
+      "accessReported": profile?.grantedAccess != nil, "access": access, "recent": view?.hasUndisplayedContent ?? false,
       "loaded": view != nil, "error": view?.interactionViewError ?? "", "artifacts": artifacts, "activity": activity]
   }
 }

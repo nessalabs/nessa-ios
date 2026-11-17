@@ -27,6 +27,9 @@ public struct NessaConversationView: Codable, Sendable, Equatable {
   /// review not read yet, or answered between the two reads, is not here.
   public var permissions: [NessaPermission]
   public let truncated: Bool
+  /// Older turns exist beyond this view; the phone does not page them yet.
+  public let earlier: Bool
+  public var hasUndisplayedContent: Bool { truncated || earlier }
   public let interactionViewError: String?
   public let runtime: NessaRuntime?
 
@@ -35,20 +38,21 @@ public struct NessaConversationView: Codable, Sendable, Equatable {
   public init(
     conversationId: String, messages: [NessaTurn], permissions: [NessaPermission],
     truncated: Bool, interactionViewError: String?, runtime: NessaRuntime?,
-    reviews: [NessaReviewEntry]? = nil
+    reviews: [NessaReviewEntry]? = nil, earlier: Bool = false
   ) {
     self.conversationId = conversationId
     self.messages = messages
     self.reviews = reviews ?? permissions.map(NessaReviewEntry.init)
     self.permissions = permissions
     self.truncated = truncated
+    self.earlier = earlier
     self.interactionViewError = interactionViewError
     self.runtime = runtime
   }
 
   /// The gateway's `permissions` are the review entries; nothing it sends is a full review.
   private enum CodingKeys: String, CodingKey {
-    case conversationId, messages, reviews = "permissions", truncated, interactionViewError,
+    case conversationId, messages, reviews = "permissions", truncated, earlier, interactionViewError,
       runtime
   }
   public init(from decoder: any Decoder) throws {
@@ -58,6 +62,7 @@ public struct NessaConversationView: Codable, Sendable, Equatable {
     reviews = try container.decode([NessaReviewEntry].self, forKey: .reviews)
     permissions = []
     truncated = try container.decode(Bool.self, forKey: .truncated)
+    earlier = try container.decodeIfPresent(Bool.self, forKey: .earlier) ?? false
     interactionViewError = try container.decodeIfPresent(
       String.self, forKey: .interactionViewError)
     runtime = try container.decodeIfPresent(NessaRuntime.self, forKey: .runtime)
@@ -70,6 +75,7 @@ public struct NessaConversationView: Codable, Sendable, Equatable {
     try container.encode(messages, forKey: .messages)
     try container.encode(reviews, forKey: .reviews)
     try container.encode(truncated, forKey: .truncated)
+    try container.encode(earlier, forKey: .earlier)
     try container.encodeIfPresent(interactionViewError, forKey: .interactionViewError)
     try container.encodeIfPresent(runtime, forKey: .runtime)
   }
