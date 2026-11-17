@@ -157,7 +157,7 @@ import UIKit
     return ["chat": chat, "scope": scope, "name": store.agentName(for: chat), "rows": rows, "reviews": cards,
       "connected": store.connected, "working": turns.contains { $0.status == "running" },
       "empty": view?.messages.isEmpty == true && selected == nil,
-      "recent": view?.truncated == true && selected == nil,
+      "recent": view?.hasUndisplayedContent == true && selected == nil,
       "error": selected == nil ? view?.interactionViewError ?? "" : "",
       "reply": selected?.id ?? "", "sent": sendSequence]
   }

@@ -252,7 +252,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
     threads[conversationID] = NessaConversationView(
       conversationId: conversationID, messages: current.messages + [turn],
       permissions: current.permissions, truncated: false, interactionViewError: nil,
-      runtime: current.runtime)
+      runtime: current.runtime, earlier: current.earlier)
     let title = summaries.first { $0.id == conversationID }?.title
     let channel = summaries.first { $0.id == conversationID }?.channelId
     summaries.removeAll { $0.id == conversationID }
@@ -287,7 +287,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
       threads[conversationID] = NessaConversationView(
         conversationId: conversationID,
         messages: messages, permissions: thread.permissions, truncated: thread.truncated,
-        interactionViewError: nil, runtime: thread.runtime)
+        interactionViewError: nil, runtime: thread.runtime, earlier: thread.earlier)
       summaries = summaries.map { summary in
         guard summary.id == conversationID else { return summary }
         return NessaConversation(
@@ -315,7 +315,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
     threads[conversationID] = NessaConversationView(
       conversationId: conversationID, messages: current.messages,
       permissions: current.permissions.filter { $0.id != permission.id }, truncated: false,
-      interactionViewError: nil, runtime: current.runtime)
+      interactionViewError: nil, runtime: current.runtime, earlier: current.earlier)
     changed(conversationID)
   }
   /// The one review the development fixture waits on, so the Agents view's card can be seen
