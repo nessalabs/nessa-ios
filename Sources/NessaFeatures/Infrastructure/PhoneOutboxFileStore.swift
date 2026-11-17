@@ -2,70 +2,63 @@ import Foundation
 
 /// One file for typed sends and one for Stop. A failed write leaves the previous file in place.
 actor PhoneOutboxFileStore: PhoneOutboxStoring {
+  // Scope reactivation can leave multiple actors owning the same file. Serialize the
+  // entire fresh-read/CAS/write transaction, not just each actor's cached snapshot.
+  // No suspension or external callback occurs while this in-process lock is held.
+  private static let transactions = NSLock()
   private let file: URL
-  private var records: [PhoneOutboxRecord] = []
-  private var loaded = false
   init(directory: URL) {
     file = directory.appendingPathComponent("sends.json")
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
   }
   func load(_ id: String) async throws -> PhoneOutboxRecord? {
-    try read()
-    return records.first { $0.intent.commandID == id }
+    try Self.transactions.withLock { try read().first { $0.intent.commandID == id } }
   }
   func insert(_ record: PhoneOutboxRecord) async throws {
-    try read()
-    guard !records.contains(where: { $0.intent.commandID == record.intent.commandID }) else {
-      throw PhoneOutboxStoreFailure.conflict
+    try Self.transactions.withLock {
+      var records = try read()
+      guard !records.contains(where: { $0.intent.commandID == record.intent.commandID }) else {
+        throw PhoneOutboxStoreFailure.conflict
+      }
+      records.append(record)
+      try write(records)
     }
-    var next = records
-    next.append(record)
-    try write(next)
-    records = next
   }
   func replace(_ previous: PhoneOutboxRecord, with next: PhoneOutboxRecord) async throws {
-    try read()
-    guard let index = records.firstIndex(where: { $0 == previous }) else {
-      throw PhoneOutboxStoreFailure.conflict
+    try Self.transactions.withLock {
+      var records = try read()
+      guard let index = records.firstIndex(where: { $0 == previous }) else {
+        throw PhoneOutboxStoreFailure.conflict
+      }
+      records[index] = next
+      try write(records)
     }
-    var updated = records
-    updated[index] = next
-    try write(updated)
-    records = updated
   }
   func replaceAndInsert(
     previous: PhoneOutboxRecord, next: PhoneOutboxRecord, draft: PhoneOutboxRecord
   ) async throws {
-    try read()
-    guard let index = records.firstIndex(where: { $0 == previous }) else {
-      throw PhoneOutboxStoreFailure.conflict
+    try Self.transactions.withLock {
+      var records = try read()
+      guard let index = records.firstIndex(where: { $0 == previous }),
+        !records.contains(where: { $0.intent.commandID == draft.intent.commandID }) else {
+        throw PhoneOutboxStoreFailure.conflict
+      }
+      records[index] = next
+      records.append(draft)
+      try write(records)
     }
-    guard !records.contains(where: { $0.intent.commandID == draft.intent.commandID }) else {
-      throw PhoneOutboxStoreFailure.conflict
-    }
-    var updated = records
-    updated[index] = next
-    updated.append(draft)
-    try write(updated)
-    records = updated
   }
   func list() async throws -> [PhoneOutboxRecord] {
-    try read()
-    return records
+    try Self.transactions.withLock { try read() }
   }
-  private func read() throws {
-    guard !loaded else { return }
+  private func read() throws -> [PhoneOutboxRecord] {
     let data: Data?
     do { data = try readStoreFile(file) } catch { throw PhoneOutboxStoreFailure.unavailable }
-    guard let data else {
-      loaded = true
-      return
-    }
+    guard let data else { return [] }
     guard let decoded = try? JSONDecoder().decode([PhoneOutboxRecord].self, from: data) else {
       throw PhoneOutboxStoreFailure.corrupt
     }
-    records = decoded
-    loaded = true
+    return decoded
   }
   private func write(_ records: [PhoneOutboxRecord]) throws {
     let data: Data
