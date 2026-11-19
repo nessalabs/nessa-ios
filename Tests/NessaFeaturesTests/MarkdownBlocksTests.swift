@@ -68,12 +68,37 @@ private func texts(_ markdown: String) -> [String] {
   #expect(text.runs.allSatisfy { $0.presentationIntent == nil })
 }
 
-@Test func aTableBecomesOneRowPerLineWithItsCellsSeparated() {
-  let markdown = "| a | b |\n|---|---|\n| 1 | 2 |"
-  #expect(kinds(markdown) == [.tableRow(header: true), .tableRow(header: false)])
-  #expect(texts(markdown) == [
-    "a\(MarkdownBlocks.cellSeparator)b", "1\(MarkdownBlocks.cellSeparator)2",
+private func cells(_ block: MarkdownBlock) -> [[String]] {
+  block.rows.map { $0.map { String($0.characters) } }
+}
+
+@Test func aTableBecomesOneGridWithItsHeaderAndAlignedColumns() throws {
+  let markdown = """
+    Before
+
+    | Name | Count | Note |
+    |:-----|------:|:----:|
+    | **alpha** | 1 | ok |
+    | beta | 22 | |
+
+    After
+    """
+  let blocks = MarkdownBlocks.parse(markdown)
+  #expect(blocks.map(\.kind) == [
+    .paragraph, .table(columns: [.leading, .trailing, .center], header: true), .paragraph,
   ])
+  let table = blocks[1]
+  #expect(cells(table) == [["Name", "Count", "Note"], ["alpha", "1", "ok"], ["beta", "22", ""]])
+  #expect(table.rows[1][0].runs.contains { $0.inlinePresentationIntent == .stronglyEmphasized })
+  #expect(table.rows.joined().allSatisfy { $0.runs.allSatisfy { $0.presentationIntent == nil } })
+  #expect(String(table.text.characters) == "Name\tCount\tNote\nalpha\t1\tok\nbeta\t22\t")
+}
+
+@Test func twoTablesStayApart() {
+  let markdown = "| a |\n|---|\n| 1 |\n\n| b |\n|---|\n| 2 |"
+  let blocks = MarkdownBlocks.parse(markdown)
+  #expect(blocks.count == 2)
+  #expect(blocks.map(cells) == [[["a"], ["1"]], [["b"], ["2"]]])
 }
 
 @Test func plainAndMalformedTextStillReads() {

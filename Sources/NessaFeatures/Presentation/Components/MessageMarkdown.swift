@@ -50,11 +50,76 @@ private struct MarkdownBlockView: View {
       .fixedSize(horizontal: false, vertical: true)
     case .rule:
       Rectangle().fill(MessagesStyle.separator).frame(height: MessagesStyle.markdownRule)
-    case .tableRow(let header):
-      ScrollView(.horizontal, showsIndicators: false) {
-        Text(block.text).font(MessagesStyle.markdownCode)
-          .fontWeight(header ? .semibold : .regular).fixedSize()
+    case .table(let columns, let header):
+      MarkdownTable(rows: block.rows, columns: columns, header: header)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(block.text))
+    }
+  }
+}
+
+/// A markdown table as a grid: columns line up, the header row is set apart by a rule,
+/// long cells wrap at a readable width, and a wide table scrolls sideways as one.
+private struct MarkdownTable: View {
+  let rows: [[AttributedString]]
+  let columns: [MarkdownBlock.ColumnAlignment]
+  let header: Bool
+
+  var body: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      Grid(
+        alignment: .topLeading, horizontalSpacing: MessagesStyle.markdownTableColumnGap,
+        verticalSpacing: MessagesStyle.markdownTableRowGap
+      ) {
+        ForEach(rows.indices, id: \.self) { row in
+          GridRow {
+            ForEach(rows[row].indices, id: \.self) { column in
+              Text(rows[row][column])
+                .font(MessagesStyle.markdownTableText)
+                .fontWeight(header && row == 0 ? .semibold : .regular)
+                .multilineTextAlignment(textAlignment(column))
+                .frame(maxWidth: MessagesStyle.markdownTableCellWidth, alignment: alignment(column))
+                .fixedSize(horizontal: false, vertical: true)
+                .gridColumnAlignment(horizontal(column))
+            }
+          }
+          if row < rows.count - 1 {
+            Rectangle()
+              .fill(MessagesStyle.separator)
+              .frame(height: MessagesStyle.markdownRule)
+              .gridCellUnsizedAxes(.horizontal)
+          }
+        }
       }
+      .padding(MessagesStyle.markdownCodeInset)
+    }
+    .background(
+      MessagesStyle.markdownCodeFill,
+      in: RoundedRectangle(cornerRadius: MessagesStyle.markdownCodeRadius))
+  }
+
+  private func at(_ column: Int) -> MarkdownBlock.ColumnAlignment {
+    column < columns.count ? columns[column] : .leading
+  }
+  private func horizontal(_ column: Int) -> HorizontalAlignment {
+    switch at(column) {
+    case .leading: return .leading
+    case .center: return .center
+    case .trailing: return .trailing
+    }
+  }
+  private func alignment(_ column: Int) -> Alignment {
+    switch at(column) {
+    case .leading: return .leading
+    case .center: return .center
+    case .trailing: return .trailing
+    }
+  }
+  private func textAlignment(_ column: Int) -> TextAlignment {
+    switch at(column) {
+    case .leading: return .leading
+    case .center: return .center
+    case .trailing: return .trailing
     }
   }
 }
