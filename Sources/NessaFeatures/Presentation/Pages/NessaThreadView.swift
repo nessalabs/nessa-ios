@@ -349,7 +349,19 @@ struct NessaThreadView: View {
   private func send() {
     // Sending brings the reader back to the newest message; the new turn's growth follows.
     readerScrolled = false
-    composer.submit(in: conversationID, store: store)
+    let captured = composer.begin(scope: store.deliveryScopeRevision)
+    Task {
+      let accepted = await store.send(
+        captured.text, attachments: captured.attachments,
+        reply: captured.reply, to: conversationID, identity: captured.identity)
+      if accepted {
+        composer.accept([captured.identity.requestID], scope: store.deliveryScopeRevision)
+      }
+      composer.accept(store.acknowledgedCommands, scope: store.deliveryScopeRevision)
+      let knownQueue = store.connected && store.pendingLoadError == nil
+      let pending = store.pendingCommands.contains { $0.requestID == captured.identity.requestID }
+      composer.finished(captured.identity.requestID, keepPending: !knownQueue || pending)
+    }
   }
 
   /// While the thread is first settling (photos, the composer) the pin is invisible; after
