@@ -161,6 +161,26 @@ public enum MessagesStyle {
   public static let markdownCodeFill = NessaColor.foreground.opacity(0.06)
   public static let markdownRule: CGFloat = 0.5
   public static let markdownCode = Font.system(size: 14, design: .monospaced)
+  /// A markdown table: a quiet panel, its text a step below the reply's, rules between rows
+  /// and fainter ones between columns, a header band of smaller column names.
+  public static let tableText = Font.system(size: 15)
+  public static let tableFirstColumn = Font.system(size: 15, weight: .medium)
+  public static let tableHeader = Font.system(size: 13, weight: .semibold)
+  public static let tableCellHorizontal: CGFloat = 10
+  public static let tableCellVertical: CGFloat = 7
+  /// A column wider than this wraps its text instead of widening the table.
+  public static let tableColumnMax: CGFloat = 220
+  public static let tableRadius: CGFloat = 10
+  public static let tableHairline: CGFloat = 0.5
+  public static let tableFill = NessaColor.foreground.opacity(0.02)
+  public static let tableHeaderFill = NessaColor.foreground.opacity(0.04)
+  public static let tableEdge = NessaColor.foreground.opacity(0.12)
+  public static let tableRowRule = NessaColor.foreground.opacity(0.09)
+  public static let tableColumnRule = NessaColor.foreground.opacity(0.05)
+  /// How far the side of a sideways-scrolling table fades where more columns lie past it.
+  public static let tableEdgeFade: CGFloat = 28
+  /// A task item's box in a reply's list.
+  public static let markdownTaskBox = Font.system(size: 15)
   /// A heading steps up modestly from the body: weight first, then a little size.
   public static func markdownHeading(_ level: Int) -> Font {
     switch level {

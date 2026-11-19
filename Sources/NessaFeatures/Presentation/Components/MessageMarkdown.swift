@@ -1,8 +1,8 @@
 import NessaDesignSystem
 import SwiftUI
 
-/// An agent reply drawn as markdown blocks: headings, lists, code, quotes, rules and tables,
-/// each keeping its inline styles.
+/// An agent reply drawn as markdown blocks: headings, lists, task lists, code, quotes, rules
+/// and tables, each keeping its inline styles.
 struct MessageMarkdown: View {
   let blocks: [MarkdownBlock]
 
@@ -50,11 +50,30 @@ private struct MarkdownBlockView: View {
       .fixedSize(horizontal: false, vertical: true)
     case .rule:
       Rectangle().fill(MessagesStyle.separator).frame(height: MessagesStyle.markdownRule)
-    case .tableRow(let header):
-      ScrollView(.horizontal, showsIndicators: false) {
-        Text(block.text).font(MessagesStyle.markdownCode)
-          .fontWeight(header ? .semibold : .regular).fixedSize()
+    case .task(let done, let depth):
+      HStack(alignment: .firstTextBaseline, spacing: MessagesStyle.markdownMarkerGap) {
+        Image(systemName: done ? "checkmark.square" : "square")
+          .font(MessagesStyle.markdownTaskBox)
+          .foregroundStyle(MessagesStyle.secondary)
+          .accessibilityLabel(done ? "Done" : "Not done")
+        Text(block.text)
+          .foregroundStyle(done ? MessagesStyle.secondary : MessagesStyle.foreground)
+          .frame(maxWidth: .infinity, alignment: .leading)
       }
+      .padding(.leading, CGFloat(depth - 1) * MessagesStyle.markdownListIndent)
+    case .table(let table):
+      MessagesTextTable(
+        alignments: table.alignments.map(\.text), header: table.header, rows: table.rows)
+    }
+  }
+}
+
+extension MarkdownTable.Alignment {
+  fileprivate var text: TextAlignment {
+    switch self {
+    case .leading: .leading
+    case .center: .center
+    case .trailing: .trailing
     }
   }
 }

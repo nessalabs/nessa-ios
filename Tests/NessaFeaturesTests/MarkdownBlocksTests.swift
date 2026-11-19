@@ -68,12 +68,67 @@ private func texts(_ markdown: String) -> [String] {
   #expect(text.runs.allSatisfy { $0.presentationIntent == nil })
 }
 
-@Test func aTableBecomesOneRowPerLineWithItsCellsSeparated() {
-  let markdown = "| a | b |\n|---|---|\n| 1 | 2 |"
-  #expect(kinds(markdown) == [.tableRow(header: true), .tableRow(header: false)])
-  #expect(texts(markdown) == [
-    "a\(MarkdownBlocks.cellSeparator)b", "1\(MarkdownBlocks.cellSeparator)2",
+private func cells(_ row: [AttributedString]) -> [String] { row.map { String($0.characters) } }
+
+private func onlyTable(_ markdown: String) throws -> MarkdownTable {
+  let blocks = MarkdownBlocks.parse(markdown)
+  try #require(blocks.count == 1)
+  guard case .table(let table) = blocks[0].kind else {
+    Issue.record("expected a table, got \(blocks[0].kind)")
+    throw CancellationError()
+  }
+  return table
+}
+
+@Test func aTableKeepsItsHeaderRowsAndColumnAlignment() throws {
+  let table = try onlyTable("| Name | Qty | Note |\n|:---|---:|:---:|\n| apple | 2 | ripe |\n| pear | 10 | ok |")
+  #expect(cells(table.header) == ["Name", "Qty", "Note"])
+  #expect(table.rows.map(cells) == [["apple", "2", "ripe"], ["pear", "10", "ok"]])
+  #expect(table.alignments == [.leading, .trailing, .center])
+}
+
+@Test func anEmptyCellStaysInItsColumn() throws {
+  let table = try onlyTable("| a | b | c |\n|---|---|---|\n| 1 |  | 3 |\n|  | 2 |  |")
+  #expect(table.rows.map(cells) == [["1", "", "3"], ["", "2", ""]])
+}
+
+@Test func aTableCellKeepsItsInlineStyles() throws {
+  let table = try onlyTable("| k | v |\n|---|---|\n| **bold** and `code` | [site](https://nessa.app) |")
+  let first = table.rows[0][0]
+  #expect(String(first.characters) == "bold and code")
+  #expect(first.runs.contains { $0.inlinePresentationIntent == .stronglyEmphasized })
+  #expect(first.runs.contains { $0.inlinePresentationIntent == .code })
+  #expect(table.rows[0][1].runs.contains { $0.link == URL(string: "https://nessa.app") })
+  #expect(first.runs.allSatisfy { $0.presentationIntent == nil })
+}
+
+@Test func blocksAroundATableAndTwoTablesInARowStayApart() {
+  let markdown = """
+    Before
+
+    | a | b |
+    |---|---|
+    | 1 | 2 |
+
+    Between
+
+    | c |
+    |---|
+    | 3 |
+
+    After
+    """
+  let blocks = MarkdownBlocks.parse(markdown)
+  #expect(blocks.count == 5)
+  #expect(texts(markdown) == ["Before", "a\tb\n1\t2", "Between", "c\n3", "After"])
+}
+
+@Test func taskItemsShowTheirBoxAndKeepTheirText() {
+  let markdown = "- [ ] open\n- [x] done\n- plain"
+  #expect(kinds(markdown) == [
+    .task(done: false, depth: 1), .task(done: true, depth: 1), .listItem(ordinal: nil, depth: 1),
   ])
+  #expect(texts(markdown) == ["open", "done", "plain"])
 }
 
 @Test func plainAndMalformedTextStillReads() {
