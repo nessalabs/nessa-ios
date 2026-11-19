@@ -1,4 +1,3 @@
-use PhoneComposer, ComposerData, ComposerError from "./composer.contract"
 use ThreadDetails, AgentDetailData from "./details.contract"
 use SharedTranscript, SharedThread from "./shared.contract"
 use ChatThread, ThreadSnapshot from "./thread.contract"
@@ -63,7 +62,6 @@ style DrawerRow
 
 component Nessa
   members "./agent-actions.contract"
-  members "./composer-actions.contract"
   state drawer = false
   state travel = 0
   resource viewport = exactViewport() as shape Viewport
@@ -140,7 +138,6 @@ component Nessa
 
   view
     main navigationKey=`${top(nav).id}` navigationBack="back" navigate=follow viewport-fit="cover" interactive-widget="resizes-content" width="100%" height="100%" color-scheme="dark"
-      ComposerError(data=composerData, clear=clearInputError)
       nessa-lifecycle message=follow width=0 height=0
       for e in stack(nav) key=e.id
         if e.name == "home"
@@ -150,7 +147,7 @@ component Nessa
                 text "Nessa" role="heading" aria-level=1 font-family="serif" font-size=28 margin="20px 24px 12px"
                 scroll flex=1 min-height=0 padding="0px 8px"
                   button appearance="none" class=DrawerRow press=follow("/agents") testId="agents"
-                    canvas surface=gridGlyph() width=22 height=22 aria-hidden=true
+                    nessa-artwork kind="agents" width=22 height=22 aria-hidden=true
                     text "Agents" flex=1 text-align="left"
                     if phone.working > 0
                       text `${phone.working} working` color="-exact-secondary-label"
@@ -158,19 +155,17 @@ component Nessa
                     text "Channels" role="heading" aria-level=2 font-size=14 margin="20px 12px 4px" color="-exact-secondary-label"
                     for channel in phone.channels key=channel.id
                       button appearance="none" class=DrawerRow height=56 press=follow(path("channel", channel.id)) testId=`channel-${channel.id}`
-                        canvas surface=channelTile(channel.name, channel.position) width=38 height=38 aria-hidden=true
+                        nessa-artwork kind="channel" seed=channel.name tileOrder=channel.position width=38 height=38 aria-hidden=true
                         text channel.name font-size=21 font-family="serif" flex=1 text-align="left"
                         if channel.unread
                           text "•" aria-label="Unread"
                 row justify-content="space-between" align-items="center" padding="8px 16px"
                   button appearance="none" width=44 height=44 press=follow("/settings") aria-label="Settings" testId="settings"
-                    canvas surface=profile() width=44 height=44 aria-hidden=true
+                    nessa-artwork kind="profile" width=44 height=44 aria-hidden=true
                   button press=compose disabled=(not phone.canCreate or pending(created)) buttonStyle="bordered-prominent" testId="sidebar-compose"
                     text "New chat"
             column position="absolute" inset=0 translate=`${offset}px 0px` border-radius=min(40, offset) overflow="hidden" background-color="#0A0A0A" transition=(viewport.prefersReducedMotion or travel != 0 ? "none" : "translate 280ms ease-out") inert=drawer
-              canvas surface=horizon(screen == "home" and not viewport.prefersReducedMotion) position="absolute" inset=0 width="100%" height="100%" pointer-events="none" aria-hidden=true
-              if not phone.pairingNeeded
-                box position="absolute" left=0 right=0 bottom=0 height="calc(98px + env(safe-area-inset-bottom))" background-image="linear-gradient(180deg, rgba(10,10,10,0) 0%, rgba(10,10,10,0.85) 45%, #0A0A0A 100%)" aria-hidden=true pointer-events="none"
+              nessa-artwork kind="home" position="absolute" inset=0 pointer-events="none" aria-hidden=true
               column testId="page-home" position="absolute" inset=0 z-index=1 min-height=0 padding-top="calc(env(safe-area-inset-top) + 52px)" padding-bottom="calc(env(safe-area-inset-bottom) + 8px)"
                 column flex=1 justify-content="center" align-items="center" gap=16
                   text phone.greeting font-family="serif" font-size=30 role="heading" aria-level=1 testId="greeting"
@@ -188,7 +183,7 @@ component Nessa
                       progress aria-label="Reconnecting"
                       text "Reconnecting…"
                 if not phone.pairingNeeded
-                  PhoneComposer(visit=`${e.id}`, screen="home", target="", data=composerData, textValue=composerText, edit=composerEdit, command=composerAction, navigate=follow)
+                  nessa-new-chat-input message=follow width="100%" min-height=48 flex-shrink=0
               row position="absolute" z-index=2 left=16 right=16 top="calc(env(safe-area-inset-top) + 8px)" justify-content="space-between"
                 button class=GlassButton press=toggle(true) aria-label="Open sidebar" testId="open-sidebar"
                   image "symbol:reorder"
@@ -199,9 +194,9 @@ component Nessa
             else
               button appearance="none" position="absolute" left=width right=0 top=0 bottom=0 background-color="#00000055" press=toggle(false) pan=drag panrelease=settle aria-label="Close sidebar" testId="close-sidebar"
         else if e.name == "details"
-          ThreadDetails(reduceMotion=viewport.prefersReducedMotion, chat=e.params.key, route=`${e.id}`, data=detailsData, goBack=back)
+          ThreadDetails(chat=e.params.key, route=`${e.id}`, data=detailsData, goBack=back)
         else if e.name == "chat"
-          ChatThread(reduceMotion=viewport.prefersReducedMotion, active=(e.id == top(nav).id), chat=e.params.key, route=`${e.id}`, data=threadData, composition=composerData, inputText=composerText, editInput=composerEdit, inputCommand=composerAction, navigate=follow, goBack=back, command=threadAction)
+          ChatThread(chat=e.params.key, route=`${e.id}`, data=threadData, goBack=back, command=threadAction)
         else if e.name == "agents"
           column navigationKey=`${e.id}` class=Page navigationScroll="agents-list" testId="page-agents"
             header
@@ -237,7 +232,7 @@ component Nessa
                   scroll swipeContent=`open-${chat.id}` swipeTrailing=(e.name == "archived" ? `restore-${chat.id}` : "") height=84 width="100%" overflow-x="scroll" scrollbar-width="none" scroll-snap-type="x mandatory"
                     row
                       button id=`open-${chat.id}` appearance="none" press=follow(e.name == "shared" ? path("transcript", chat.id) : path("chat", chat.id)) width="100%" flex-shrink=0 height=84 padding="0px 16px" display="flex" align-items="center" gap=12 scroll-snap-align="start"
-                        canvas surface=avatar(chat.id, false, viewport.prefersReducedMotion) width=45 height=45 aria-hidden=true
+                        nessa-artwork kind="avatar" seed=chat.id width=45 height=45 aria-hidden=true
                         column flex=1 min-width=0 text-align="left"
                           row gap=6 align-items="center"
                             text chat.title font="-exact-headline" line-clamp=1 flex=1
@@ -248,7 +243,6 @@ component Nessa
                         button id=`restore-${chat.id}` aria-label="Unarchive" press=restore(chat.id) disabled=(not phone.connected or pending(restored)) width=88 flex-shrink=0 height=84 scroll-snap-align="end"
                           text "Unarchive"
             if e.name == "channel"
-              column width="100%" flex-shrink=0 margin-bottom="env(safe-area-inset-bottom)"
-                PhoneComposer(visit=`${e.id}`, screen=e.name, target=e.params.key, data=composerData, textValue=composerText, edit=composerEdit, command=composerAction, navigate=follow)
+              nessa-new-chat-input channel=e.params.key message=follow width="100%" min-height=48 flex-shrink=0 margin-bottom="env(safe-area-inset-bottom)"
         else if e.name == "transcript"
           SharedTranscript(visit=`${e.id}`, owner=phone.desktopID, chat=e.params.key, data=sharedThread)

@@ -6,7 +6,7 @@ export const connectionSources: Pick<Sources, 'connectionState' | 'connectionCom
       return {
         connected: false, saved: false, busy: false, setupBusy: false, hasCredential: false,
         hasError: false, available: false, linked: false, desktop: '', desktopID: '',
-        cameraState: 'asking', phase: 'idle', peer: '', peers: [], failure: '', validCode: false,
+        phase: 'idle', peer: '', peers: [], failure: '', validCode: false,
       };
     }
     native.watch('link');

@@ -4,7 +4,7 @@ final class NewConversationTests: XCTestCase {
   func testHomeDraftIsSentInTheNewThread() {
     let app = XCUIApplication()
     app.launch()
-    sendFirstMessage("hello home", in: app)
+    sendFirstMessage("Hello from home", in: app)
     app.buttons["thread-back"].tap()
     XCTAssertTrue(app.buttons["open-sidebar"].waitForExistence(timeout: 5))
   }
@@ -18,7 +18,7 @@ final class NewConversationTests: XCTestCase {
     let travel = app.buttons["channel-ch_bbbbbbbbbb"]
     XCTAssertTrue(travel.waitForExistence(timeout: 10))
     travel.tap()
-    sendFirstMessage("hello travel", in: app)
+    sendFirstMessage("Hello from travel", in: app)
     app.buttons["thread-back"].tap()
     XCTAssertTrue(app.navigationBars["travel"].waitForExistence(timeout: 5))
   }
@@ -29,14 +29,13 @@ final class NewConversationTests: XCTestCase {
       XCUIElement.ElementType.textField.rawValue, XCUIElement.ElementType.textView.rawValue))
     let input = fields.firstMatch
     XCTAssertTrue(input.waitForExistence(timeout: 15))
-    app.tapComposer(input)
-    app.typeOnComposerKeyboard(message)
-    let entered = input.composerValue(matching: message)
+    input.tap()
+    input.typeText(message)
     let send = app.buttons["Send message"]
     let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == YES"), object: send)
     XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
     send.tap()
     XCTAssertTrue(app.buttons["thread-back"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts[entered].firstMatch.waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts[message].firstMatch.waitForExistence(timeout: 10))
   }
 }

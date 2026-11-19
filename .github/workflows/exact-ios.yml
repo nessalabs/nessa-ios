@@ -3,7 +3,6 @@ on:
   pull_request:
     paths:
       - 'nessa/**'
-      - 'scripts/export-bubble-style.sh'
       - 'Sources/**'
       - 'Vendor/**'
       - '.github/workflows/exact-ios.yml'
@@ -24,8 +23,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - name: Verify Exact bubble styles against SwiftUI
-        run: scripts/export-bubble-style.sh --check
       - name: Read the pinned SDK revision
         id: sdk
         run: echo "revision=$(git -C Vendor/Exact rev-parse HEAD)" >> "$GITHUB_OUTPUT"

@@ -3,8 +3,8 @@ import type { Result, Sources } from './app.contract.d.ts';
 export const threadSources: Pick<Sources, 'threadSnapshot' | 'threadCommand' | 'threadDetailsData'> = {
   threadSnapshot: ([chat], _store, _storage, native) => {
     if (chat === '' || !native?.available) {
-      return { chat, scope: -1, name: '', connected: false, working: false, empty: false, recent: false,
-        error: '', reply: '', sent: 0, rows: [], reviews: [] };
+      return { chat, name: '', connected: false, working: false, empty: false, recent: false,
+        error: '', reply: '', menu: false, sent: 0, rows: [], reviews: [] };
     }
     native.watch('thread');
     return native.call({ op: 'threadSnapshot', chat }) as Result<'threadSnapshot'>;

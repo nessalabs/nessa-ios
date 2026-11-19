@@ -14,17 +14,16 @@ final class ThreadFlowTests: XCTestCase {
       XCUIElement.ElementType.textField.rawValue, XCUIElement.ElementType.textView.rawValue
     )).firstMatch
     XCTAssertTrue(input.waitForExistence(timeout: 10))
-    app.tapComposer(input)
-    let message = "hello there"
-    app.typeOnComposerKeyboard(message)
-    let entered = input.composerValue(matching: message)
+    input.tap()
+    let message = "Exact simulator delivery"
+    input.typeText(message)
     app.buttons["Send message"].tap()
-    XCTAssertTrue(app.staticTexts[entered].firstMatch.waitForExistence(timeout: 15))
+    XCTAssertTrue(app.staticTexts[message].firstMatch.waitForExistence(timeout: 15))
     let details = app.descendants(matching: .any)["thread-details"].firstMatch
     XCTAssertTrue(details.waitForExistence(timeout: 5))
     details.tap()
     XCTAssertTrue(app.descendants(matching: .any)["Access granted"].firstMatch.waitForExistence(timeout: 5))
     app.buttons["Close details"].firstMatch.tap()
-    XCTAssertTrue(app.staticTexts[entered].firstMatch.waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts[message].firstMatch.waitForExistence(timeout: 5))
   }
 }

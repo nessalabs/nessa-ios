@@ -1,8 +1,7 @@
 # Nessa for iPhone
 
 Nessa is a Messages-style client for the Nessa product gateway, for iPhone and iPad
-running iOS 18 or later. Its screens, message composer, transcript, and reaction menu are authored in Expo Exact.
-The iOS app mounts Exact directly from a UIKit scene. Swift handles
+running iOS 18 or later. Its screens are authored in Expo Exact. Swift handles
 the gateway, Keychain, retained history, and system controls including the camera,
 dictation, secure text input, and attachment pickers. The app's bundle ID is `app.nessa.mobile`.
 
@@ -21,8 +20,6 @@ nessa/tools/build-ios.sh simulator Debug CODE_SIGN_IDENTITY=-
 xcrun simctl install booted nessa/.exact/xcode/Build/Products/Debug-iphonesimulator/Nessa.app
 xcrun simctl launch booted app.nessa.mobile
 ```
-
-The home background, channel tiles, and seeded avatars use Exact Canvas 2D. Private gateway fields, scoped photo pixels, and system pickers remain native.
 
 The original SwiftUI reference is available in `App/Nessa.xcodeproj` for comparison.
 Boot an iPhone simulator before the last two commands. The simulator Debug configuration

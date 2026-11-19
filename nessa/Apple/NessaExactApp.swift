@@ -1,47 +1,31 @@
 import ExactGroupedLists
-import ExactKit
 import ExactMarkdown
-import ExactSurfaces
-import UIKit
+import ExactKit
+import SwiftUI
 
 @main
-final class NessaExactApp: UIResponder, UIApplicationDelegate {
-  func application(_ application: UIApplication,
-    didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+struct NessaExactApp: App {
+  init() {
     ExactGroupedLists.install()
     ExactMarkdown.install()
-    ExactSurfaces.install()
-    return true
   }
 
-  func application(_ application: UIApplication, configurationForConnecting session: UISceneSession,
-    options: UIScene.ConnectionOptions) -> UISceneConfiguration {
-    let configuration = UISceneConfiguration(name: nil, sessionRole: session.role)
-    configuration.delegateClass = PhoneScene.self
-    return configuration
+  var body: some Scene {
+    WindowGroup {
+      PhoneView().ignoresSafeArea().preferredColorScheme(.dark)
+    }
   }
 }
 
-final class PhoneScene: UIResponder, UIWindowSceneDelegate {
-  var window: UIWindow?
-  private var content: ExactView?
-
-  func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options: UIScene.ConnectionOptions) {
-    guard let scene = scene as? UIWindowScene else { return }
-    let window = UIWindow(windowScene: scene)
-    window.overrideUserInterfaceStyle = .dark
-    let content = ExactView(session: ExactApp.shared.makeSession(label: "Nessa"))
-    let controller = UIViewController()
-    controller.view = content
-    window.rootViewController = controller
-    self.content = content
-    self.window = window
-    window.makeKeyAndVisible()
+private struct PhoneView: UIViewRepresentable {
+  func makeUIView(context: Context) -> ExactView {
+    let session = ExactApp.shared.makeSession(label: "Nessa")
+    return ExactView(session: session)
   }
 
-  func sceneDidDisconnect(_ scene: UIScene) {
-    content?.session.destroy()
-    content = nil
-    window = nil
+  func updateUIView(_ view: ExactView, context: Context) {}
+
+  static func dismantleUIView(_ view: ExactView, coordinator: ()) {
+    view.session.destroy()
   }
 }

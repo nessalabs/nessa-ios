@@ -1,4 +1,3 @@
-import { composerSources } from './composer';
 import { threadSources } from './thread';
 import { agentsSources } from './agents';
 import { connectionSources } from './connection';
@@ -7,7 +6,6 @@ import type { Answer, Sources, Result } from './app.contract.d.ts';
 export const grants = '';
 const sources: Sources = {
   ...agentsSources,
-  ...composerSources,
   ...threadSources,
   ...connectionSources,
   phoneStatus: (_args, _store, _storage, native) => {
@@ -45,4 +43,3 @@ const sources: Sources = {
 };
 export const answer: Answer = (source, args, store, storage, native) =>
   sources[source](args, store, storage, native);
-export { draw, surfaces } from './artwork';

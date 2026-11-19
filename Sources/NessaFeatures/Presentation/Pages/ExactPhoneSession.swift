@@ -1,6 +1,7 @@
 #if os(iOS)
 import Combine
 import NessaDesignSystem
+import SwiftUI
 import UIKit
 
 /// State shared by the Contract routes and the iOS controls that need a hosting controller.
@@ -95,7 +96,14 @@ import UIKit
   }
 
   public func lifecycle(navigate: @escaping (String) -> Void) -> UIViewController {
-    ExactSessionController(phone: self, navigate: navigate)
+    UIHostingController(rootView: ExactSessionAlerts(store: messages)
+      .modifier(PhoneSessionTasks(dependencies: dependencies, store: messages, linkStore: desktop))
+      .onReceive(messages.$deliveryScopeRevision.removeDuplicates().dropFirst()) { [weak self] _ in
+        self?.firstMessages.removeAll()
+        self?.focusChat = nil
+        navigate("/")
+      }
+      .task { await NessaDependencies.verifyNativePackageIfRequested() })
   }
 
   public func sharedTranscript(_ id: String, owner: String) async -> [String: Any] {
@@ -122,4 +130,14 @@ import UIKit
   }
 }
 
+private struct ExactSessionAlerts: View {
+  @ObservedObject var store: MessagesViewModel
+  var body: some View {
+    Color.clear.alert("Nessa connection", isPresented: Binding(
+      get: { store.error != nil }, set: { if !$0 { store.error = nil } }
+    )) {
+      Button("OK") { store.error = nil }
+    } message: { Text(store.error ?? "") }
+  }
+}
 #endif

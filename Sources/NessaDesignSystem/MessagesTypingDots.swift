@@ -34,11 +34,11 @@ public struct MessagesTypingDots: View {
   private var tail: some View {
     ZStack(alignment: .bottomLeading) {
       Circle().fill(MessagesStyle.incoming)
-        .overlay(Circle().strokeBorder(MessagesStyle.incomingBorder, lineWidth: MessagesStyle.bubbleBorderWidth))
+        .overlay(Circle().strokeBorder(MessagesStyle.incomingBorder, lineWidth: 0.5))
         .frame(width: MessagesStyle.typingTailLarge, height: MessagesStyle.typingTailLarge)
         .offset(x: -MessagesStyle.typingTailLarge / 4, y: MessagesStyle.typingTailLarge / 4)
       Circle().fill(MessagesStyle.incoming)
-        .overlay(Circle().strokeBorder(MessagesStyle.incomingBorder, lineWidth: MessagesStyle.bubbleBorderWidth))
+        .overlay(Circle().strokeBorder(MessagesStyle.incomingBorder, lineWidth: 0.5))
         .frame(width: MessagesStyle.typingTailSmall, height: MessagesStyle.typingTailSmall)
         .offset(
           x: -MessagesStyle.typingTailLarge / 2, y: MessagesStyle.typingTailLarge * 3 / 4)

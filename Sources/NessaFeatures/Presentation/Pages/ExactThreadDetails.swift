@@ -13,8 +13,8 @@ extension ExactPhoneSession {
     }
     let artifacts = ConversationArtifact.collect(from: view?.messages ?? []).map { artifact -> [String: Any] in
       switch artifact.content {
-      case .image: return ["id": artifact.id, "scope": messages.deliveryScopeRevision, "image": true, "name": "", "mime": ""]
-      case .file(let file): return ["id": artifact.id, "scope": messages.deliveryScopeRevision, "image": false, "name": file.name, "mime": file.mimeType]
+      case .image: return ["id": artifact.id, "image": true, "name": "", "mime": ""]
+      case .file(let file): return ["id": artifact.id, "image": false, "name": file.name, "mime": file.mimeType]
       }
     }
     var activity: [[String: Any]] = (view?.permissions ?? []).map {

@@ -3,7 +3,7 @@
   "name": "Nessa",
   "app": { "id": "app.nessa.mobile", "name": "Nessa" },
   "background_color": "#050505",
-  "modules": ["nessa-lifecycle", "nessa-photo", "nessa-draft-photo", "nessa-composer-session", "nessa-connection-input"],
+  "modules": ["nessa-lifecycle", "nessa-artwork", "nessa-new-chat-input", "nessa-connection-input", "nessa-thread-part"],
   "host": { "ios": { "minimumOS": "18.0", "deviceFamily": ["iphone", "ipad"] } },
   "deploy": { "store": { "ios": "0" } }
 }

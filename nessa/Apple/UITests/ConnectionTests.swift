@@ -1,28 +1,6 @@
 import XCTest
 
 final class ConnectionTests: XCTestCase {
-  func testLeavingPairingClearsThePrivateCode() {
-    let app = XCUIApplication()
-    app.launchEnvironment["NESSA_MODE"] = "live"
-    app.launch()
-    let pair = app.buttons["home-pair"]
-    XCTAssertTrue(pair.waitForExistence(timeout: 15))
-    pair.tap()
-    let field = app.textFields["pair-code"]
-    XCTAssertTrue(field.waitForExistence(timeout: 8))
-    field.tap()
-    field.typeText("ABCD2345")
-    let submit = app.buttons["pair-submit"]
-    let enabled = expectation(for: NSPredicate(format: "enabled == YES"), evaluatedWith: submit)
-    wait(for: [enabled], timeout: 5)
-    app.buttons["pair-close"].tap()
-    XCTAssertTrue(pair.waitForExistence(timeout: 8))
-    pair.tap()
-    XCTAssertTrue(field.waitForExistence(timeout: 8))
-    XCTAssertFalse(submit.isEnabled)
-    XCTAssertNotEqual(field.value as? String, "ABCD2345")
-  }
-
   func testDevelopmentConnectionCanDisconnect() {
     let app = XCUIApplication()
     app.launch()
