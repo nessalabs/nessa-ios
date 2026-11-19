@@ -8,6 +8,8 @@ struct MarkdownBlock: Equatable, Identifiable {
     case paragraph
     /// `ordinal` is nil in an unordered list; `depth` counts from 1 at the outermost list.
     case listItem(ordinal: Int?, depth: Int)
+    /// A `- [ ]` or `- [x]` item; its text starts after the box.
+    case task(done: Bool, depth: Int)
     case code(language: String?)
     case quote
     case rule
@@ -64,9 +66,14 @@ enum MarkdownBlocks {
       closeTable()
       guard let open = current else { return }
       var text = open.text
-      if case .code = open.kind { text = trimmingTrailingNewlines(text) }
-      if !text.characters.isEmpty || open.kind == .rule {
-        blocks.append(MarkdownBlock(id: blocks.count, kind: open.kind, text: text))
+      var kind = open.kind
+      if case .code = kind { text = trimmingTrailingNewlines(text) }
+      if case .listItem(_, let depth) = kind, let done = taskMark(text) {
+        text.removeSubrange(text.startIndex..<text.index(text.startIndex, offsetByCharacters: 4))
+        kind = .task(done: done, depth: depth)
+      }
+      if !text.characters.isEmpty || kind == .rule {
+        blocks.append(MarkdownBlock(id: blocks.count, kind: kind, text: text))
       }
       current = nil
     }
@@ -104,6 +111,16 @@ enum MarkdownBlocks {
 
   private static func plain(_ text: String) -> [MarkdownBlock] {
     text.isEmpty ? [] : [MarkdownBlock(id: 0, kind: .paragraph, text: AttributedString(text))]
+  }
+
+  /// The box GitHub-flavored markdown puts at the start of a task item, which the system
+  /// parser leaves as text: `[ ] ` is open, `[x] ` is done.
+  private static func taskMark(_ text: AttributedString) -> Bool? {
+    switch String(text.characters.prefix(4)) {
+    case "[ ] ": return false
+    case "[x] ", "[X] ": return true
+    default: return nil
+    }
   }
 
   /// A table being read: its cells so far, row by row.

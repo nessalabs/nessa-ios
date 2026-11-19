@@ -101,6 +101,14 @@ private func cells(_ block: MarkdownBlock) -> [[String]] {
   #expect(blocks.map(cells) == [[["a"], ["1"]], [["b"], ["2"]]])
 }
 
+@Test func taskItemsShowTheirBoxAndKeepTheirText() {
+  let markdown = "- [ ] open\n- [x] done\n- plain"
+  #expect(kinds(markdown) == [
+    .task(done: false, depth: 1), .task(done: true, depth: 1), .listItem(ordinal: nil, depth: 1),
+  ])
+  #expect(texts(markdown) == ["open", "done", "plain"])
+}
+
 @Test func plainAndMalformedTextStillReads() {
   #expect(texts("just words") == ["just words"])
   #expect(kinds("**never closed and `open") == [.paragraph])

@@ -1,8 +1,8 @@
 import NessaDesignSystem
 import SwiftUI
 
-/// An agent reply drawn as markdown blocks: headings, lists, code, quotes, rules and tables,
-/// each keeping its inline styles.
+/// An agent reply drawn as markdown blocks: headings, lists, task lists, code, quotes, rules
+/// and tables, each keeping its inline styles.
 struct MessageMarkdown: View {
   let blocks: [MarkdownBlock]
 
@@ -34,6 +34,18 @@ private struct MarkdownBlockView: View {
         Text(block.text).frame(maxWidth: .infinity, alignment: .leading)
       }
       .padding(.leading, CGFloat(depth - 1) * MessagesStyle.markdownListIndent)
+    case .task(let done, let depth):
+      HStack(alignment: .firstTextBaseline, spacing: MessagesStyle.markdownMarkerGap) {
+        Image(systemName: done ? "checkmark.square" : "square")
+          .font(MessagesStyle.markdownTaskBox)
+          .foregroundStyle(MessagesStyle.secondary)
+        Text(block.text)
+          .foregroundStyle(done ? MessagesStyle.secondary : MessagesStyle.foreground)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .padding(.leading, CGFloat(depth - 1) * MessagesStyle.markdownListIndent)
+      .accessibilityElement(children: .combine)
+      .accessibilityValue(Text(done ? "done" : "not done"))
     case .code:
       ScrollView(.horizontal, showsIndicators: false) {
         Text(block.text).font(MessagesStyle.markdownCode).fixedSize()
