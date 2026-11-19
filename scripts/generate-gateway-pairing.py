@@ -6,7 +6,7 @@ import json
 import pathlib
 import subprocess
 
-PIN = '14982a984f19557f6b476fc8b0290ef53d1e73ad'
+PIN = '0fb99744ebf158ee811fb41e46a1b3f0a37120ea'
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOURCES = ['protocol/product/v1.json', 'protocol/product/pairing-values.generated.json',
            'protocol/schemas/v1/frames.json', 'protocol/schemas/v1/common.json']

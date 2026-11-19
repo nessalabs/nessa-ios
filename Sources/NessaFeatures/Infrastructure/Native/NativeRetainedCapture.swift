@@ -141,6 +141,8 @@ enum NativeRetainedCapture {
     case .stopped: return .stopped
     case .cursorAhead: return .cursorAhead
     case .subscriptionCapacity: return .subscriptionCapacity
+    // The gateway refused with a conversation product code; the phone treats it as a refusal.
+    case .product: return .refused
     }
   }
 
@@ -157,6 +159,7 @@ enum NativeRetainedCapture {
     case .stopped: return .stopped
     case .product: return .product
     case .owner: return .owner
+    case .fenced: return .fenced
     }
   }
 

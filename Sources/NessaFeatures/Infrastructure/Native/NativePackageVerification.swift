@@ -30,7 +30,7 @@
           })
           guard captured else { throw Failure.expectedCapturedStatusAndCursor }
           do {
-            _ = try await worker.cataloguePage(after: nil, maximum: 16)
+            _ = try await worker.bindSavedReceiver()
             throw Failure.expectedNoCredential
           } catch NativeCallError.Session(let failure) {
             guard failure.kind() == .noCredential else {
@@ -39,7 +39,7 @@
           }
           try await worker.close()
           do {
-            _ = try await worker.cataloguePage(after: nil, maximum: 16)
+            _ = try await worker.bindSavedReceiver()
             throw Failure.expectedClosed
           } catch NativeWorkerError.closed {}
           // Reusing the same private directory proves actual physical drain.
