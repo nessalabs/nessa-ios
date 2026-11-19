@@ -586,6 +586,562 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 
 /**
+ * Initial status, selection, held-file fetch, and optional refusal recheck.
+ * A local match has no initial status. A terminal status or a connector
+ * failure that selected no reader has no fetch. A dial or handshake
+ * failure is [`Self::failure`]. An authority refusal is kept with
+ * [`Self::recheck`]; any other failure has no recheck.
+ */
+public protocol NativeArtifactAdmissionProtocol: AnyObject, Sendable {
+    
+    /**
+     * Handshake refusal, when a reader was selected and the product refused
+     * before a fetch existed.
+     */
+    func failure()  -> NativeReadFailure?
+    
+    /**
+     * The held-file fetch when a reader was selected and the handshake succeeded.
+     */
+    func fetch()  -> NativeArtifactFetch?
+    
+    /**
+     * Initial pinned status and its purge. Empty when the file was already local.
+     */
+    func initial()  -> NativeStatus?
+    
+    /**
+     * Authority-refusal recheck and its own purge. A stop the fetch observed does not ask.
+     */
+    func recheck()  -> NativeStatus?
+    
+    /**
+     * Exact current binding refusal before product selection.
+     */
+    func selectionFailure()  -> NativeEnrollmentFailure?
+    
+}
+/**
+ * Initial status, selection, held-file fetch, and optional refusal recheck.
+ * A local match has no initial status. A terminal status or a connector
+ * failure that selected no reader has no fetch. A dial or handshake
+ * failure is [`Self::failure`]. An authority refusal is kept with
+ * [`Self::recheck`]; any other failure has no recheck.
+ */
+open class NativeArtifactAdmission: NativeArtifactAdmissionProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeartifactadmission(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeartifactadmission(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Handshake refusal, when a reader was selected and the product refused
+     * before a fetch existed.
+     */
+open func failure() -> NativeReadFailure?  {
+    return try!  FfiConverterOptionTypeNativeReadFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactadmission_failure(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The held-file fetch when a reader was selected and the handshake succeeded.
+     */
+open func fetch() -> NativeArtifactFetch?  {
+    return try!  FfiConverterOptionTypeNativeArtifactFetch.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactadmission_fetch(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Initial pinned status and its purge. Empty when the file was already local.
+     */
+open func initial() -> NativeStatus?  {
+    return try!  FfiConverterOptionTypeNativeStatus.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactadmission_initial(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Authority-refusal recheck and its own purge. A stop the fetch observed does not ask.
+     */
+open func recheck() -> NativeStatus?  {
+    return try!  FfiConverterOptionTypeNativeStatus.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactadmission_recheck(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Exact current binding refusal before product selection.
+     */
+open func selectionFailure() -> NativeEnrollmentFailure?  {
+    return try!  FfiConverterOptionTypeNativeEnrollmentFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactadmission_selection_failure(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeArtifactAdmission: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeArtifactAdmission
+
+    public static func lift(_ handle: UInt64) throws -> NativeArtifactAdmission {
+        return NativeArtifactAdmission(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeArtifactAdmission) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeArtifactAdmission {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeArtifactAdmission, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeArtifactAdmission_lift(_ handle: UInt64) throws -> NativeArtifactAdmission {
+    return try FfiConverterTypeNativeArtifactAdmission.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeArtifactAdmission_lower(_ value: NativeArtifactAdmission) -> UInt64 {
+    return FfiConverterTypeNativeArtifactAdmission.lower(value)
+}
+
+
+
+
+
+
+/**
+ * One held-file fetch. Freshness getters are empty when the fetch faulted.
+ */
+public protocol NativeArtifactFetchProtocol: AnyObject, Sendable {
+    
+    /**
+     * The removal step that failed while cleaning an integrity mismatch.
+     * Empty when the part was removed, or the fault is not integrity.
+     */
+    func cleanupRemove()  -> NativeArtifactFileStep?
+    
+    /**
+     * The emptying step that failed after removal failed. Empty unless the
+     * part was left in place.
+     */
+    func cleanupRestart()  -> NativeArtifactFileStep?
+    
+    /**
+     * Monotonic milliseconds spent in this fetch. Not model-generation latency.
+     */
+    func elapsedMs()  -> UInt64
+    
+    /**
+     * Why the file was not fully published. Empty when the fetch completed.
+     * [`NativeArtifactFaultKind::Linked`] means the output file exists and a
+     * later cleanup step failed.
+     */
+    func fault()  -> NativeArtifactFaultKind?
+    
+    /**
+     * Local file step, when `fault` is file.
+     */
+    func fileStep()  -> NativeArtifactFileStep?
+    
+    /**
+     * Gateway refusal, when `fault` is gateway.
+     * [`NativeReadFailure::Product`] carries the gateway's product code.
+     * It is not an authority refusal.
+     */
+    func gatewayFailure()  -> NativeReadFailure?
+    
+    /**
+     * Ranges the gateway answered. Empty unless the gateway confirmed the digest.
+     */
+    func gatewayRanges()  -> UInt64?
+    
+    /**
+     * Bytes resumed from an earlier part. Empty unless the gateway confirmed the digest.
+     */
+    func gatewayResumedFrom()  -> UInt64?
+    
+    /**
+     * Cleanup step that failed after the output was linked. Present when
+     * `fault` is linked.
+     */
+    func linkedStep()  -> NativeArtifactFileStep?
+    
+    /**
+     * Bytes already on disk when nothing was asked. Empty unless this is a local match.
+     */
+    func localMatchBytes()  -> UInt64?
+    
+    /**
+     * What happened to a part that was not the named file. Empty unless
+     * `fault` is integrity.
+     */
+    func partCleanup()  -> NativeArtifactPartCleanup?
+    
+    /**
+     * Part progress on a fault. Empty when the file was kept.
+     */
+    func reached()  -> UInt64?
+    
+    /**
+     * Bytes already in the part when this run began. Empty when the file was kept.
+     */
+    func resumedFrom()  -> UInt64?
+    
+}
+/**
+ * One held-file fetch. Freshness getters are empty when the fetch faulted.
+ */
+open class NativeArtifactFetch: NativeArtifactFetchProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativeartifactfetch(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativeartifactfetch(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The removal step that failed while cleaning an integrity mismatch.
+     * Empty when the part was removed, or the fault is not integrity.
+     */
+open func cleanupRemove() -> NativeArtifactFileStep?  {
+    return try!  FfiConverterOptionTypeNativeArtifactFileStep.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactfetch_cleanup_remove(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The emptying step that failed after removal failed. Empty unless the
+     * part was left in place.
+     */
+open func cleanupRestart() -> NativeArtifactFileStep?  {
+    return try!  FfiConverterOptionTypeNativeArtifactFileStep.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactfetch_cleanup_restart(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Monotonic milliseconds spent in this fetch. Not model-generation latency.
+     */
+open func elapsedMs() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactfetch_elapsed_ms(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Why the file was not fully published. Empty when the fetch completed.
+     * [`NativeArtifactFaultKind::Linked`] means the output file exists and a
+     * later cleanup step failed.
+     */
+open func fault() -> NativeArtifactFaultKind?  {
+    return try!  FfiConverterOptionTypeNativeArtifactFaultKind.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactfetch_fault(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Local file step, when `fault` is file.
+     */
+open func fileStep() -> NativeArtifactFileStep?  {
+    return try!  FfiConverterOptionTypeNativeArtifactFileStep.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactfetch_file_step(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Gateway refusal, when `fault` is gateway.
+     * [`NativeReadFailure::Product`] carries the gateway's product code.
+     * It is not an authority refusal.
+     */
+open func gatewayFailure() -> NativeReadFailure?  {
+    return try!  FfiConverterOptionTypeNativeReadFailure.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactfetch_gateway_failure(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Ranges the gateway answered. Empty unless the gateway confirmed the digest.
+     */
+open func gatewayRanges() -> UInt64?  {
+    return try!  FfiConverterOptionUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactfetch_gateway_ranges(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Bytes resumed from an earlier part. Empty unless the gateway confirmed the digest.
+     */
+open func gatewayResumedFrom() -> UInt64?  {
+    return try!  FfiConverterOptionUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactfetch_gateway_resumed_from(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Cleanup step that failed after the output was linked. Present when
+     * `fault` is linked.
+     */
+open func linkedStep() -> NativeArtifactFileStep?  {
+    return try!  FfiConverterOptionTypeNativeArtifactFileStep.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactfetch_linked_step(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Bytes already on disk when nothing was asked. Empty unless this is a local match.
+     */
+open func localMatchBytes() -> UInt64?  {
+    return try!  FfiConverterOptionUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactfetch_local_match_bytes(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * What happened to a part that was not the named file. Empty unless
+     * `fault` is integrity.
+     */
+open func partCleanup() -> NativeArtifactPartCleanup?  {
+    return try!  FfiConverterOptionTypeNativeArtifactPartCleanup.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactfetch_part_cleanup(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Part progress on a fault. Empty when the file was kept.
+     */
+open func reached() -> UInt64?  {
+    return try!  FfiConverterOptionUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactfetch_reached(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Bytes already in the part when this run began. Empty when the file was kept.
+     */
+open func resumedFrom() -> UInt64?  {
+    return try!  FfiConverterOptionUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativeartifactfetch_resumed_from(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeArtifactFetch: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativeArtifactFetch
+
+    public static func lift(_ handle: UInt64) throws -> NativeArtifactFetch {
+        return NativeArtifactFetch(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativeArtifactFetch) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeArtifactFetch {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativeArtifactFetch, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeArtifactFetch_lift(_ handle: UInt64) throws -> NativeArtifactFetch {
+    return try FfiConverterTypeNativeArtifactFetch.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeArtifactFetch_lower(_ value: NativeArtifactFetch) -> UInt64 {
+    return FfiConverterTypeNativeArtifactFetch.lower(value)
+}
+
+
+
+
+
+
+/**
  * One immutable core catalogue row including tombstone and validated metadata.
  */
 public protocol NativeCatalogueEntryProtocol: AnyObject, Sendable {
@@ -1251,10 +1807,15 @@ public func FfiConverterTypeNativeCloseObservation_lower(_ value: NativeCloseObs
 public protocol NativeDeviceSessionProtocol: AnyObject, Sendable {
     
     /**
-     * Saved page derives receiver and scope from actual issued/cache evidence.
-     * Core owns entry bounds; foreign u32 conversion is checked before its call.
+     * Bind the publication lease to the saved issued receiver. Nothing is dialed.
      */
-    func cataloguePage(after: NativeEntryKey?, maximum: UInt32) throws  -> NativeCataloguePage?
+    func bindSavedReceiver() throws  -> NativePhoneStamp
+    
+    /**
+     * Stored presence of one conversation. Absence is not a tombstone.
+     * `conversation` must be a canonical conversation id.
+     */
+    func cataloguePresence(stamp: NativePhoneStamp, conversation: String) throws  -> NativeCataloguePresence
     
     /**
      * Await physical work and release private scope on the dedicated worker.
@@ -1271,6 +1832,12 @@ public protocol NativeDeviceSessionProtocol: AnyObject, Sendable {
      * Pair using the existing code decoder and physical enrollment worker.
      */
     func enroll(code: String) throws  -> NativeEnrollmentReceipt
+    
+    /**
+     * Fetch one held file. A replaced stamp does not dial. A local digest match does not dial.
+     * The admission returns the initial status and any refusal recheck with the fetch.
+     */
+    func fetchArtifact(stamp: NativePhoneStamp, request: NativeArtifactRequest, stop: NativeReadStop) throws  -> NativeArtifactAdmission
     
     /**
      * Run status, binding, one `conversation.subscribe`, and an authority recheck.
@@ -1301,6 +1868,21 @@ public protocol NativeDeviceSessionProtocol: AnyObject, Sendable {
     func prepareOwnerOriginal(requestId: Data, discoveryJson: String) throws  -> NativeOwnerPhonePreparation
     
     /**
+     * The stamp currently admitted.
+     */
+    func publication() throws  -> NativePhoneStamp
+    
+    /**
+     * Saved catalogue page for this stamp. A replaced stamp reads nothing.
+     */
+    func publishedCataloguePage(stamp: NativePhoneStamp, after: NativeEntryKey?, maximum: UInt32) throws  -> NativeCataloguePage?
+    
+    /**
+     * Saved transcript for this stamp. A replaced stamp reads nothing.
+     */
+    func publishedTranscript(stamp: NativePhoneStamp, conversation: String, revision: String) throws  -> NativeTranscript
+    
+    /**
      * Historical receipt recovery can select the prior receiver after key removal.
      */
     func purgeReceipt(receiver: String) throws  -> NativePurge?
@@ -1315,6 +1897,13 @@ public protocol NativeDeviceSessionProtocol: AnyObject, Sendable {
      * Run status, binding, bounded checkpoint read and refusal recheck under one admission.
      */
     func refresh(stop: NativeReadStop) throws  -> NativeRefresh
+    
+    /**
+     * The relay this phone already uses to look the gateway up by its key.
+     * A later product dial whose saved tunnel address fails asks the relay
+     * for the address the gateway has published.
+     */
+    func rememberRelay(relay: String) throws 
     
     /**
      * Signal closure before queueing drain; stop current core sockets.
@@ -1335,11 +1924,6 @@ public protocol NativeDeviceSessionProtocol: AnyObject, Sendable {
      * Fresh pinned status retains operation purge and physical worker uncertainty.
      */
     func status() throws  -> NativeStatus
-    
-    /**
-     * Passive saved transcript. The view revision is presentation identity only.
-     */
-    func transcript(conversation: String, revision: String) throws  -> NativeTranscript
     
 }
 /**
@@ -1420,16 +2004,28 @@ public static func `open`(root: String, directory: String, address: String, tunn
 
     
     /**
-     * Saved page derives receiver and scope from actual issued/cache evidence.
-     * Core owns entry bounds; foreign u32 conversion is checked before its call.
+     * Bind the publication lease to the saved issued receiver. Nothing is dialed.
      */
-open func cataloguePage(after: NativeEntryKey?, maximum: UInt32)throws  -> NativeCataloguePage?  {
-    return try  FfiConverterOptionTypeNativeCataloguePage.lift(try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
+open func bindSavedReceiver()throws  -> NativePhoneStamp  {
+    return try  FfiConverterTypeNativePhoneStamp_lift(try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
         uniffiCallStatus in
-    uniffi_nessa_device_client_fn_method_nativedevicesession_catalogue_page(
+    uniffi_nessa_device_client_fn_method_nativedevicesession_bind_saved_receiver(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Stored presence of one conversation. Absence is not a tombstone.
+     * `conversation` must be a canonical conversation id.
+     */
+open func cataloguePresence(stamp: NativePhoneStamp, conversation: String)throws  -> NativeCataloguePresence  {
+    return try  FfiConverterTypeNativeCataloguePresence_lift(try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativedevicesession_catalogue_presence(
             self.uniffiCloneHandle(),
-        FfiConverterOptionTypeNativeEntryKey.lower(after),
-        FfiConverterUInt32.lower(maximum),uniffiCallStatus
+        FfiConverterTypeNativePhoneStamp_lower(stamp),
+        FfiConverterString.lower(conversation),uniffiCallStatus
     )
 })
 }
@@ -1467,6 +2063,22 @@ open func enroll(code: String)throws  -> NativeEnrollmentReceipt  {
     uniffi_nessa_device_client_fn_method_nativedevicesession_enroll(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(code),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Fetch one held file. A replaced stamp does not dial. A local digest match does not dial.
+     * The admission returns the initial status and any refusal recheck with the fetch.
+     */
+open func fetchArtifact(stamp: NativePhoneStamp, request: NativeArtifactRequest, stop: NativeReadStop)throws  -> NativeArtifactAdmission  {
+    return try  FfiConverterTypeNativeArtifactAdmission_lift(try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativedevicesession_fetch_artifact(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeNativePhoneStamp_lower(stamp),
+        FfiConverterTypeNativeArtifactRequest_lower(request),
+        FfiConverterTypeNativeReadStop_lower(stop),uniffiCallStatus
     )
 })
 }
@@ -1535,6 +2147,48 @@ open func prepareOwnerOriginal(requestId: Data, discoveryJson: String)throws  ->
 }
     
     /**
+     * The stamp currently admitted.
+     */
+open func publication()throws  -> NativePhoneStamp  {
+    return try  FfiConverterTypeNativePhoneStamp_lift(try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativedevicesession_publication(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Saved catalogue page for this stamp. A replaced stamp reads nothing.
+     */
+open func publishedCataloguePage(stamp: NativePhoneStamp, after: NativeEntryKey?, maximum: UInt32)throws  -> NativeCataloguePage?  {
+    return try  FfiConverterOptionTypeNativeCataloguePage.lift(try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativedevicesession_published_catalogue_page(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeNativePhoneStamp_lower(stamp),
+        FfiConverterOptionTypeNativeEntryKey.lower(after),
+        FfiConverterUInt32.lower(maximum),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Saved transcript for this stamp. A replaced stamp reads nothing.
+     */
+open func publishedTranscript(stamp: NativePhoneStamp, conversation: String, revision: String)throws  -> NativeTranscript  {
+    return try  FfiConverterTypeNativeTranscript_lift(try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativedevicesession_published_transcript(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeNativePhoneStamp_lower(stamp),
+        FfiConverterString.lower(conversation),
+        FfiConverterString.lower(revision),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Historical receipt recovery can select the prior receiver after key removal.
      */
 open func purgeReceipt(receiver: String)throws  -> NativePurge?  {
@@ -1572,6 +2226,20 @@ open func refresh(stop: NativeReadStop)throws  -> NativeRefresh  {
         FfiConverterTypeNativeReadStop_lower(stop),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * The relay this phone already uses to look the gateway up by its key.
+     * A later product dial whose saved tunnel address fails asks the relay
+     * for the address the gateway has published.
+     */
+open func rememberRelay(relay: String)throws   {try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativedevicesession_remember_relay(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(relay),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -1620,20 +2288,6 @@ open func status()throws  -> NativeStatus  {
         uniffiCallStatus in
     uniffi_nessa_device_client_fn_method_nativedevicesession_status(
             self.uniffiCloneHandle(),uniffiCallStatus
-    )
-})
-}
-    
-    /**
-     * Passive saved transcript. The view revision is presentation identity only.
-     */
-open func transcript(conversation: String, revision: String)throws  -> NativeTranscript  {
-    return try  FfiConverterTypeNativeTranscript_lift(try rustCallWithError(FfiConverterTypeNativeCallError_lift) {
-        uniffiCallStatus in
-    uniffi_nessa_device_client_fn_method_nativedevicesession_transcript(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(conversation),
-        FfiConverterString.lower(revision),uniffiCallStatus
     )
 })
 }
@@ -4400,6 +5054,171 @@ public func FfiConverterTypeNativeOwnerStatus_lift(_ handle: UInt64) throws -> N
 #endif
 public func FfiConverterTypeNativeOwnerStatus_lower(_ value: NativeOwnerStatus) -> UInt64 {
     return FfiConverterTypeNativeOwnerStatus.lower(value)
+}
+
+
+
+
+
+
+/**
+ * A phone publication stamp. Holding one does not bind the lease.
+ */
+public protocol NativePhoneStampProtocol: AnyObject, Sendable {
+    
+    /**
+     * Generation assigned when this receiver was bound.
+     */
+    func generation()  -> UInt64
+    
+    /**
+     * Published lease id. Accept also requires the identity the minting session
+     * holds, which this method does not return. A later session mints another id.
+     */
+    func lease()  -> String
+    
+    /**
+     * Receiver this stamp names.
+     */
+    func receiver()  -> String
+    
+}
+/**
+ * A phone publication stamp. Holding one does not bind the lease.
+ */
+open class NativePhoneStamp: NativePhoneStampProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_nessa_device_client_fn_clone_nativephonestamp(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_nessa_device_client_fn_free_nativephonestamp(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Generation assigned when this receiver was bound.
+     */
+open func generation() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativephonestamp_generation(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Published lease id. Accept also requires the identity the minting session
+     * holds, which this method does not return. A later session mints another id.
+     */
+open func lease() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativephonestamp_lease(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Receiver this stamp names.
+     */
+open func receiver() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativephonestamp_receiver(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativePhoneStamp: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NativePhoneStamp
+
+    public static func lift(_ handle: UInt64) throws -> NativePhoneStamp {
+        return NativePhoneStamp(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NativePhoneStamp) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativePhoneStamp {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NativePhoneStamp, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePhoneStamp_lift(_ handle: UInt64) throws -> NativePhoneStamp {
+    return try FfiConverterTypeNativePhoneStamp.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePhoneStamp_lower(_ value: NativePhoneStamp) -> UInt64 {
+    return FfiConverterTypeNativePhoneStamp.lower(value)
 }
 
 
@@ -7327,6 +8146,11 @@ public protocol NativeSessionFailureProtocol: AnyObject, Sendable {
     func enrollment()  -> NativeEnrollmentFailure?
     
     /**
+     * Why a publication stamp was refused. Empty for every other failure.
+     */
+    func fence()  -> NativePhoneFence?
+    
+    /**
      * Original family.
      */
     func kind()  -> NativeSessionFailureKind
@@ -7432,6 +8256,18 @@ open func enrollment() -> NativeEnrollmentFailure?  {
     return try!  FfiConverterOptionTypeNativeEnrollmentFailure.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_nessa_device_client_fn_method_nativesessionfailure_enrollment(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Why a publication stamp was refused. Empty for every other failure.
+     */
+open func fence() -> NativePhoneFence?  {
+    return try!  FfiConverterOptionTypeNativePhoneFence.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_nessa_device_client_fn_method_nativesessionfailure_fence(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -8172,6 +9008,471 @@ public func FfiConverterTypeNativeWireFailure_lower(_ value: NativeWireFailure) 
 
 
 /**
+ * The file a phone names and the output path it should land in.
+ * Holding one does not read or dial.
+ */
+public struct NativeArtifactRequest: Equatable, Hashable {
+    /**
+     * Conversation that holds the file.
+     */
+    public var conversation: String
+    /**
+     * Canonical `sha256:` digest.
+     */
+    public var digest: String
+    /**
+     * Media type the file is held as.
+     */
+    public var mediaType: String
+    /**
+     * Size the digest names.
+     */
+    public var size: UInt64
+    /**
+     * Path where a matching file is kept.
+     */
+    public var output: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Conversation that holds the file.
+         */conversation: String, 
+        /**
+         * Canonical `sha256:` digest.
+         */digest: String, 
+        /**
+         * Media type the file is held as.
+         */mediaType: String, 
+        /**
+         * Size the digest names.
+         */size: UInt64, 
+        /**
+         * Path where a matching file is kept.
+         */output: String) {
+        self.conversation = conversation
+        self.digest = digest
+        self.mediaType = mediaType
+        self.size = size
+        self.output = output
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NativeArtifactRequest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeArtifactRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeArtifactRequest {
+        return
+            try NativeArtifactRequest(
+                conversation: FfiConverterString.read(from: &buf), 
+                digest: FfiConverterString.read(from: &buf), 
+                mediaType: FfiConverterString.read(from: &buf), 
+                size: FfiConverterUInt64.read(from: &buf), 
+                output: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NativeArtifactRequest, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.conversation, into: &buf)
+        FfiConverterString.write(value.digest, into: &buf)
+        FfiConverterString.write(value.mediaType, into: &buf)
+        FfiConverterUInt64.write(value.size, into: &buf)
+        FfiConverterString.write(value.output, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeArtifactRequest_lift(_ buf: RustBuffer) throws -> NativeArtifactRequest {
+    return try FfiConverterTypeNativeArtifactRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeArtifactRequest_lower(_ value: NativeArtifactRequest) -> RustBuffer {
+    return FfiConverterTypeNativeArtifactRequest.lower(value)
+}
+
+
+/**
+ * Why a held file was not kept.
+ */
+
+public enum NativeArtifactFaultKind: Equatable, Hashable {
+    
+    /**
+     * The gateway or the read stop refused a range.
+     */
+    case gateway
+    /**
+     * An answer was not the range asked.
+     */
+    case wrongRange
+    /**
+     * The part on disk was not the named digest.
+     */
+    case integrity
+    /**
+     * Something else is already at the output.
+     */
+    case outputExists
+    /**
+     * A local file step failed before the output was published.
+     */
+    case file
+    /**
+     * The output was linked, and removing the part or syncing its directory failed.
+     */
+    case linked
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeArtifactFaultKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeArtifactFaultKind: FfiConverterRustBuffer {
+    typealias SwiftType = NativeArtifactFaultKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeArtifactFaultKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .gateway
+        
+        case 2: return .wrongRange
+        
+        case 3: return .integrity
+        
+        case 4: return .outputExists
+        
+        case 5: return .file
+        
+        case 6: return .linked
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeArtifactFaultKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .gateway:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .wrongRange:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .integrity:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .outputExists:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .file:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .linked:
+            writeInt(&buf, Int32(6))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeArtifactFaultKind_lift(_ buf: RustBuffer) throws -> NativeArtifactFaultKind {
+    return try FfiConverterTypeNativeArtifactFaultKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeArtifactFaultKind_lower(_ value: NativeArtifactFaultKind) -> RustBuffer {
+    return FfiConverterTypeNativeArtifactFaultKind.lower(value)
+}
+
+
+
+/**
+ * Local file step from the existing held-file fetch.
+ */
+
+public enum NativeArtifactFileStep: Equatable, Hashable {
+    
+    /**
+     * Existing same-named fetch step.
+     */
+    case `open`
+    /**
+     * Existing same-named fetch step.
+     */
+    case locked
+    /**
+     * Existing same-named fetch step.
+     */
+    case read
+    /**
+     * Existing same-named fetch step.
+     */
+    case restart
+    /**
+     * Existing same-named fetch step.
+     */
+    case write
+    /**
+     * Existing same-named fetch step.
+     */
+    case sync
+    /**
+     * Existing same-named fetch step.
+     */
+    case link
+    /**
+     * Existing same-named fetch step.
+     */
+    case syncDirectory
+    /**
+     * Existing same-named fetch step.
+     */
+    case remove
+    /**
+     * Existing same-named fetch step.
+     */
+    case name
+    /**
+     * Existing same-named fetch step.
+     */
+    case changed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeArtifactFileStep: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeArtifactFileStep: FfiConverterRustBuffer {
+    typealias SwiftType = NativeArtifactFileStep
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeArtifactFileStep {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .`open`
+        
+        case 2: return .locked
+        
+        case 3: return .read
+        
+        case 4: return .restart
+        
+        case 5: return .write
+        
+        case 6: return .sync
+        
+        case 7: return .link
+        
+        case 8: return .syncDirectory
+        
+        case 9: return .remove
+        
+        case 10: return .name
+        
+        case 11: return .changed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeArtifactFileStep, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .`open`:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .locked:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .read:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .restart:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .write:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .sync:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .link:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .syncDirectory:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .remove:
+            writeInt(&buf, Int32(9))
+        
+        
+        case .name:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .changed:
+            writeInt(&buf, Int32(11))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeArtifactFileStep_lift(_ buf: RustBuffer) throws -> NativeArtifactFileStep {
+    return try FfiConverterTypeNativeArtifactFileStep.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeArtifactFileStep_lower(_ value: NativeArtifactFileStep) -> RustBuffer {
+    return FfiConverterTypeNativeArtifactFileStep.lower(value)
+}
+
+
+
+/**
+ * What became of a part that was not the named file.
+ */
+
+public enum NativeArtifactPartCleanup: Equatable, Hashable {
+    
+    /**
+     * The part was removed.
+     */
+    case removed
+    /**
+     * Removal failed and the part was emptied.
+     */
+    case emptied
+    /**
+     * Removal and emptying both failed. The part is still there.
+     */
+    case left
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeArtifactPartCleanup: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeArtifactPartCleanup: FfiConverterRustBuffer {
+    typealias SwiftType = NativeArtifactPartCleanup
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeArtifactPartCleanup {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .removed
+        
+        case 2: return .emptied
+        
+        case 3: return .left
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeArtifactPartCleanup, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .removed:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .emptied:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .left:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeArtifactPartCleanup_lift(_ buf: RustBuffer) throws -> NativeArtifactPartCleanup {
+    return try FfiConverterTypeNativeArtifactPartCleanup.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeArtifactPartCleanup_lower(_ value: NativeArtifactPartCleanup) -> RustBuffer {
+    return FfiConverterTypeNativeArtifactPartCleanup.lower(value)
+}
+
+
+
+/**
  * Exact original failed-attempt cause.
  */
 
@@ -8452,6 +9753,91 @@ public func FfiConverterTypeNativeCallError_lift(_ buf: RustBuffer) throws -> Na
 public func FfiConverterTypeNativeCallError_lower(_ value: NativeCallError) -> RustBuffer {
     return FfiConverterTypeNativeCallError.lower(value)
 }
+
+
+/**
+ * Stored catalogue identity. Absence is not a tombstone.
+ */
+
+public enum NativeCataloguePresence: Equatable, Hashable {
+    
+    /**
+     * A non-deleted row is stored.
+     */
+    case live
+    /**
+     * A deletion fence or receiver purge is stored.
+     */
+    case tombstone
+    /**
+     * No row and no fence.
+     */
+    case absent
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeCataloguePresence: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeCataloguePresence: FfiConverterRustBuffer {
+    typealias SwiftType = NativeCataloguePresence
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeCataloguePresence {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .live
+        
+        case 2: return .tombstone
+        
+        case 3: return .absent
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeCataloguePresence, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .live:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .tombstone:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .absent:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeCataloguePresence_lift(_ buf: RustBuffer) throws -> NativeCataloguePresence {
+    return try FfiConverterTypeNativeCataloguePresence.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeCataloguePresence_lower(_ value: NativeCataloguePresence) -> RustBuffer {
+    return FfiConverterTypeNativeCataloguePresence.lower(value)
+}
+
 
 
 /**
@@ -10101,6 +11487,101 @@ public func FfiConverterTypeNativePairingFailure_lower(_ value: NativePairingFai
 
 
 /**
+ * Why a phone publication stamp cannot read.
+ */
+
+public enum NativePhoneFence: Equatable, Hashable {
+    
+    /**
+     * No receiver is bound.
+     */
+    case unbound
+    /**
+     * The session is closed.
+     */
+    case closed
+    /**
+     * A newer receiver replaced this stamp.
+     */
+    case replaced
+    /**
+     * The receiver has a successful purge receipt.
+     */
+    case purged
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativePhoneFence: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativePhoneFence: FfiConverterRustBuffer {
+    typealias SwiftType = NativePhoneFence
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativePhoneFence {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .unbound
+        
+        case 2: return .closed
+        
+        case 3: return .replaced
+        
+        case 4: return .purged
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativePhoneFence, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .unbound:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .closed:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .replaced:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .purged:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePhoneFence_lift(_ buf: RustBuffer) throws -> NativePhoneFence {
+    return try FfiConverterTypeNativePhoneFence.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePhoneFence_lower(_ value: NativePhoneFence) -> RustBuffer {
+    return FfiConverterTypeNativePhoneFence.lower(value)
+}
+
+
+
+/**
  * Private-state failure variant; payloads belong to the same immutable object.
  */
 
@@ -11015,7 +12496,8 @@ public func FfiConverterTypeNativePublicationStep_lower(_ value: NativePublicati
 
 
 /**
- * Existing core enum values, translated by an exhaustive From implementation.
+ * Existing core read failures. A recognized held-file product code is
+ * [`NativeReadFailure::Product`] and keeps the gateway's code string.
  */
 
 public enum NativeReadFailure: Equatable, Hashable {
@@ -11068,6 +12550,14 @@ public enum NativeReadFailure: Equatable, Hashable {
      * Existing same-named core variant.
      */
     case subscriptionCapacity
+    /**
+     * The gateway's conversation product code, as `ConversationErrorCode::as_str`.
+     */
+    case product(
+        /**
+         * Exact product code.
+         */code: String
+    )
 
 
 
@@ -11112,6 +12602,9 @@ public struct FfiConverterTypeNativeReadFailure: FfiConverterRustBuffer {
         case 11: return .cursorAhead
         
         case 12: return .subscriptionCapacity
+        
+        case 13: return .product(code: try FfiConverterString.read(from: &buf)
+        )
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -11168,6 +12661,11 @@ public struct FfiConverterTypeNativeReadFailure: FfiConverterRustBuffer {
         case .subscriptionCapacity:
             writeInt(&buf, Int32(12))
         
+        
+        case let .product(code):
+            writeInt(&buf, Int32(13))
+            FfiConverterString.write(code, into: &buf)
+            
         }
     }
 }
@@ -11239,6 +12737,10 @@ public enum NativeSessionFailureKind: Equatable, Hashable {
      * Original recovery or later actual owner selection refused.
      */
     case owner
+    /**
+     * The publication stamp does not name the bound receiver.
+     */
+    case fenced
 
 
 
@@ -11281,6 +12783,8 @@ public struct FfiConverterTypeNativeSessionFailureKind: FfiConverterRustBuffer {
         case 10: return .product
         
         case 11: return .owner
+        
+        case 12: return .fenced
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -11332,6 +12836,10 @@ public struct FfiConverterTypeNativeSessionFailureKind: FfiConverterRustBuffer {
         
         case .owner:
             writeInt(&buf, Int32(11))
+        
+        
+        case .fenced:
+            writeInt(&buf, Int32(12))
         
         }
     }
@@ -12011,6 +13519,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeNativeArtifactFetch: FfiConverterRustBuffer {
+    typealias SwiftType = NativeArtifactFetch?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeArtifactFetch.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeArtifactFetch.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeNativeCataloguePage: FfiConverterRustBuffer {
     typealias SwiftType = NativeCataloguePage?
 
@@ -12611,6 +14143,78 @@ fileprivate struct FfiConverterOptionTypeNativeWireFailure: FfiConverterRustBuff
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeNativeArtifactFaultKind: FfiConverterRustBuffer {
+    typealias SwiftType = NativeArtifactFaultKind?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeArtifactFaultKind.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeArtifactFaultKind.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativeArtifactFileStep: FfiConverterRustBuffer {
+    typealias SwiftType = NativeArtifactFileStep?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeArtifactFileStep.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeArtifactFileStep.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativeArtifactPartCleanup: FfiConverterRustBuffer {
+    typealias SwiftType = NativeArtifactPartCleanup?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativeArtifactPartCleanup.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativeArtifactPartCleanup.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeNativeAttemptFailure: FfiConverterRustBuffer {
     typealias SwiftType = NativeAttemptFailure?
 
@@ -12771,6 +14375,30 @@ fileprivate struct FfiConverterOptionTypeNativePairingFailure: FfiConverterRustB
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeNativePairingFailure.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeNativePhoneFence: FfiConverterRustBuffer {
+    typealias SwiftType = NativePhoneFence?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeNativePhoneFence.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeNativePhoneFence.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -13009,6 +14637,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nessa_device_client_checksum_method_nativesessionfailure_enrollment() != 4152) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nessa_device_client_checksum_method_nativesessionfailure_fence() != 20121) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nessa_device_client_checksum_method_nativesessionfailure_kind() != 38625) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -13198,6 +14829,60 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nessa_device_client_checksum_method_nativeproductticket_wait() != 17840) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactadmission_failure() != 12648) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactadmission_fetch() != 64440) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactadmission_initial() != 4727) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactadmission_recheck() != 53759) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactadmission_selection_failure() != 26570) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactfetch_cleanup_remove() != 42405) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactfetch_cleanup_restart() != 24706) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactfetch_elapsed_ms() != 56333) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactfetch_fault() != 35263) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactfetch_file_step() != 29310) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactfetch_gateway_failure() != 53463) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactfetch_gateway_ranges() != 60123) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactfetch_gateway_resumed_from() != 55306) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactfetch_linked_step() != 45326) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactfetch_local_match_bytes() != 54673) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactfetch_part_cleanup() != 38967) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactfetch_reached() != 32813) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativeartifactfetch_resumed_from() != 42673) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nessa_device_client_checksum_method_nativecatalogueentry_agent() != 63226) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -13255,7 +14940,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nessa_device_client_checksum_method_nativecloseobservation_released() != 48671) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_catalogue_page() != 58619) {
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_bind_saved_receiver() != 61671) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_catalogue_presence() != 8121) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_close() != 33667) {
@@ -13265,6 +14953,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_enroll() != 10563) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_fetch_artifact() != 40665) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_follow() != 49578) {
@@ -13279,6 +14970,15 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_prepare_owner_original() != 63990) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_publication() != 62596) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_published_catalogue_page() != 13545) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_published_transcript() != 34684) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_purge_receipt() != 16920) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -13286,6 +14986,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_refresh() != 11534) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_remember_relay() != 25888) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_request_close() != 27981) {
@@ -13298,9 +15001,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativedevicesession_status() != 48956) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_nessa_device_client_checksum_method_nativedevicesession_transcript() != 41270) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativeenrollmentreceipt_access_epoch() != 16080) {
@@ -13382,6 +15082,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativelocalissuedenrollment_receiver() != 20606) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativephonestamp_generation() != 38395) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativephonestamp_lease() != 61039) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nessa_device_client_checksum_method_nativephonestamp_receiver() != 23682) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nessa_device_client_checksum_method_nativepublicintent_attempt() != 60912) {

@@ -27,22 +27,6 @@ import Foundation
       identity: identity, revision: revision, scope: scope,
       text: text, attachments: attachments, reply: reply)
   }
-  /// Both phone renderers submit the captured revision through the same durable send path.
-  func submit(in conversationID: String, store: MessagesViewModel) {
-    let captured = begin(scope: store.deliveryScopeRevision)
-    Task {
-      let accepted = await store.send(
-        captured.text, attachments: captured.attachments,
-        reply: captured.reply, to: conversationID, identity: captured.identity)
-      if accepted {
-        self.accept([captured.identity.requestID], scope: store.deliveryScopeRevision)
-      }
-      self.accept(store.acknowledgedCommands, scope: store.deliveryScopeRevision)
-      let knownQueue = store.connected && store.pendingLoadError == nil
-      let pending = store.pendingCommands.contains { $0.requestID == captured.identity.requestID }
-      self.finished(captured.identity.requestID, keepPending: !knownQueue || pending)
-    }
-  }
   func finished(_ requestID: String, keepPending: Bool) {
     active.remove(requestID)
     if !keepPending { owned.removeValue(forKey: requestID) }
@@ -57,17 +41,5 @@ import Foundation
       text = ""
       attachments = []
     }
-  }
-}
-
-/// What the home composer hands to the chat it starts, for that chat's own composer to send.
-struct HomeFirstMessage {
-  let text: String
-  let attachments: [DraftAttachment]
-
-  func consume(from draft: inout String, attachments current: inout [DraftAttachment]) {
-    if draft.utf8.elementsEqual(text.utf8) { draft = "" }
-    let submitted = Set(attachments.map(\.id))
-    current.removeAll { submitted.contains($0.id) }
   }
 }

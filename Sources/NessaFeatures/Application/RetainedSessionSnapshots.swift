@@ -130,6 +130,8 @@ public enum RetainedSessionFailureKind: String, Codable, Equatable, Sendable {
   case stopped
   case product
   case owner
+  /// The saved-read stamp no longer names the bound receiver.
+  case fenced
 }
 
 public enum RetainedStorageFailure: String, Codable, Equatable, Sendable {

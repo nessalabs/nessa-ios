@@ -61,14 +61,18 @@ private final class NativeRetainedSession: RetainedSession {
   {
     try await NativeRetainedExecutor.run { [worker] in
       let key = try after.map { try NativeEntryKey(creation: $0.creation, id: $0.id) }
-      return try await worker.cataloguePage(
-        after: key, maximum: maximum, capture: { $0.map { NativeRetainedCapture.capture($0) } })
+      // Saved reads answer for the receiver bound now; a replaced or purged one reads nothing.
+      let stamp = try await worker.bindSavedReceiver()
+      return try await worker.publishedCataloguePage(
+        stamp: stamp, after: key, maximum: maximum,
+        capture: { $0.map { NativeRetainedCapture.capture($0) } })
     }
   }
   func transcript(conversation: String, revision: UUID) async throws -> RetainedTranscript {
     try await NativeRetainedExecutor.run { [worker] in
-      try await worker.transcript(
-        conversation: conversation, revision: revision.uuidString.lowercased(),
+      let stamp = try await worker.bindSavedReceiver()
+      return try await worker.publishedTranscript(
+        stamp: stamp, conversation: conversation, revision: revision.uuidString.lowercased(),
         capture: {
           NativeRetainedCapture.transcript($0, conversation: conversation, revision: revision)
         })

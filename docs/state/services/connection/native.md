@@ -34,7 +34,7 @@ prove that the gateway command did nothing. The Swift queue itself has no size
 limit or queue-wait timeout; downstream native deadlines are separate.
 
 The package is vendored from nessa-agent commit
-`bd278df230863db5eb0aee615dcd9069bd5e8fe5`, recorded with artifact hashes in
+`0fb99744ebf158ee811fb41e46a1b3f0a37120ea`, recorded with artifact hashes in
 [SOURCE.json](../../../../Vendor/NessaNative/SOURCE.json). Its generated bindings
 and arm64 XCFramework are not current source from this repository. The phone's
 generated gateway grammar has its own pin, maintained by

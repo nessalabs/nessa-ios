@@ -2,9 +2,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT="$ROOT/App/Nessa.xcodeproj"
 SCHEME="Nessa"
 APP_BUNDLE_ID="app.nessa.mobile"
 DERIVED_DATA="$ROOT/DerivedData-iPhone"
+DEFAULT_DEVELOPMENT_TEAM="8F64XCDBH8"
 
 find_xcode_developer_dir() {
   local candidates=()
@@ -70,6 +72,14 @@ find_device_index() {
   return 1
 }
 
+project_team_id() {
+  awk -F '= ' '/DEVELOPMENT_TEAM = [A-Z0-9]+;/ {
+    gsub(/;/, "", $2)
+    print $2
+    exit
+  }' "$PROJECT/project.pbxproj"
+}
+
 if ! developer_dir="$(find_xcode_developer_dir)"; then
   cat >&2 <<EOF
 Full Xcode with iPhone device support is required.
@@ -126,20 +136,53 @@ EOF
   exit 1
 fi
 
-# The Exact project supplies its default team. An explicit team takes priority.
-team_id="${DEVELOPMENT_TEAM:-${APPLE_TEAM_ID:-}}"
-build_settings=(-allowProvisioningUpdates -allowProvisioningDeviceRegistration CODE_SIGN_STYLE=Automatic)
+project_team="$(project_team_id)"
+team_id="${DEVELOPMENT_TEAM:-${APPLE_TEAM_ID:-${project_team:-$DEFAULT_DEVELOPMENT_TEAM}}}"
+build_settings=(
+  CODE_SIGN_STYLE=Automatic
+)
+
 if [[ -n "$team_id" ]]; then
   build_settings+=("DEVELOPMENT_TEAM=$team_id")
 fi
 
 echo "Building $SCHEME for ${device_name:-$device_udid}..."
-NESSA_DERIVED_DATA="$DERIVED_DATA" NESSA_XCODE_DESTINATION="id=$device_udid" \
-  "$ROOT/nessa/tools/build-ios.sh" device Debug "${build_settings[@]}"
+if ! xcodebuild \
+  -project "$PROJECT" \
+  -scheme "$SCHEME" \
+  -destination "id=$device_udid" \
+  -configuration Debug \
+  -derivedDataPath "$DERIVED_DATA" \
+  -allowProvisioningUpdates \
+  -allowProvisioningDeviceRegistration \
+  "${build_settings[@]}" \
+  build; then
+  if [[ -z "$team_id" ]]; then
+    cat >&2 <<EOF
 
-app_path="$DERIVED_DATA/Build/Products/Debug-iphoneos/$SCHEME.app"
-if [[ ! -d "$app_path" ]]; then
-  echo "Built app was not found at $app_path." >&2
+Build failed and no Apple development team is configured.
+
+Run with your Apple team id:
+  DEVELOPMENT_TEAM=YOURTEAMID ./iphone.sh
+
+You can find the team id in Xcode:
+  Xcode > Settings > Accounts > your Apple ID > Team > Team ID
+EOF
+  fi
+  exit 1
+fi
+
+app_path="$(
+  find "$DERIVED_DATA/Build/Products/Debug-iphoneos" \
+    -maxdepth 1 \
+    -name "$SCHEME.app" \
+    -type d \
+    -print \
+    -quit
+)"
+
+if [[ -z "$app_path" ]]; then
+  echo "Built app was not found under $DERIVED_DATA/Build/Products/Debug-iphoneos." >&2
   exit 1
 fi
 

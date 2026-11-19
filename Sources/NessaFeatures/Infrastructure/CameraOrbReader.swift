@@ -1,3 +1,28 @@
+import Foundation
+
+/// The camera zoom for reading the desktop orb. Kept outside the iOS-only
+/// reader so it can be tested on any host.
+enum OrbCameraZoom {
+  /// The desktop orb's width on a Mac screen, in millimetres (176 points).
+  static let orbWidth = 35.0
+  /// How much of the frame's long side the orb should span: about 60% of
+  /// the square preview, which shows the frame's short (9/16) side.
+  static let orbFill = 0.34
+  /// The highest zoom used, so the preview stays easy to aim.
+  static let zoomCeiling = 4.0
+
+  /// The zoom at which the orb spans `orbFill` of the frame at the lens's
+  /// closest sharp distance (Apple's guidance for close-up code scanning).
+  /// 1 when the distance is unknown (-1) or no zoom is needed.
+  static func factor(minimumFocusDistance: Double, fieldOfView: Double, maximum: Double) -> Double {
+    guard minimumFocusDistance > 0, fieldOfView > 0 else { return 1 }
+    let halfAngle = fieldOfView / 2 * .pi / 180
+    let distance = orbWidth / (orbFill * 2 * tan(halfAngle))
+    guard distance < minimumFocusDistance else { return 1 }
+    return min(minimumFocusDistance / distance, zoomCeiling, max(1, maximum))
+  }
+}
+
 #if os(iOS)
   import AVFoundation
   import Foundation
@@ -79,6 +104,17 @@
         if camera.isFocusModeSupported(.continuousAutoFocus) {
           camera.focusMode = .continuousAutoFocus
         }
+        if camera.isAutoFocusRangeRestrictionSupported {
+          camera.autoFocusRangeRestriction = .near
+        }
+        // People hold the phone close to a small orb, nearer than the lens can
+        // focus, and every frame is blurred. Zoom so the orb fills the preview
+        // from where the lens is sharp.
+        let zoom = OrbCameraZoom.factor(
+          minimumFocusDistance: Double(camera.minimumFocusDistance),
+          fieldOfView: Double(camera.activeFormat.videoFieldOfView),
+          maximum: Double(camera.activeFormat.videoMaxZoomFactor))
+        camera.videoZoomFactor = CGFloat(zoom)
         camera.unlockForConfiguration()
       }
       configured = true
