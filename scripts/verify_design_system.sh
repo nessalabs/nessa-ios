@@ -9,9 +9,10 @@ if rg -n "Color\\(hex:|\\.font\\(\\.system|cornerRadius: [0-9]" "$ROOT/Sources/N
   failures=$((failures + 1))
 fi
 
-# The shipped transcript consumes generated Contract styles. Compare them to the
-# canonical Swift tokens instead of requiring a token reference in a SwiftUI view.
-"$ROOT/scripts/export-bubble-style.sh" --check
+if ! rg -q "NessaColor|NessaType|NessaSpacing|NessaRadius|NessaCard|NessaPrimaryButton|NessaPillButton" "$ROOT/Sources/NessaFeatures/Presentation"; then
+  echo "Design-system violation: presentation layer is not using the shared design system" >&2
+  failures=$((failures + 1))
+fi
 
 if [[ "$failures" -gt 0 ]]; then
   exit 1

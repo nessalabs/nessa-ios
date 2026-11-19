@@ -59,15 +59,3 @@ import Foundation
     }
   }
 }
-
-/// What the home composer hands to the chat it starts, for that chat's own composer to send.
-struct HomeFirstMessage {
-  let text: String
-  let attachments: [DraftAttachment]
-
-  func consume(from draft: inout String, attachments current: inout [DraftAttachment]) {
-    if draft.utf8.elementsEqual(text.utf8) { draft = "" }
-    let submitted = Set(attachments.map(\.id))
-    current.removeAll { submitted.contains($0.id) }
-  }
-}

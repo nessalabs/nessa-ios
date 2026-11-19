@@ -1,11 +1,12 @@
 import SwiftUI
 
 /// Measurements in points, taken from the 440-point-wide Messages references.
-extension MessagesStyle {
+public enum MessagesStyle {
   /// Archiving is quiet and undoable: a neutral grey, never a hue.
   public static let archiveAction = Color(hex: 0x636366)
   public static let tapbackPinkLight = Color(hex: 0xFFB3DB)
   public static let tapbackPink = Color(hex: 0xFA3A96)
+  public static let tapbackBackground = Color(hex: 0x18A4ED)
   public static let tapbackHeartSize: CGFloat = 28
   public static let tapbackHeartHighlight = Color.white.opacity(0.65)
   public static let photoSwipeTilt = 8.0
@@ -29,6 +30,7 @@ extension MessagesStyle {
   public static let tapbackPunctuation = Font.system(size: 30, weight: .black, design: .rounded)
   public static let tapbackBadgeWidth: CGFloat = 42
   public static let tapbackBadgeHeight: CGFloat = 48
+  public static let tapbackBadgeCircle: CGFloat = 34
   public static let tapbackBadgeScale: CGFloat = 0.72
   public static let messageSnapshotMaxHeight: CGFloat = 640
   public static let messageContextDim: Double = 0.55
@@ -38,6 +40,9 @@ extension MessagesStyle {
   public static let actionRowHeight: CGFloat = 52
   public static let actionMenuRadius: CGFloat = 24
   public static let actionMenuWidth: CGFloat = 240
+  public static let photoStackHeight: CGFloat = 240
+  public static let photoStackTilt: Double = 2.5
+  public static let gallerySpacing: CGFloat = 4
   public static let contextBackgroundBlur: CGFloat = 4
   public static let reactionEmojiFont = Font.system(size: 28)
   public static let reactionSelectorHeight: CGFloat = 54
@@ -48,7 +53,10 @@ extension MessagesStyle {
   public static let reactionPickerWidth: CGFloat = 400
   public static let reactionPaletteControl: CGFloat = 44
   public static let reactionPaletteSpacing: CGFloat = 6
+  // The main circle meets the bubble's top curve; the tiny dot sits beside its corner.
+  public static let reactionOffset: CGFloat = -34
   public static let reactionHorizontalOffset: CGFloat = 8
+  public static let reactionClearance: CGFloat = 42
   public static let contextPopScale: CGFloat = 0.88
   public static let contextActionScale: CGFloat = 0.96
   public static let contextSpringDuration: Double = 0.25
@@ -71,6 +79,18 @@ extension MessagesStyle {
   public static let layoutSettleWindow: TimeInterval = 0.6
   /// How long a newly opened thread spends settling before growth counts as new messages.
   public static let openSettleTime: TimeInterval = 1
+  public static let typingDotSize: CGFloat = 8
+  public static let typingDotSpacing: CGFloat = 5
+  /// How bright a dot is between its turns.
+  public static let typingDotRestOpacity: Double = 0.35
+  /// One full pass of the three dots plus the rest after them.
+  public static let typingCycle: TimeInterval = 1.3
+  /// How far into the cycle (as a fraction) each dot starts after the one before it: 0.15 s.
+  public static let typingStep: Double = 0.115
+  /// How long (as a fraction of the cycle) one dot's glow lasts: 0.4 s, leaving a rest.
+  public static let typingPulse: Double = 0.31
+  /// How much a dot grows at the peak of its turn.
+  public static let typingDotPeakScale: CGFloat = 1.15
   /// A reply that replaces a typing bubble arrives with its bubble already there, growing out
   /// of the typing bubble's frame on the list's own spring; only its text fades in.
   public static var replyMorphInsertion: AnyTransition {
@@ -82,18 +102,33 @@ extension MessagesStyle {
   /// The text of a growing reply fades in once its bubble is mostly open, so no line shows
   /// outside the fill while the fill is still small.
   public static let replyTextReveal = Animation.easeOut(duration: 0.12).delay(0.14)
+  public static let typingBubbleHorizontalInset: CGFloat = 14
+  public static let typingBubbleVerticalInset: CGFloat = 13
+  public static let typingTailLarge: CGFloat = 12
+  public static let typingTailSmall: CGFloat = 6
   public static let photoDraftWidth: CGFloat = 96
   public static let photoDraftHeight: CGFloat = 76
   public static let photoDraftRadius: CGFloat = 12
   public static let photoRemoveSize: CGFloat = 22
+  public static let photoWidth: CGFloat = 270
   public static let photoHeight: CGFloat = 340
   public static let photoPlaceholderHeight: CGFloat = 160
+  public static let photoRadius: CGFloat = 20
   public static let headerBlurOpacity: Double = 0.9
+  public static let background = NessaColor.background
   public static let danger = NessaColor.destructive
+  public static let incoming = NessaColor.card
+  public static let incomingBorder = NessaColor.hairline
+  public static let outgoing = NessaColor.accent
+  /// The sent bubble lit from above: the accent settling into a deeper step at its foot.
+  public static let outgoingFillColors = [outgoing, NessaColor.accentDeep]
   public static let outgoingFill = LinearGradient(
     colors: outgoingFillColors, startPoint: .top, endPoint: .bottom)
   public static let link = NessaColor.accentInk
+  public static let secondary = NessaColor.mutedForeground
   public static let separator = NessaColor.muted
+  public static let foreground = NessaColor.foreground
+  public static let control = NessaColor.muted
   /// How far the header's dither reaches down before it is gone.
   public static let ditherHeight: CGFloat = 150
   /// The bottom bar's ground reaches this far above the bar.
@@ -152,6 +187,7 @@ extension MessagesStyle {
   /// The square inside the composer's Stop button.
   public static let stopGlyph: CGFloat = 10
   public static let stopGlyphRadius: CGFloat = 2.5
+  public static let bubbleGutter: CGFloat = 70
   public static let rowAvatar: CGFloat = 45
   /// The agent's disc in the thread's navigation bar title.
   public static let titleAvatar: CGFloat = 28
@@ -163,7 +199,16 @@ extension MessagesStyle {
   public static let composerHeight: CGFloat = 46
   public static let composerRadius: CGFloat = 23
   public static let replyBackgroundBlur: CGFloat = 14
+  public static let replyPreviewOpacity: Double = 0.55
+  public static let replyPreviewRadius: CGFloat = 18
+  public static let replyConnectorWidth: CGFloat = 44
+  public static let replyConnectorHeight: CGFloat = 28
+  public static let replyConnectorStroke: CGFloat = 2
   public static let rowHeight: CGFloat = 84
+  public static let bubbleBorderWidth: CGFloat = 0.5
+  public static let bubbleRadius: CGFloat = 25
+  public static let bubbleInset: CGFloat = 12
+  public static let bubbleHorizontalInset: CGFloat = 16
   public static let bubbleSpacing: CGFloat = 8
   /// A sent bubble rises out of the composer: it starts this far below its place, small and
   /// tucked into its tail corner, and springs up with a little overshoot.

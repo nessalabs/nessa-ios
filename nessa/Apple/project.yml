@@ -36,7 +36,7 @@ targets:
     platform: iOS
     sources:
       - NessaExactApp.swift
-      - Assets.xcassets
+      - ../../App/Nessa/Assets.xcassets
     dependencies:
       - package: Exact
         product: ExactKit

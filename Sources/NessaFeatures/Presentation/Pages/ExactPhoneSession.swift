@@ -1,8 +1,9 @@
 #if os(iOS)
 import Combine
+import NessaDesignSystem
 import UIKit
 
-/// State shared by the Contract routes and their native iOS controls.
+/// State shared by the Contract routes and the iOS controls that need a hosting controller.
 @MainActor public final class ExactPhoneSession {
   let dependencies: NessaDependencies
   let messages: MessagesViewModel
@@ -54,15 +55,6 @@ import UIKit
       "working": messages.agentsGlance.count(.working), "channels": channels]
   }
 
-  private static func timestamp(_ milliseconds: Double) -> String {
-    let date = Date(timeIntervalSince1970: milliseconds / 1000)
-    if Calendar.current.isDateInToday(date) {
-      return date.formatted(date: .omitted, time: .shortened)
-    }
-    if Calendar.current.isDateInYesterday(date) { return "Yesterday" }
-    return date.formatted(.dateTime.month(.abbreviated).day())
-  }
-
   public func list(_ screen: String, key: String) -> [String: Any] {
     let shared = screen == "shared"
     let chats: [NessaConversation]
@@ -78,7 +70,7 @@ import UIKit
     let rows = chats.map { chat in
       ["id": chat.id, "title": chat.title ?? (shared ? "Nessa" : messages.agentName(for: chat.id)),
        "preview": chat.running ? "Nessa is working…" : chat.preview ?? "New conversation",
-       "time": Self.timestamp(chat.updatedAtMs)]
+       "time": ConversationRow.timestamp(chat.updatedAtMs)]
     }
     return ["title": title, "rows": rows, "error": shared ? desktop.chatsError ?? "" : ""]
   }

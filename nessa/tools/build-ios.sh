@@ -4,8 +4,8 @@ cd "$(dirname "$0")/.."
 platform=${1:-simulator}
 configuration=${2:-Debug}
 case "$platform" in
-  simulator) sdk=iphonesimulator; destination=ios-simulator; platform_name="iOS Simulator"; device=() ;;
-  device) sdk=iphoneos; destination=ios; platform_name=iOS; device=(--device) ;;
+  simulator) sdk=iphonesimulator; destination=ios-simulator; device=() ;;
+  device) sdk=iphoneos; destination=ios; device=(--device) ;;
   *) echo "Choose simulator or device" >&2; exit 2 ;;
 esac
 case "$configuration" in Debug|Release) ;; *) echo "Choose Debug or Release" >&2; exit 2 ;; esac
@@ -20,6 +20,6 @@ export EXACT_LIB_DIR="$embed" EXACT_LIB=nessa_apple EXACT_UPDATE_TRUST=productio
 bun tools/prepare-module.mjs
 xcodegen generate --spec Apple/project.yml
 xcodebuild -project Apple/NessaExact.xcodeproj -scheme Nessa -configuration "$configuration" \
-  -sdk "$sdk" -destination "${NESSA_XCODE_DESTINATION:-generic/platform=$platform_name}" \
+  -sdk "$sdk" -destination "generic/platform=$(if [[ $sdk == iphoneos ]]; then echo iOS; else echo 'iOS Simulator'; fi)" \
   -derivedDataPath "${NESSA_DERIVED_DATA:-$PWD/.exact/xcode}" \
   "LIBRARY_SEARCH_PATHS=\$(inherited) \"$embed\"" ARCHS=arm64 "${@:3}" "${NESSA_BUILD_ACTION:-build}"

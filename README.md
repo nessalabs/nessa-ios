@@ -24,13 +24,14 @@ xcrun simctl launch booted app.nessa.mobile
 
 The home background, channel tiles, and seeded avatars use Exact Canvas 2D. Private gateway fields, scoped photo pixels, and system pickers remain native.
 
-After installing the dependencies above, `./start.sh` builds and launches Exact on a simulator; `./iphone.sh` builds and installs it on a connected iPhone. For the manual commands above, boot an iPhone simulator before installing and launching. The simulator Debug configuration
+The original SwiftUI reference is available in `App/Nessa.xcodeproj` for comparison.
+Boot an iPhone simulator before the last two commands. The simulator Debug configuration
 uses the repository's development adapter. Use `device Release` with the equivalent
 `aarch64-apple-ios` Rust and Hermes targets to build for a signed device.
 
 ## System and feature map
 
-The [Nessa Docs atlas](docs/state/README.md) records screen actions at its pinned source revision,
+The [Nessa Docs atlas](docs/state/README.md) follows current screen actions,
 connection ownership, delivery recovery and saved history. Its
 [verification report](docs/state/verification.md) separates executed Swift tests,
 bounded TLA+ models and platform checks that remain unrun.
@@ -59,7 +60,8 @@ phone requires a gateway address reachable from that phone.
 
 ```sh
 ./scripts/verify.sh
-NESSA_BUILD_ACTION=build-for-testing nessa/tools/build-ios.sh simulator Debug CODE_SIGN_IDENTITY=-
+xcodebuild -project App/Nessa.xcodeproj -scheme Nessa \
+  -destination 'generic/platform=iOS Simulator' ARCHS=arm64 CODE_SIGN_IDENTITY=- build
 ```
 
 Live-feed fault and image-input experiments are reproducible through
@@ -121,9 +123,9 @@ In Agents, swipe a chat left for **Archive** and **Delete**. Each asks in an ale
 
 ## Dependency injection and development
 
-`nessa/Apple/NessaExactApp.swift` mounts the Exact session. The Contract screens call the Swift bridge in `nessa/Apple/PhoneModule.swift`. `Sources/NessaFeatures/Composition/NessaDependencies.swift` supplies the view models with live or development adapters.
+`App/Nessa/NessaApp.swift` is the app composition entry point. `Composition/NessaDependencies.swift` constructs either live adapters or in-memory development adapters. Pages receive a view model from that container; view models receive a `MessagingService`, credential and preferences ports, a snapshot session, and a recovery policy. They never construct infrastructure.
 
-Debug defaults to fake data: twelve chats with scrollable message histories. Send, create, archive, and delete work in memory. Restarting resets development data. Set `NESSA_MODE=live` in the Xcode scheme environment to use your real backend during Debug. Release always selects live. Tests can inject a custom repository with `NessaDependencies.development(repository:)`.
+Debug defaults to fake data: twelve chats with scrollable message histories. Send, create, archive, and delete work in memory. Restarting resets development data. Set `NESSA_MODE=live` in the Xcode scheme environment to use your real backend during Debug. Release always selects live. Tests and previews can inject a custom repository with `NessaDependencies.development(repository:)`.
 
 Source layout:
 
@@ -132,15 +134,22 @@ Source layout:
 - `Infrastructure/`: WebSocket repository, attachment HTTP transport, mock repository, Keychain and preferences adapters.
 - `Composition/`: dependency wiring and build-mode selection.
 - `Presentation/ViewModels/`: observable screen state and async action coordination.
-- `nessa/*.contract`: screens, navigation, bubbles, composer, and reaction controls.
-- `Presentation/Pages/`: Swift bridges for Exact, including session, thread, composer, and pairing state.
-- `NessaDesignSystem/`: public Swift design library and the source for the generated Contract bubble styles.
+- `Presentation/Pages/`: home, Agents, channel, thread, details, connection and navigation composition.
+- `Presentation/Composites/`: feature sections such as headers, permission cards, composer and attachment tray.
+- `Presentation/Components/`: leaf controls, bubbles, avatars and platform picker bridges.
+- `NessaDesignSystem/`: shared visual tokens, shapes, glass and scroll-dependent header blur.
 
 The plus menu provides Camera, Photos and Add Files. Camera requires a physical iPhone; the simulator reports that it is unavailable. The system photo picker needs no broad photo-library permission. Draft attachments stay until a send succeeds. Photos retain their 5 MiB each / 10 MiB combined limits; general files use a 64 MiB message budget. Native uploads use `attachment.begin` and `attachment.write` pieces; the WebSocket verification path uses a single-use-ticket `PUT /attachments`. Tickets are never logged, and HTTP redirects and cookies are disabled. General files send original digest, media type, size and name in `uploads`. The gateway verifies and places their bytes where the selected agent runs before dispatching its prompt. Both phone journals retain those references for exact send/receipt recovery. File tiles show original metadata without inventing a local path. See gateway [#1149](https://github.com/nessalabs/nessa-agent/issues/1149).
 
 The waveform starts Apple speech recognition and fills the message field with text. Stop dictation, review the text, and tap Send. Live mode requests microphone and speech-recognition permission; development mode injects a mocked transcript. Physical-iPhone microphone verification remains outstanding. The menu has no Clear Draft action.
 
 New phone chats retain the gateway's default model when it supports images, otherwise selecting an image-capable model from the gateway's advertised list. Existing chats retain their model. If no offered model supports images, photo sending reports the refusal and keeps the draft. The local Codex image-input fix is tracked in [gateway PR #779](https://github.com/nessalabs/nessa-agent/pull/779); other gateways need that support before Codex photo sending will work.
+
+## Header behavior
+
+On iOS 26, header and composer controls use `safeAreaBar` with the system’s soft scroll-edge effect. The system supplies the gradual blur as content passes underneath; no custom material rectangle overlays it. Earlier supported versions use a scroll-dependent material fallback. The chat header uses a 44-point avatar and compact 15-point label.
+
+References: [Adopting Liquid Glass](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass), [safeAreaBar](https://developer.apple.com/documentation/swiftui/view/safeareabar(edge:alignment:spacing:content:)), [soft scroll-edge effect](https://developer.apple.com/documentation/swiftui/scrolledgeeffectstyle/soft). Apple documents the platform behavior; the compact dimensions are Nessa’s design choices, not published Messages internals.
 
 ## Agent platform direction
 
