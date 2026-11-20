@@ -1,0 +1,49 @@
+import NessaDesignSystem
+import SwiftUI
+
+/// A message this phone sent that its chat doesn't show yet: the sent bubble, with "Sending…"
+/// under it while it goes, or "Couldn't send · Retry" if it didn't get through.
+struct OutgoingMessageView: View {
+  let message: OutgoingMessagesViewModel.Message
+  let onRetry: () -> Void
+
+  var body: some View {
+    VStack(alignment: .trailing, spacing: NessaSpacing.xs) {
+      if !message.attachments.isEmpty {
+        Label(attachmentSummary, systemImage: "paperclip")
+          .font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
+          .frame(maxWidth: .infinity, alignment: .trailing)
+      }
+      if !message.text.isEmpty {
+        MessageBubble(text: message.text, outgoing: true)
+      }
+      status.padding(.horizontal, MessagesStyle.bubbleInset)
+    }
+  }
+
+  @ViewBuilder private var status: some View {
+    switch message.state {
+    case .sending:
+      Text("Sending…").font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
+    case .failed(let reason):
+      // Short, as Messages does: the reason is read out by VoiceOver, not shown.
+      Button(action: onRetry) {
+        HStack(spacing: NessaSpacing.xs) {
+          Text("Couldn’t send").foregroundStyle(MessagesStyle.danger)
+          Text("Retry").fontWeight(.semibold).foregroundStyle(MessagesStyle.foreground)
+        }
+        .font(MessagesStyle.caption)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Couldn’t send. \(reason ?? "")")
+      .accessibilityHint("Tries sending this message again")
+    }
+  }
+
+  private var attachmentSummary: String {
+    let count = message.attachments.count
+    if message.attachments.allSatisfy(\.isImage) { return count == 1 ? "1 photo" : "\(count) photos" }
+    return count == 1 ? "1 attachment" : "\(count) attachments"
+  }
+}
