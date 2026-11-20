@@ -7,6 +7,8 @@ struct ChannelChatsView: View {
   @ObservedObject var store: MessagesViewModel
   let channel: NessaChannel
   @ObservedObject var dictation: DictationViewModel
+  /// Hands back a first message whose chat couldn't be made.
+  @ObservedObject var outgoing: OutgoingMessagesViewModel
   let onOpen: (String) -> Void
   /// Starts a chat in this channel with the composer's message; the caller opens it at once.
   let onStart: (HomeFirstMessage) -> Void
@@ -54,6 +56,17 @@ struct ChannelChatsView: View {
         .padding(.bottom, MessagesStyle.bottomInset)
     }
     .navigationTitle(channel.name)
+    .onAppear(perform: takeReturned)
+    .onChange(of: outgoing.returned.isEmpty) { _, _ in takeReturned() }
+  }
+
+  /// A message whose chat couldn't be made comes back here, unless something new is typed.
+  private func takeReturned() {
+    guard draft.isEmpty, attachments.isEmpty,
+      let first = outgoing.takeReturned(channel: channel.isDefault ? nil : channel.channelId)
+    else { return }
+    draft = first.text
+    attachments = first.attachments
   }
 
   /// The draft moves to the new chat, which opens at once and shows whether it got through.

@@ -111,3 +111,24 @@ func cancellationAndGatewayErrorsPassThroughUnworded() async {
     }
   }
 }
+
+@Test @MainActor
+func aChatThatCouldNotBeMadeHandsItsMessageBackOnceNobodyIsLooking() async throws {
+  // Never connected, so the chat can't be made.
+  let model = MessagesViewModel(
+    service: MessagingService(repository: MockRepository()),
+    credentials: InMemoryCredentialStore(), preferences: InMemoryChatPreferences())
+  let outgoing = OutgoingMessagesViewModel()
+  let id = outgoing.start(
+    HomeFirstMessage(text: "Hello", attachments: []), channel: nil, store: model)
+  outgoing.onScreen(id, true)
+  await settle { outgoing.messages.first?.state != .sending }
+  // While its chat is on screen the message stays there, marked unsent.
+  #expect(outgoing.messages.count == 1)
+  #expect(outgoing.takeReturned(channel: nil) == nil)
+  outgoing.onScreen(id, false)
+  #expect(outgoing.messages.isEmpty)
+  #expect(!outgoing.isUnmade(id))
+  #expect(outgoing.takeReturned(channel: nil)?.text == "Hello")
+  #expect(outgoing.takeReturned(channel: nil) == nil)
+}

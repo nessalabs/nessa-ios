@@ -147,6 +147,8 @@ struct NessaThreadView: View {
     .sheet(isPresented: $details) {
       AgentDetailsView(name: name, conversationID: conversationID, store: store)
     }
+    .onAppear { outgoing.onScreen(conversationID, true) }
+    .onDisappear { outgoing.onScreen(conversationID, false) }
     // A chat the gateway hasn't made yet has nothing to watch; watching starts once it has.
     .task(id: WatchKey(revision: store.connectionRevision, made: !unmade)) {
       guard !unmade else { return }

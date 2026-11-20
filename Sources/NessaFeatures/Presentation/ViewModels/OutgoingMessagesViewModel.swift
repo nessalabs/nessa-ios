@@ -33,6 +33,11 @@ import Foundation
   /// The turn each delivered message became, so its row in the chat keeps one identity as the
   /// transcript takes it over and doesn't rise in a second time.
   private(set) var delivered: [String: UUID] = [:]
+  /// First messages of chats that couldn't be made and are no longer on screen, handed back to
+  /// the composer they came from (keyed by channel, "" for none) so they are never stranded.
+  @Published private(set) var returned: [String: HomeFirstMessage] = [:]
+  /// Chats open on screen now.
+  private var onScreen: Set<String> = []
 
   /// Starts a chat for `first` and returns its id, so the chat can open straight away; the
   /// chat is made and the message sent behind it.
@@ -70,6 +75,22 @@ import Foundation
     }
   }
 
+  /// A chat's screen came into view or left it. Leaving a chat that couldn't be made hands its
+  /// message back to the composer it came from.
+  func onScreen(_ conversationID: String, _ visible: Bool) {
+    if visible {
+      onScreen.insert(conversationID)
+    } else {
+      onScreen.remove(conversationID)
+      returnIfStranded(conversationID)
+    }
+  }
+
+  /// Takes back a first message whose chat couldn't be made, for the composer of `channel`.
+  func takeReturned(channel: String?) -> HomeFirstMessage? {
+    returned.removeValue(forKey: channel ?? "")
+  }
+
   /// The gateway hasn't made this chat yet: nothing else can be sent to it, and it has
   /// nothing to watch.
   func isUnmade(_ conversationID: String) -> Bool { unmade[conversationID] != nil }
@@ -92,6 +113,7 @@ import Foundation
       let report = SendFailureReport()
       guard await make(conversationID, chat, store: store, report: report) else {
         fail(id, report.words ?? "This chat couldn’t be started.")
+        returnIfStranded(conversationID)
         return
       }
       unmade[conversationID] = nil
@@ -138,6 +160,19 @@ import Foundation
     }
     return await store.create(channel: chat.channel, conversationID: conversationID, report: report)
       == conversationID
+  }
+
+  /// A chat that couldn't be made, with nobody looking at it, exists nowhere else: its message
+  /// goes back to the composer it came from rather than being lost with it.
+  private func returnIfStranded(_ conversationID: String) {
+    guard let chat = unmade[conversationID], !onScreen.contains(conversationID),
+      let message = messages.first(where: { $0.conversationID == conversationID }),
+      case .failed = message.state
+    else { return }
+    messages.removeAll { $0.conversationID == conversationID }
+    unmade[conversationID] = nil
+    returned[chat.channel ?? ""] = HomeFirstMessage(
+      text: message.text, attachments: message.attachments)
   }
 
   private func fail(_ id: UUID, _ words: String?) {

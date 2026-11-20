@@ -2,7 +2,7 @@ import NessaDesignSystem
 import SwiftUI
 
 /// What the home composer hands to the chat it starts, which shows it and sends it.
-struct HomeFirstMessage {
+struct HomeFirstMessage: Equatable {
   let text: String
   let attachments: [DraftAttachment]
 }
@@ -13,6 +13,8 @@ struct NessaHomeView: View {
   @ObservedObject var store: MessagesViewModel
   @ObservedObject var desktop: DesktopLinkViewModel
   @ObservedObject var dictation: DictationViewModel
+  /// Hands back a first message whose chat couldn't be made.
+  @ObservedObject var outgoing: OutgoingMessagesViewModel
   let onMenu: () -> Void
   let onPair: () -> Void
   let onCompose: () -> Void
@@ -49,7 +51,11 @@ struct NessaHomeView: View {
     .nessaTapDismissesKeyboard()
     // Back on home from a chat, no field here holds the keyboard: one left up by the chat
     // would float over the greeting with nothing to type into.
-    .onAppear { NessaKeyboard.dismiss() }
+    .onAppear {
+      NessaKeyboard.dismiss()
+      takeReturned()
+    }
+    .onChange(of: outgoing.returned.isEmpty) { _, _ in takeReturned() }
     .background { NessaHomeLight() }
     .safeAreaInset(edge: .top, spacing: 0) { topBar }
     .messagesBar(edge: .bottom) {
@@ -160,6 +166,14 @@ struct NessaHomeView: View {
 
   /// The same conditions the gateway puts on making a chat.
   private var canStart: Bool { store.canCreateChat }
+
+  /// A message whose chat couldn't be made comes back here, unless something new is typed.
+  private func takeReturned() {
+    guard draft.isEmpty, attachments.isEmpty, let first = outgoing.takeReturned(channel: nil)
+    else { return }
+    draft = first.text
+    attachments = first.attachments
+  }
 
   /// The draft moves to the new chat, which opens at once and shows whether it got through.
   private func start() {

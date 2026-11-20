@@ -120,7 +120,7 @@ public struct NessaMessagesView: View {
   private var stack: some View {
     NavigationStack(path: $path) {
       NessaHomeView(
-        store: store, desktop: linkStore, dictation: homeDictation,
+        store: store, desktop: linkStore, dictation: homeDictation, outgoing: outgoing,
         onMenu: openSidebar,
         onPair: pair,
         onCompose: compose,
@@ -138,6 +138,7 @@ public struct NessaMessagesView: View {
         case .channel(let channel):
           ChannelChatsView(
             store: store, channel: channel, dictation: dependencies.makeDictationViewModel(),
+            outgoing: outgoing,
             onOpen: { id in path.append(.chat(id: id, focusComposer: false)) },
             // The default channel is no stored channel: a chat made without one lands there.
             onStart: { start($0, channel: channel.isDefault ? nil : channel.channelId) })
