@@ -57,6 +57,22 @@ func aRefusedSendStaysInItsChatWithItsReasonAndNoAlert() async throws {
 }
 
 @Test @MainActor
+func anUnansweredSendIsTriedAgainUnderTheSameRequest() async throws {
+  let model = await connectedModel()
+  let outgoing = OutgoingMessagesViewModel()
+  let id = try #require(await model.create())
+  outgoing.send("Hi #lost", attachments: [], reply: nil, to: id, store: model)
+  await settle { outgoing.messages.first?.state != .sending }
+  let message = try #require(outgoing.messages.first)
+  guard case .failed = message.state else { Issue.record("expected a failure"); return }
+  // It may have landed, so the retry must not be a second, new send.
+  outgoing.retry(message.id, store: model)
+  await settle { outgoing.messages.first?.state != .sending }
+  #expect(outgoing.messages.first?.identity == message.identity)
+  #expect(model.error == nil)
+}
+
+@Test @MainActor
 func aMessageTheTranscriptShowsIsNotDrawnTwice() async throws {
   let model = await connectedModel()
   let outgoing = OutgoingMessagesViewModel()

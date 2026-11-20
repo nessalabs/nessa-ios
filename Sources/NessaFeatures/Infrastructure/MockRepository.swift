@@ -236,8 +236,9 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
     changed(id)
     return id
   }
-  /// A development message with `#slow` takes a few seconds to land and one with `#fail` is
-  /// turned away, so a slow or failed send can be seen without a real Mac.
+  /// A development message with `#slow` takes a few seconds to land, one with `#fail` is
+  /// turned away, and one with `#lost` gets no answer, so a slow, refused or unconfirmed send
+  /// can be seen without a real Mac.
   @discardableResult
   public func send(_ text: String, attachments: [DraftAttachment], conversationID: String)
     async throws -> String
@@ -246,6 +247,7 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
     if text.contains("#fail") {
       throw NessaGatewayError.rejected("Your Mac didn’t take this message.")
     }
+    if text.contains("#lost") { throw NessaGatewayError.timeout }
     let current = try read(conversationID)
     var turn = NessaTurn(
       executionId: UUID().uuidString,

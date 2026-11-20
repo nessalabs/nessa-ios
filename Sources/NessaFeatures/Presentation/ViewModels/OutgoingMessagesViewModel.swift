@@ -13,9 +13,11 @@ import Foundation
     let text: String
     let attachments: [DraftAttachment]
     let reply: MessageReply?
-    /// Kept across a retry while the first attempt may still have landed; new once it surely
-    /// didn't, since the gateway refuses a request id it has already refused.
+    /// Kept across a retry unless the gateway refused it, since a refused request id stays
+    /// refused; any other failure may have landed and is settled under the same identity.
     var identity = MessageCommandIdentity()
+    /// This identity has been sent at least once, so the next try settles it first.
+    var attempted = false
     var state = State.sending
   }
   enum State: Equatable {
@@ -95,26 +97,27 @@ import Foundation
       unmade[conversationID] = nil
     }
     let report = SendFailureReport()
-    let accepted: Bool
-    if store.pendingCommands.contains(where: { $0.requestID == message.identity.requestID }) {
-      // The last attempt may have landed: ask again under the same request, so it can't arrive
-      // twice.
-      _ = await store.recoverCommand(message.identity.requestID, retry: true, report: report)
-      accepted = store.acknowledgedCommands.contains(message.identity.requestID)
-    } else {
-      accepted = await store.send(
+    let accepted =
+      message.attempted
+      ? await store.retrySend(
         message.text, attachments: message.attachments, reply: message.reply,
         to: conversationID, identity: message.identity, report: report)
-    }
+      : await store.send(
+        message.text, attachments: message.attachments, reply: message.reply,
+        to: conversationID, identity: message.identity, report: report)
     guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
     if accepted {
       delivered[messages[index].identity.executionID] = id
       messages.remove(at: index)
       return
     }
-    // A send that surely didn't land is tried next time as a new request.
-    if !store.pendingCommands.contains(where: { $0.requestID == message.identity.requestID }) {
+    // Only a refusal spends the request: anything else may have landed, so the next try
+    // settles this one first rather than sending a second.
+    if report.refused {
       messages[index].identity = MessageCommandIdentity()
+      messages[index].attempted = false
+    } else {
+      messages[index].attempted = true
     }
     fail(id, report.words)
   }
@@ -123,6 +126,12 @@ import Foundation
   private func make(
     _ conversationID: String, _ chat: Unmade, store: MessagesViewModel, report: SendFailureReport
   ) async -> Bool {
+    // An earlier try that landed after all: the chat is already listed.
+    if store.views[conversationID] != nil
+      || store.conversations.contains(where: { $0.id == conversationID })
+    {
+      return true
+    }
     if let pending = store.pendingCreations.first(where: { $0.conversationID == conversationID }) {
       return await store.recoverCommand(pending.requestID, retry: true, report: report)
         == conversationID

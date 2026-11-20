@@ -1922,6 +1922,68 @@ public final class MessagesViewModel: ObservableObject {
       return nil
     }
   }
+  /// Sends a message again under the same identity, so one that may already have landed can't
+  /// land twice: the phone outbox's record for it, or the command journal's pending entry, is
+  /// settled first, and only a send with neither goes out again.
+  public func retrySend(
+    _ text: String, attachments: [DraftAttachment], reply: MessageReply?, to id: String,
+    identity: MessageCommandIdentity, report: SendFailureReport
+  ) async -> Bool {
+    let requestID = identity.requestID
+    if let phoneChat, let profile, connected, !accessRevoked {
+      let scope = cacheScope(profile)
+      let expected = generation
+      await phoneChat.activate(scope)
+      // Unreadable, the record is treated as absent: a send under the same identity then
+      // reconciles a saved record rather than sending it again.
+      let saved = (try? await phoneChat.list(scope: scope))?.first { $0.commandID == requestID }
+      guard generation == expected, self.profile == profile else { return false }
+      if let saved {
+        var outcome = saved.outcome
+        if outcome.admitsRetry || outcome == .draft {
+          do {
+            outcome = try await phoneChat.retry(requestID, scope: scope).outcome
+          } catch {
+            if generation == expected { fail(error.localizedDescription, report) }
+            return false
+          }
+          guard generation == expected, self.profile == profile else { return false }
+          phoneDeliveries = (try? await phoneChat.list(scope: scope)) ?? phoneDeliveries
+        }
+        switch outcome {
+        case .accepted, .running, .done, .unknown:
+          recordAcknowledgment(requestID)
+          await refresh(id)
+          return true
+        case .failed(let code):
+          report.refused = true
+          fail(
+            PhoneAccess.revoked(code)
+              ? "This phone’s access was revoked." : "Your Mac didn’t take this message.", report)
+          return false
+        case .draft:
+          return false
+        }
+      }
+    } else if pendingCommands.contains(where: { $0.requestID == requestID }) {
+      _ = await recoverCommand(requestID, retry: true, report: report)
+      return acknowledgedCommands.contains(requestID)
+    }
+    return await send(
+      text, attachments: attachments, reply: reply, to: id, identity: identity, report: report)
+  }
+  /// The gateway answered the command with a refusal, which holds for its request id forever.
+  private static func refused(_ error: any Error) -> Bool {
+    let error = (error as? CommandDeliveryFailure)?.underlying ?? error
+    if error is GatewayProductRejection { return true }
+    switch error as? NessaGatewayError {
+    case .rejected, .revoked, .conversationNotFound, .imageInputUnsupported, .modelUnavailable,
+      .agentNotConfigured:
+      return true
+    default:
+      return false
+    }
+  }
   /// Tells a failure under the message it belongs to when the caller shows one, else in the
   /// connection alert.
   private func fail(_ words: String, _ report: SendFailureReport?) {
@@ -2020,6 +2082,7 @@ public final class MessagesViewModel: ObservableObject {
         await refresh(id)
         return true
       case .failed(let code):
+        report?.refused = true
         fail(
           PhoneAccess.revoked(code)
             ? "This phone’s access was revoked."
@@ -2080,6 +2143,7 @@ public final class MessagesViewModel: ObservableObject {
       }
       if let known, profile == currentProfile { recordAcknowledgment(known.requestID) }
       if let known, profile == currentProfile { rememberReply(known) }
+      if known == nil, Self.refused(error) { report?.refused = true }
       if generation == currentGeneration { fail(error.localizedDescription, report) }
       if profile == currentProfile { await refreshPendingCommands() }
       return known != nil
@@ -2194,5 +2258,7 @@ public final class MessagesViewModel: ObservableObject {
 /// show under that message, instead of in the connection alert.
 @MainActor public final class SendFailureReport {
   public var words: String?
+  /// The gateway refused it: its request id is spent, and only a new one can try again.
+  public var refused = false
   public init() {}
 }
