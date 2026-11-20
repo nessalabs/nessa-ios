@@ -2,7 +2,7 @@ import NessaDesignSystem
 import SwiftUI
 
 /// A message this phone sent that its chat doesn't show yet: the sent bubble, with "Sending…"
-/// under it while it goes, or "Couldn't send" and a way to try again if it didn't get through.
+/// under it while it goes, or "Couldn't send · Retry" if it didn't get through.
 struct OutgoingMessageView: View {
   let message: OutgoingMessagesViewModel.Message
   let onRetry: () -> Void
@@ -26,14 +26,11 @@ struct OutgoingMessageView: View {
     case .sending:
       Text("Sending…").font(MessagesStyle.caption).foregroundStyle(MessagesStyle.secondary)
     case .failed(let reason):
+      // Short, as Messages does: the reason is read out by VoiceOver, not shown.
       Button(action: onRetry) {
-        VStack(alignment: .trailing, spacing: NessaSpacing.xxs) {
-          Label("Couldn’t send. Tap to try again.", systemImage: "exclamationmark.circle")
-            .foregroundStyle(MessagesStyle.danger)
-          if let reason {
-            Text(reason).foregroundStyle(MessagesStyle.secondary)
-              .multilineTextAlignment(.trailing)
-          }
+        HStack(spacing: NessaSpacing.xs) {
+          Text("Couldn’t send").foregroundStyle(MessagesStyle.danger)
+          Text("Retry").fontWeight(.semibold).foregroundStyle(MessagesStyle.foreground)
         }
         .font(MessagesStyle.caption)
         .contentShape(Rectangle())
