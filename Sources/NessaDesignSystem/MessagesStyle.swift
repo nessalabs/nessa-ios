@@ -161,6 +161,14 @@ public enum MessagesStyle {
   public static let markdownCodeFill = NessaColor.foreground.opacity(0.06)
   public static let markdownRule: CGFloat = 0.5
   public static let markdownCode = Font.system(size: 14, design: .monospaced)
+  /// A task item's box in a reply's list.
+  public static let markdownTaskBox = Font.system(size: 15)
+  /// A table's cells: a step below the body so a few columns fit the bubble.
+  public static let markdownTableText = Font.system(size: 15)
+  public static let markdownTableColumnGap: CGFloat = 14
+  public static let markdownTableRowGap: CGFloat = 6
+  /// The widest a table cell grows before its text wraps.
+  public static let markdownTableCellWidth: CGFloat = 220
   /// A heading steps up modestly from the body: weight first, then a little size.
   public static func markdownHeading(_ level: Int) -> Font {
     switch level {
