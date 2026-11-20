@@ -35,7 +35,7 @@ private struct MarkdownBlockView: View {
       }
       .padding(.leading, CGFloat(depth - 1) * MessagesStyle.markdownListIndent)
     case .code:
-      ScrollView(.horizontal, showsIndicators: false) {
+      MessageSideScroll {
         Text(block.text).font(MessagesStyle.markdownCode).fixedSize()
           .padding(MessagesStyle.markdownCodeInset)
       }
@@ -51,10 +51,26 @@ private struct MarkdownBlockView: View {
     case .rule:
       Rectangle().fill(MessagesStyle.separator).frame(height: MessagesStyle.markdownRule)
     case .tableRow(let header):
-      ScrollView(.horizontal, showsIndicators: false) {
+      MessageSideScroll {
         Text(block.text).font(MessagesStyle.markdownCode)
           .fontWeight(header ? .semibold : .regular).fixedSize()
       }
+    }
+  }
+}
+
+/// Content wider than the bubble (code, a table) that scrolls sideways. In the held message's
+/// preview, a still image that can't hold a scroll view, it shows its leading part clipped to the
+/// bubble instead of a blank.
+struct MessageSideScroll<Content: View>: View {
+  @ViewBuilder let content: Content
+  @Environment(\.messageSnapshot) private var snapshot
+
+  var body: some View {
+    if snapshot {
+      content.frame(maxWidth: .infinity, alignment: .leading).clipped()
+    } else {
+      ScrollView(.horizontal, showsIndicators: false) { content }
     }
   }
 }

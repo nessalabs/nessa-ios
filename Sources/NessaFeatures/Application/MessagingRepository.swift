@@ -13,6 +13,10 @@ public protocol MessagingRepository: Sendable {
   func create(agent: String?, model: String?) async throws -> String
   /// A chat in `channel`; nil is the default channel.
   func create(agent: String?, model: String?, channel: String?) async throws -> String
+  /// A chat under the id the phone chose, so it can be shown before it is made. Returns the id
+  /// the chat was made under, which a repository that picks its own ids may not honour.
+  func create(conversationID: String, agent: String?, model: String?, channel: String?)
+    async throws -> String
   @discardableResult
   func send(_ text: String, attachments: [DraftAttachment], conversationID: String) async throws
     -> String
@@ -33,6 +37,11 @@ extension MessagingRepository {
   /// A repository that knows no channels makes every chat in the default one.
   public func create(agent: String?, model: String?, channel: String?) async throws -> String {
     try await create(agent: agent, model: model)
+  }
+  public func create(conversationID: String, agent: String?, model: String?, channel: String?)
+    async throws -> String
+  {
+    try await create(agent: agent, model: model, channel: channel)
   }
   public func imageData(for attachment: NessaStoredAttachment) async throws -> Data? { nil }
   @discardableResult

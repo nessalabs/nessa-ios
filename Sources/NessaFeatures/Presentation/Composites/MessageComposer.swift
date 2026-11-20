@@ -54,7 +54,10 @@ struct MessageComposer: View {
     return .send
   }
   private func send() {
-    if endsEditingOnSend { focused = false }
+    if endsEditingOnSend {
+      focused = false
+      NessaKeyboard.dismiss()
+    }
     onSend()
   }
   private var sendAvailable: Bool { !sending && !preparing && connected && submissionAllowed }

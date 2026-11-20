@@ -14,9 +14,8 @@ public enum NessaGatewayError: LocalizedError, Equatable {
       "Enter a wss:// gateway address ending in /session (ws:// is allowed only for numeric localhost)."
     case .invalidFrame: "The gateway returned an invalid response."
     case .incompatibleProtocol: "This gateway does not support product protocol v1."
-    case .disconnected: "The gateway connection closed. Reconnect before sending."
-    case .timeout:
-      "The gateway did not reply in time. A sent command may still have been accepted; refresh before trying again."
+    case .disconnected: "Lost the connection to your Mac."
+    case .timeout: "Your Mac didn’t answer in time. Trying again won’t send it twice."
     case .unknownSubscription: "Live updates already stopped."
     case .conversationNotFound: "This chat is no longer available."
     case .imageInputUnsupported:

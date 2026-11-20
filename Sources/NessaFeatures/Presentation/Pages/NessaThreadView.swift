@@ -3,23 +3,19 @@ import SwiftUI
 
 struct NessaThreadView: View {
   @ObservedObject var store: MessagesViewModel
+  /// What this phone sent that the transcript doesn't show yet, drawn in line with it.
+  @ObservedObject var outgoing: OutgoingMessagesViewModel
   let conversationID: String
   @StateObject private var dictation: DictationViewModel
   let autoFocusComposer: Bool
-  /// A message typed on the home screen that started this chat; sent from here, through the
-  /// thread's own composer, so it is retried and confirmed like any other.
-  let firstMessage: HomeFirstMessage?
-  let onFirstMessageTaken: () -> Void
   init(
-    store: MessagesViewModel, conversationID: String, dictation: DictationViewModel,
-    autoFocusComposer: Bool = false, firstMessage: HomeFirstMessage? = nil,
-    onFirstMessageTaken: @escaping () -> Void = {}
+    store: MessagesViewModel, outgoing: OutgoingMessagesViewModel, conversationID: String,
+    dictation: DictationViewModel, autoFocusComposer: Bool = false
   ) {
     self.store = store
+    self.outgoing = outgoing
     self.conversationID = conversationID
     self.autoFocusComposer = autoFocusComposer
-    self.firstMessage = firstMessage
-    self.onFirstMessageTaken = onFirstMessageTaken
     _dictation = StateObject(wrappedValue: dictation)
   }
   @StateObject private var messageContext = MessageContextController()
@@ -57,10 +53,18 @@ struct NessaThreadView: View {
   private func stop(_ turn: String) {
     Task { await store.stopTurn(turn, in: conversationID) }
   }
+  /// The transcript's turns, then what this phone sent that they don't show yet.
+  private var rows: [ThreadRow] {
+    let turns = current?.messages ?? []
+    let shown = Set(turns.map(\.id))
+    return turns.map { ThreadRow.turn($0, adopted: outgoing.delivered[$0.id]) }
+      + outgoing.messages(in: conversationID, shown: shown).map(ThreadRow.outgoing)
+  }
   // Content edits keep their identity, so streamed text doesn't replay the entrance.
   private var messageStructure: [String] {
-    (current?.messages ?? []).flatMap { turn in
-      var ids = [turn.id]
+    rows.flatMap { row in
+      guard case .turn(let turn, _) = row else { return [row.id] }
+      var ids = [row.id]
       if turn.attachments?.isEmpty == false { ids.append(turn.id + ":photos") }
       if !turn.userText.isEmpty { ids.append(turn.id + ":user") }
       ids += turn.displayBubbles.map { turn.id + ":" + $0.id }
@@ -143,16 +147,19 @@ struct NessaThreadView: View {
     .sheet(isPresented: $details) {
       AgentDetailsView(name: name, conversationID: conversationID, store: store)
     }
-    .task(id: store.connectionRevision) { await store.watchConversation(conversationID) }
-    .task { takeFirstMessage() }
-    .onChange(of: store.acknowledgedCommands) { _, ids in
-      composer.accept(ids, scope: store.deliveryScopeRevision)
+    .onAppear { outgoing.onScreen(conversationID, true) }
+    .onDisappear { outgoing.onScreen(conversationID, false) }
+    // A chat the gateway hasn't made yet has nothing to watch; watching starts once it has.
+    .task(id: WatchKey(revision: store.connectionRevision, made: !unmade)) {
+      guard !unmade else { return }
+      await store.watchConversation(conversationID)
     }
-    .onChange(of: store.pendingCommands) { _, commands in
-      if store.connected && store.pendingLoadError == nil {
-        composer.retainPending(Set(commands.map(\.requestID)))
-      }
-    }
+  }
+
+  private var unmade: Bool { outgoing.isUnmade(conversationID) }
+  private struct WatchKey: Equatable {
+    let revision: Int
+    let made: Bool
   }
 
   @ViewBuilder
@@ -164,7 +171,8 @@ struct NessaThreadView: View {
         // the newest message landed in one frame and came to rest a few points off. The
         // gateway sends at most the 24 most recent turns, so laying them all out is cheap.
         VStack(spacing: MessagesStyle.groupSpacing) {
-          if current?.messages.isEmpty == true {
+          let shownRows = rows
+          if current?.messages.isEmpty == true && shownRows.isEmpty {
             Text("Message \(name) to get started.").font(MessagesStyle.caption).foregroundStyle(
               MessagesStyle.secondary)
           }
@@ -172,33 +180,14 @@ struct NessaThreadView: View {
             Text("Showing recent messages").font(MessagesStyle.caption).foregroundStyle(
               MessagesStyle.secondary)
           }
-          ForEach(current?.messages ?? []) { turn in
-            let turnMessages = replies.messages(in: turn.id)
-            let incoming = turnMessages.filter { !$0.outgoing }.map(\.id)
-            VStack(spacing: MessagesStyle.bubbleSpacing) {
-              ForEach(turnMessages) { message in
-                let slot = incoming.firstIndex(of: message.id).map { Self.typingSlot(turn.id, $0) }
-                let grows = slot.map { typingShown.contains($0) } ?? false
-                ConversationMessageView(
-                  message: message, conversationID: conversationID,
-                  store: store, parent: replies.parent(of: message),
-                  replyCount: replies.count(for: message.id), arrivesWithTurn: true,
-                  growsFromTyping: grows,
-                  onReply: { composer.reply = $0 }, onOpenThread: { composer.reply = $0 })
-                .environment(
-                  \.messageMorph, grows ? slot.map { MessageMorph(id: $0, namespace: replyMorph) } : nil)
-              }
-              if turn.awaitsReply {
-                // A new typing bubble per reply: the old one becomes the reply that just landed,
-                // and the next one grows in beneath it.
-                let slot = Self.typingSlot(turn.id, incoming.count)
-                TypingIndicator()
-                  .environment(\.messageMorph, MessageMorph(id: slot, namespace: replyMorph))
-                  .id(slot)
-                  .transition(MessagesStyle.typingTransition)
-              }
-              if let error = turn.error {
-                Text(error).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.danger)
+          ForEach(shownRows) { row in
+            Group {
+              switch row {
+              case .turn(let turn, _): turnView(turn, replies: replies)
+              case .outgoing(let message):
+                OutgoingMessageView(message: message) {
+                  outgoing.retry(message.id, store: store)
+                }
               }
             }
             // A new turn arrives as the reader's own sent bubble, so the whole turn rises
@@ -222,7 +211,7 @@ struct NessaThreadView: View {
           .bottom, NessaSpacing.sm)
         // History can arrive a beat after the thread opens; fade it in rather than pop.
         .animation(reduceMotion ? nil : NessaMotion.standard()) {
-          $0.opacity(current == nil ? 0 : 1)
+          $0.opacity(current == nil && rows.isEmpty ? 0 : 1)
         }
         // The thread's last point, as a view the scroll position can move to. On device a
         // follow to the bottom edge stepped in single frames where a follow to a view eases.
@@ -324,9 +313,10 @@ struct NessaThreadView: View {
                 draft: $composer.text, reply: $composer.reply, attachments: $composer.attachments,
                 recipient: name,
                 dictation: dictation,
-                sending: store.sending, connected: store.connected,
+                sending: store.sending || outgoing.isSending(in: conversationID),
+                connected: store.connected,
                 attachmentPolicy: store.attachmentPolicy,
-                submissionAllowed: store.canSubmit(in: conversationID),
+                submissionAllowed: store.canSubmit(in: conversationID) && !unmade,
                 submissionUnavailableReason: store.submissionUnavailableReason(in: conversationID),
                 autoFocus: autoFocusComposer, working: working,
                 onStop: runningTurn.map { turn in { stop(turn) } },
@@ -337,30 +327,49 @@ struct NessaThreadView: View {
     }
   }
 
-  private func takeFirstMessage() {
-    // Taken once: the home screen forgets it, so coming back to this chat sends nothing.
-    guard let firstMessage else { return }
-    onFirstMessageTaken()
-    composer.text = firstMessage.text
-    composer.attachments = firstMessage.attachments
-    send()
-  }
-
+  /// The message leaves the composer at once and shows in the chat as sent; if it doesn't get
+  /// through, it says so under itself, with a way to try again.
   private func send() {
     // Sending brings the reader back to the newest message; the new turn's growth follows.
     readerScrolled = false
-    let captured = composer.begin(scope: store.deliveryScopeRevision)
-    Task {
-      let accepted = await store.send(
-        captured.text, attachments: captured.attachments,
-        reply: captured.reply, to: conversationID, identity: captured.identity)
-      if accepted {
-        composer.accept([captured.identity.requestID], scope: store.deliveryScopeRevision)
+    outgoing.send(
+      composer.text, attachments: composer.attachments, reply: composer.reply,
+      to: conversationID, store: store)
+    composer.text = ""
+    composer.attachments = []
+  }
+
+  /// One turn of the transcript: the person's message, the agent's replies, and the typing
+  /// bubble while one is on its way.
+  @ViewBuilder
+  private func turnView(_ turn: NessaTurn, replies: ConversationReplies) -> some View {
+    let turnMessages = replies.messages(in: turn.id)
+    let incoming = turnMessages.filter { !$0.outgoing }.map(\.id)
+    VStack(spacing: MessagesStyle.bubbleSpacing) {
+      ForEach(turnMessages) { message in
+        let slot = incoming.firstIndex(of: message.id).map { Self.typingSlot(turn.id, $0) }
+        let grows = slot.map { typingShown.contains($0) } ?? false
+        ConversationMessageView(
+          message: message, conversationID: conversationID,
+          store: store, parent: replies.parent(of: message),
+          replyCount: replies.count(for: message.id), arrivesWithTurn: true,
+          growsFromTyping: grows,
+          onReply: { composer.reply = $0 }, onOpenThread: { composer.reply = $0 })
+        .environment(
+          \.messageMorph, grows ? slot.map { MessageMorph(id: $0, namespace: replyMorph) } : nil)
       }
-      composer.accept(store.acknowledgedCommands, scope: store.deliveryScopeRevision)
-      let knownQueue = store.connected && store.pendingLoadError == nil
-      let pending = store.pendingCommands.contains { $0.requestID == captured.identity.requestID }
-      composer.finished(captured.identity.requestID, keepPending: !knownQueue || pending)
+      if turn.awaitsReply {
+        // A new typing bubble per reply: the old one becomes the reply that just landed,
+        // and the next one grows in beneath it.
+        let slot = Self.typingSlot(turn.id, incoming.count)
+        TypingIndicator()
+          .environment(\.messageMorph, MessageMorph(id: slot, namespace: replyMorph))
+          .id(slot)
+          .transition(MessagesStyle.typingTransition)
+      }
+      if let error = turn.error {
+        Text(error).font(MessagesStyle.caption).foregroundStyle(MessagesStyle.danger)
+      }
     }
   }
 
@@ -398,4 +407,17 @@ private final class LayoutSettleClock {
   /// not a flag, because a follow with nowhere to go reports no phases and would leave a flag
   /// set, turning the reader's next status-bar tap into "ours".
   var followUntil = Date.distantPast
+}
+
+/// One row of a chat: a turn of its transcript, or a message this phone sent that the
+/// transcript doesn't show yet. A turn a sent message became keeps that message's identity.
+private enum ThreadRow: Identifiable {
+  case turn(NessaTurn, adopted: UUID?)
+  case outgoing(OutgoingMessagesViewModel.Message)
+  var id: String {
+    switch self {
+    case .turn(let turn, let adopted): adopted.map { "sent:" + $0.uuidString } ?? turn.id
+    case .outgoing(let message): "sent:" + message.id.uuidString
+    }
+  }
 }
