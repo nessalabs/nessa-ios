@@ -22,6 +22,18 @@ struct MessageContextSelection: Identifiable {
 @MainActor final class MessageContextController: ObservableObject {
   @Published var selection: MessageContextSelection?
 }
+private struct MessageSnapshotKey: EnvironmentKey {
+  static let defaultValue = false
+}
+extension EnvironmentValues {
+  /// The view is being drawn into a still image (the held message's preview). `ImageRenderer`
+  /// draws no UIKit-backed view, a scroll view among them, so a view that scrolls draws its
+  /// content plainly instead; see `MessageSideScroll`.
+  var messageSnapshot: Bool {
+    get { self[MessageSnapshotKey.self] }
+    set { self[MessageSnapshotKey.self] = newValue }
+  }
+}
 private struct MessageContextKey: EnvironmentKey {
   static let defaultValue: MessageContextController? = nil
 }
@@ -91,6 +103,7 @@ private struct MessageReaction: ViewModifier {
             width: frame.width, height: min(frame.height, MessagesStyle.messageSnapshotMaxHeight))
           let renderer = ImageRenderer(
             content: (preview ?? AnyView(content))
+              .environment(\.messageSnapshot, true)
               .fixedSize(horizontal: false, vertical: true)
               .frame(width: snapshotSize.width, height: snapshotSize.height, alignment: .top)
               .clipped())

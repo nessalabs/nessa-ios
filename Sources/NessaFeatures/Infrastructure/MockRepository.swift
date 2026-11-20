@@ -218,8 +218,13 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
     try create(agent: agent, model: model, channel: nil)
   }
   public func create(agent: String?, model: String?, channel: String?) throws -> String {
+    try create(
+      conversationID: UUID().uuidString.lowercased(), agent: agent, model: model, channel: channel)
+  }
+  public func create(conversationID id: String, agent: String?, model: String?, channel: String?)
+    throws -> String
+  {
     try requireConnection()
-    let id = UUID().uuidString.lowercased()
     threads[id] = NessaConversationView(
       conversationId: id, messages: [], permissions: [], truncated: false,
       interactionViewError: nil, runtime: NessaRuntime(agent: agent ?? "nessa", model: model))
@@ -231,10 +236,16 @@ public actor MockRepository: MessagingRepository, AgentDirectory, ChannelDirecto
     changed(id)
     return id
   }
+  /// A development message with `#slow` takes a few seconds to land and one with `#fail` is
+  /// turned away, so a slow or failed send can be seen without a real Mac.
   @discardableResult
-  public func send(_ text: String, attachments: [DraftAttachment], conversationID: String) throws
-    -> String
+  public func send(_ text: String, attachments: [DraftAttachment], conversationID: String)
+    async throws -> String
   {
+    if text.contains("#slow") { try await Task.sleep(for: .seconds(3)) }
+    if text.contains("#fail") {
+      throw NessaGatewayError.rejected("Your Mac didn’t take this message.")
+    }
     let current = try read(conversationID)
     var turn = NessaTurn(
       executionId: UUID().uuidString,

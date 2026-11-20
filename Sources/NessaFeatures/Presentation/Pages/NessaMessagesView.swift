@@ -12,8 +12,8 @@ public struct NessaMessagesView: View {
   @State private var pairing = false
   /// The sidebar under the home screen is uncovered.
   @State private var sidebar = false
-  /// Messages typed on the home screen, waiting for the chat each started to send them.
-  @State private var firstMessages: [String: HomeFirstMessage] = [:]
+  /// What this phone sent that its chat doesn't show yet, including chats still being made.
+  @StateObject private var outgoing = OutgoingMessagesViewModel()
   @StateObject private var homeDictation: DictationViewModel
   private enum Route: Hashable {
     case chat(id: String, focusComposer: Bool)
@@ -124,19 +124,14 @@ public struct NessaMessagesView: View {
         onMenu: openSidebar,
         onPair: pair,
         onCompose: compose,
-        onStart: { id, first in
-          firstMessages[id] = first
-          path.append(.chat(id: id, focusComposer: false))
-        }
+        onStart: { start($0, channel: nil) }
       )
       .navigationDestination(for: Route.self) { route in
         switch route {
         case .chat(let id, let focusComposer):
           NessaThreadView(
-            store: store, conversationID: id,
-            dictation: dependencies.makeDictationViewModel(), autoFocusComposer: focusComposer,
-            firstMessage: firstMessages[id],
-            onFirstMessageTaken: { firstMessages[id] = nil })
+            store: store, outgoing: outgoing, conversationID: id,
+            dictation: dependencies.makeDictationViewModel(), autoFocusComposer: focusComposer)
         case .agents:
           AgentsView(
             store: store, onOpen: { id in path.append(.chat(id: id, focusComposer: false)) })
@@ -144,10 +139,8 @@ public struct NessaMessagesView: View {
           ChannelChatsView(
             store: store, channel: channel, dictation: dependencies.makeDictationViewModel(),
             onOpen: { id in path.append(.chat(id: id, focusComposer: false)) },
-            onStart: { id, first in
-              firstMessages[id] = first
-              path.append(.chat(id: id, focusComposer: false))
-            })
+            // The default channel is no stored channel: a chat made without one lands there.
+            onStart: { start($0, channel: channel.isDefault ? nil : channel.channelId) })
         case .settings:
           NessaSettingsView(
             store: store, desktop: linkStore, onConnection: { path.append(.connection) },
@@ -198,6 +191,13 @@ public struct NessaMessagesView: View {
   private func show(_ routes: [Route]) {
     path = routes
     closeSidebar()
+  }
+
+  /// Opens a new chat with `first` already in it, while the chat is made and the message sent
+  /// behind it: a slow or failed send shows in the chat, never in the composer it left.
+  private func start(_ first: HomeFirstMessage, channel: String?) {
+    let id = outgoing.start(first, channel: channel, store: store)
+    path.append(.chat(id: id, focusComposer: false))
   }
 
   /// A new, empty chat, opened with its composer ready.

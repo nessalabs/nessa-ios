@@ -4,6 +4,19 @@ import SwiftUI
   import UIKit
 #endif
 
+@MainActor enum NessaKeyboard {
+  /// Puts the keyboard away now, whichever field holds it. Clearing a SwiftUI focus binding only
+  /// takes effect on the next update: an alert or a push in between records the field as the
+  /// one to hand the keyboard back to, and the keyboard rises again over a screen with nothing
+  /// to type in.
+  static func dismiss() {
+    #if os(iOS)
+      UIApplication.shared.sendAction(
+        #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    #endif
+  }
+}
+
 extension View {
   /// A tap here puts the keyboard away, wherever its field is: the field's own focus lives in
   /// the composer, which this view can't reach. Simultaneous, so whatever was tapped (a button,
@@ -11,10 +24,7 @@ extension View {
   @ViewBuilder
   func nessaTapDismissesKeyboard() -> some View {
     #if os(iOS)
-      self.simultaneousGesture(TapGesture().onEnded {
-        UIApplication.shared.sendAction(
-          #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-      })
+      self.simultaneousGesture(TapGesture().onEnded { NessaKeyboard.dismiss() })
     #else
       self
     #endif

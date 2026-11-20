@@ -188,7 +188,8 @@ public struct MessagingService: Sendable, GatewayConversationSharingProviding,
       return try await commands.create(intent)
     }
     return try await repository.create(
-      agent: intent.agent, model: intent.model, channel: intent.channelID)
+      conversationID: intent.conversationID, agent: intent.agent, model: intent.model,
+      channel: intent.channelID)
   }
   public func pendingCommands() async throws -> [PreparedConversationCommand] {
     try await (repository as? any CommandRecoveryProviding)?.pendingCommands() ?? []

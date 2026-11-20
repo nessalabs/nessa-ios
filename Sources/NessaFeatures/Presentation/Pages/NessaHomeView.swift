@@ -1,7 +1,7 @@
 import NessaDesignSystem
 import SwiftUI
 
-/// What the home composer hands to the chat it starts, for that chat's own composer to send.
+/// What the home composer hands to the chat it starts, which shows it and sends it.
 struct HomeFirstMessage {
   let text: String
   let attachments: [DraftAttachment]
@@ -16,12 +16,11 @@ struct NessaHomeView: View {
   let onMenu: () -> Void
   let onPair: () -> Void
   let onCompose: () -> Void
-  /// A chat was made for the composer's message; the caller opens it and sends.
-  let onStart: (_ conversationID: String, _ first: HomeFirstMessage) -> Void
+  /// Starts a chat with the composer's message; the caller opens it at once.
+  let onStart: (HomeFirstMessage) -> Void
   @State private var draft = ""
   @State private var reply: MessageReply?
   @State private var attachments: [DraftAttachment] = []
-  @State private var starting = false
   @State private var now = Date()
   /// Reconnecting has run long enough that the pill offers Try again.
   @State private var reconnectSlow = false
@@ -48,6 +47,9 @@ struct NessaHomeView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .contentShape(Rectangle())
     .nessaTapDismissesKeyboard()
+    // Back on home from a chat, no field here holds the keyboard: one left up by the chat
+    // would float over the greeting with nothing to type into.
+    .onAppear { NessaKeyboard.dismiss() }
     .background { NessaHomeLight() }
     .safeAreaInset(edge: .top, spacing: 0) { topBar }
     .messagesBar(edge: .bottom) {
@@ -60,7 +62,7 @@ struct NessaHomeView: View {
           MessageComposer(
             draft: $draft, reply: $reply, attachments: $attachments,
             recipient: recipient, dictation: dictation,
-            sending: starting || store.busy, connected: store.connected,
+            sending: store.busy, connected: store.connected,
             attachmentPolicy: store.attachmentPolicy,
             submissionAllowed: canStart,
             placeholder: "Message \(recipient) or hold to talk",
@@ -157,21 +159,13 @@ struct NessaHomeView: View {
   }
 
   /// The same conditions the gateway puts on making a chat.
-  private var canStart: Bool {
-    store.canCreateChat && !starting
-  }
+  private var canStart: Bool { store.canCreateChat }
 
+  /// The draft moves to the new chat, which opens at once and shows whether it got through.
   private func start() {
     let first = HomeFirstMessage(text: draft, attachments: attachments)
-    starting = true
-    Task {
-      defer { starting = false }
-      guard let id = await store.create() else { return }
-      // The draft moves to the new chat, which sends it; a chat that could not be made keeps
-      // it here.
-      draft = ""
-      attachments = []
-      onStart(id, first)
-    }
+    draft = ""
+    attachments = []
+    onStart(first)
   }
 }

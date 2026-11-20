@@ -8,12 +8,11 @@ struct ChannelChatsView: View {
   let channel: NessaChannel
   @ObservedObject var dictation: DictationViewModel
   let onOpen: (String) -> Void
-  /// A chat was made in this channel for the composer's message; the caller opens it and sends.
-  let onStart: (_ conversationID: String, _ first: HomeFirstMessage) -> Void
+  /// Starts a chat in this channel with the composer's message; the caller opens it at once.
+  let onStart: (HomeFirstMessage) -> Void
   @State private var draft = ""
   @State private var reply: MessageReply?
   @State private var attachments: [DraftAttachment] = []
-  @State private var starting = false
   var body: some View {
     let chats = store.conversations(inChannel: channel.id)
     List {
@@ -46,9 +45,9 @@ struct ChannelChatsView: View {
       MessageComposer(
         draft: $draft, reply: $reply, attachments: $attachments,
         recipient: channel.name, dictation: dictation,
-        sending: starting || store.busy, connected: store.connected,
+        sending: store.busy, connected: store.connected,
         attachmentPolicy: store.attachmentPolicy,
-        submissionAllowed: store.canCreateChat && !starting,
+        submissionAllowed: store.canCreateChat,
         placeholder: "Message \(channel.name)",
         endsEditingOnSend: true,
         onSend: start)
@@ -57,19 +56,11 @@ struct ChannelChatsView: View {
     .navigationTitle(channel.name)
   }
 
+  /// The draft moves to the new chat, which opens at once and shows whether it got through.
   private func start() {
     let first = HomeFirstMessage(text: draft, attachments: attachments)
-    starting = true
-    Task {
-      defer { starting = false }
-      // The default channel is no stored channel: a chat made without one lands there.
-      guard let id = await store.create(channel: channel.isDefault ? nil : channel.channelId)
-      else { return }
-      // The draft moves to the new chat, which sends it; a chat that could not be made keeps
-      // it here.
-      draft = ""
-      attachments = []
-      onStart(id, first)
-    }
+    draft = ""
+    attachments = []
+    onStart(first)
   }
 }

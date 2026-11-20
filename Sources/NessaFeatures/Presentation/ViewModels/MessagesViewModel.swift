@@ -1854,7 +1854,12 @@ public final class MessagesViewModel: ObservableObject {
       && pendingCreations.isEmpty
   }
   /// Starts a chat, in `channel` when one is named (nil is the default channel).
-  public func create(agent: String? = nil, channel: String? = nil) async -> String? {
+  /// `conversationID` lets a caller show the chat before the gateway has made it. With a
+  /// `report`, a failure is told there instead of in the connection alert.
+  public func create(
+    agent: String? = nil, channel: String? = nil,
+    conversationID: String = UUID().uuidString.lowercased(), report: SendFailureReport? = nil
+  ) async -> String? {
     guard canCreateChat else { return nil }
     let currentGeneration = generation
     let originalProfile = profile
@@ -1867,7 +1872,7 @@ public final class MessagesViewModel: ObservableObject {
         ?? (agent == nil && agentProfiles.count == 1 ? agentProfiles.first : nil)
       let intent = PreparedConversationCommand.Creation(
         requestID: UUID().uuidString.lowercased(),
-        conversationID: UUID().uuidString.lowercased(), agent: agent, model: profile?.phoneModel,
+        conversationID: conversationID, agent: agent, model: profile?.phoneModel,
         channelID: channel)
       let id: String
       do { id = try await service.create(intent) } catch {
@@ -1912,10 +1917,15 @@ public final class MessagesViewModel: ObservableObject {
       }
       return id
     } catch {
-      if generation == currentGeneration { self.error = error.localizedDescription }
+      if generation == currentGeneration { fail(error.localizedDescription, report) }
       if generation == currentGeneration { await refreshPendingCommands() }
       return nil
     }
+  }
+  /// Tells a failure under the message it belongs to when the caller shows one, else in the
+  /// connection alert.
+  private func fail(_ words: String, _ report: SendFailureReport?) {
+    if let report { report.words = words } else { error = words }
   }
   public func stopTurn(_ executionID: String, in conversationID: String) async {
     guard let phoneChat, let profile, connected, !accessRevoked else { return }
@@ -1979,7 +1989,7 @@ public final class MessagesViewModel: ObservableObject {
     _ text: String, attachments: [DraftAttachment], reply: MessageReply?, to id: String,
     identity: MessageCommandIdentity, generation currentGeneration: Int,
     profile currentProfile: Profile?,
-    chat: PhoneProductChat
+    chat: PhoneProductChat, report: SendFailureReport?
   ) async -> Bool {
     let contextual = reply?.contextualizing(text) ?? text
     let scope = currentProfile.map { cacheScope($0) }
@@ -2010,10 +2020,10 @@ public final class MessagesViewModel: ObservableObject {
         await refresh(id)
         return true
       case .failed(let code):
-        error =
+        fail(
           PhoneAccess.revoked(code)
-          ? "This phone’s access was revoked."
-          : "The message was not sent."
+            ? "This phone’s access was revoked."
+            : "Your Mac didn’t take this message.", report)
         if PhoneAccess.revoked(code) {
           accessRevoked = true
           setAutomaticConnection(false)
@@ -2023,13 +2033,14 @@ public final class MessagesViewModel: ObservableObject {
         return false
       }
     } catch {
-      if generation == currentGeneration { self.error = error.localizedDescription }
+      if generation == currentGeneration { fail(error.localizedDescription, report) }
       return false
     }
   }
   public func send(
     _ text: String, attachments: [DraftAttachment] = [], reply: MessageReply? = nil,
-    to id: String, identity: MessageCommandIdentity = MessageCommandIdentity()
+    to id: String, identity: MessageCommandIdentity = MessageCommandIdentity(),
+    report: SendFailureReport? = nil
   ) async -> Bool {
     guard canSubmit(in: id), !sending else { return false }
     let currentGeneration = generation
@@ -2040,7 +2051,7 @@ public final class MessagesViewModel: ObservableObject {
     if let phoneChat {
       return await deliverThroughOutbox(
         text, attachments: attachments, reply: reply, to: id, identity: identity,
-        generation: currentGeneration, profile: currentProfile, chat: phoneChat)
+        generation: currentGeneration, profile: currentProfile, chat: phoneChat, report: report)
     }
     do {
       let executionID = try await service.send(
@@ -2069,7 +2080,7 @@ public final class MessagesViewModel: ObservableObject {
       }
       if let known, profile == currentProfile { recordAcknowledgment(known.requestID) }
       if let known, profile == currentProfile { rememberReply(known) }
-      if generation == currentGeneration { self.error = error.localizedDescription }
+      if generation == currentGeneration { fail(error.localizedDescription, report) }
       if profile == currentProfile { await refreshPendingCommands() }
       return known != nil
     }
@@ -2095,7 +2106,9 @@ public final class MessagesViewModel: ObservableObject {
       address: profile.address, credential: profile.credential, instance: profile.instance)
   }
   /// Receipt checks never dispatch. Retry is explicitly requested for the frozen intent.
-  public func recoverCommand(_ requestID: String, retry: Bool) async -> String? {
+  public func recoverCommand(
+    _ requestID: String, retry: Bool, report: SendFailureReport? = nil
+  ) async -> String? {
     guard connected, !retry || conversationAuthorityReady, pendingLoadError == nil,
       !checkingCommands.contains(requestID)
     else {
@@ -2145,7 +2158,7 @@ public final class MessagesViewModel: ObservableObject {
         recordAcknowledgment(requestID)
         rememberReply(failure.command)
       }
-      if generation == expected { self.error = error.localizedDescription }
+      if generation == expected { fail(error.localizedDescription, report) }
       if profile == originalProfile { await refreshPendingCommands() }
     }
     return nil
@@ -2175,4 +2188,11 @@ public final class MessagesViewModel: ObservableObject {
       await refresh(id)
     } catch { if generation == currentGeneration { self.error = error.localizedDescription } }
   }
+}
+
+/// Where a send's failure goes when the message is shown in its chat: the words land here, to
+/// show under that message, instead of in the connection alert.
+@MainActor public final class SendFailureReport {
+  public var words: String?
+  public init() {}
 }
